@@ -1,0 +1,203 @@
+"""Orkestratör: kaynakları bul, aşamaları sırayla koştur, manifestoyu yaz.
+
+Tek süreç, sıralı. Her aşama bitirdiği nesneyi `done` tablosuna sürümüyle
+yazar; yeniden koşuda aynı sürümle bitmiş nesneler atlanır. Kaynak
+aşamaları kayıt kayıt, klip aşamaları toplu çalışır. Hiçbir aşama klip
+elemez; `recommended` yalnızca dışa aktarımda politikadan hesaplanır.
+
+Kaynak seçimi kanal-dönüşümlüdür: `runtime.max_sources` küçükken bile
+örnek kanal çeşitliliği taşısın diye kanallar sırayla birer kayıt verir.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from pathlib import Path
+from typing import Any, Sequence
+
+from . import base
+from .boilerplate import mine
+from .config import Config
+from .dedupe import mark_duplicates
+from .scoring import annotate
+from .stages import asr, clip_qc, music, prepare, segmentation  # noqa: F401  (kayıt için)
+from .stages.asr import load_words
+from .store import Store
+
+log = logging.getLogger("kiraat")
+
+SOURCE_STAGES = ("prepare", "asr", "segment")
+CLIP_STAGES = ("clip_qc", "music")
+
+
+def discover_sources(cfg: Config) -> list[dict[str, Any]]:
+    root = Path(cfg.get("paths.raw_root"))
+    exts = {e.lower() for e in cfg.get("sources.extensions", [])}
+    excl = list(cfg.get("sources.exclude_patterns", []) or [])
+    by_channel: dict[str, list[Path]] = {}
+    for p in sorted(root.rglob("*")):
+        if not p.is_file() or p.suffix.lower() not in exts:
+            continue
+        if any(pat in str(p) for pat in excl):
+            continue
+        by_channel.setdefault(p.parent.name, []).append(p)
+    limit = int(cfg.get("runtime.max_sources", 0) or 0)
+    max_channels = int(cfg.get("runtime.max_channels", 0) or 0)
+    out: list[dict[str, Any]] = []
+    channels = sorted(by_channel.items(), key=lambda kv: kv[0].casefold())
+    if max_channels:
+        channels = channels[:max_channels]
+    queues = {ch: list(ps) for ch, ps in channels}
+    while queues and (not limit or len(out) < limit):
+        for ch in list(queues):
+            if limit and len(out) >= limit:
+                break
+            p = queues[ch].pop(0)
+            out.append({"path": str(p), "channel": ch, "ext": p.suffix.lower(), "bytes": p.stat().st_size})
+            if not queues[ch]:
+                del queues[ch]
+    return out
+
+
+class Pipeline:
+    def __init__(self, cfg: Config):
+        self.cfg = cfg
+        self.store = Store(cfg.get("paths.db"))
+        self.work = Path(cfg.get("paths.work_root"))
+
+    # ------------------------------------------------------------ kaynaklar
+    def run_source_stage(self, name: str, source_ids: Sequence[int]) -> None:
+        stage_cls = base.get_stage(name)
+        stage = stage_cls(self.cfg)
+        assert isinstance(stage, base.SourceStage)
+        todo = [s for s in self.store.sources(source_ids)
+                if not self.store.is_done("source", str(s["id"]), name, stage.version) and not s.get("error")]
+        if not todo:
+            log.info("%s: yapılacak kaynak yok", name)
+            return
+        log.info("%s: %d kaynak", name, len(todo))
+        stage.setup()
+        try:
+            for s in todo:
+                t0 = time.time()
+                src = {**s, **s.get("meta", {})}
+                try:
+                    rows = stage.process_source(src)
+                except Exception as exc:  # aşama hatası kaydı düşürmez, işaretler
+                    log.exception("%s: kaynak %s hata", name, s["id"])
+                    self.store.update_source(s["id"], error=f"{name}: {exc}")
+                    continue
+                if isinstance(stage, segmentation.SegmentStage):
+                    self.store.replace_clips(s["id"], rows)
+                    self.store.update_source(s["id"], meta={**s["meta"], "n_clips": len(rows)})
+                else:
+                    meta = {**s["meta"], **(rows[0] if rows else {})}
+                    fields = {k: meta[k] for k in ("audio", "duration", "source_sample_rate") if k in meta}
+                    self.store.update_source(s["id"], meta=meta, **fields)
+                self.store.mark_done("source", str(s["id"]), name, stage.version)
+                log.info("%s: src%05d [%s] %.0fs", name, s["id"], s["channel"], time.time() - t0)
+        finally:
+            stage.teardown()
+
+    def run_boilerplate(self, source_ids: Sequence[int]) -> None:
+        """Kanal düzeyi: ASR'si biten kayıtlardan künye/anons ifadeleri madenle."""
+        opts = self.cfg.section("boilerplate")
+        version = "1"
+        out_dir = self.work / "boilerplate"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        by_channel: dict[str, dict[str, list[str]]] = {}
+        for s in self.store.sources(source_ids):
+            words_path = s.get("meta", {}).get("words")
+            if words_path and Path(words_path).exists():
+                by_channel.setdefault(s["channel"], {})[str(s["id"])] = [w["text"] for w in load_words(words_path)]
+        for channel, recs in by_channel.items():
+            mined = mine(recs, min_recordings=int(opts.get("min_recordings", 3)),
+                         min_words=int(opts.get("min_words", 3)), max_words=int(opts.get("max_words", 12)),
+                         head_words=int(opts.get("head_words", 80)), tail_words=int(opts.get("tail_words", 80)))
+            phrases = [list(p) for p, _ in mined]
+            json.dump(phrases, (out_dir / f"{channel}.json").open("w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            self.store.mark_done("channel", channel, "boilerplate", version)
+            log.info("boilerplate: %s — %d kayıt, %d ifade%s", channel, len(recs), len(phrases),
+                     (": " + "; ".join(" ".join(p) for p in phrases[:3])) if phrases else "")
+
+    # ---------------------------------------------------------------- klipler
+    def run_clip_stage(self, name: str) -> None:
+        stage_cls = base.get_stage(name)
+        stage = stage_cls(self.cfg)
+        assert isinstance(stage, base.ClipStage)
+        todo = self.store.pending_clips(name, stage.version)
+        if not todo:
+            log.info("%s: yapılacak klip yok", name)
+            return
+        log.info("%s: %d klip", name, len(todo))
+        batch = int(self.cfg.get("runtime.gpu_batch_size", 32)) if stage.gpu else 256
+        stage.setup()
+        try:
+            for i in range(0, len(todo), batch):
+                chunk = todo[i:i + batch]
+                rows = stage.process_clips(chunk)
+                base.ClipStage.validate_output(rows)
+                self.store.merge_clip_results(rows)
+                for c in chunk:
+                    self.store.mark_done("clip", c["id"], name, stage.version)
+                log.info("%s: %d/%d", name, min(i + batch, len(todo)), len(todo))
+        finally:
+            stage.teardown()
+
+    # ------------------------------------------------------------------ çıktı
+    def export(self) -> Path:
+        clips = self.store.clips()
+        speaker_field = str(self.cfg.get("dedupe.speaker_field", "speaker_id"))
+        if not any(c.get("metrics", {}).get(speaker_field) or c.get(speaker_field) for c in clips):
+            log.warning("dedupe: %s yok, kanal anahtar alınıyor (konuşmacı aşaması bağlanınca değişecek)", speaker_field)
+            speaker_field = "channel"
+        if bool(self.cfg.get("dedupe.enabled", True)):
+            clips = mark_duplicates(clips, speaker_field=speaker_field, text_field="text")
+        policy = self.cfg.policy()
+        clips = annotate(clips, policy)
+        out = self.work / "manifests"
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / "clips.jsonl"
+        sources = {s["id"]: s for s in self.store.sources()}
+        with path.open("w", encoding="utf-8") as fh:
+            for c in clips:
+                s = sources[c["source_id"]]
+                row = {
+                    "id": c["id"], "audio": c["audio"], "channel": c["channel"],
+                    "source_id": c["source_id"], "source_path": s["path"],
+                    "source_sample_rate": s.get("source_sample_rate"),
+                    "source_flags": s.get("meta", {}).get("source_flags", []),
+                    "start": c["start"], "end": c["end"], "duration": c["duration"],
+                    "text_raw": c.get("text_raw"), "text": c.get("text"), "text_spoken": c.get("text_spoken"),
+                    "flags": c["flags"], "duplicate_of": c.get("duplicate_of"),
+                    **{k: v for k, v in c["metrics"].items()},
+                    "recommended": c["recommended"], "exclusion_reasons": c["exclusion_reasons"],
+                    "policy_version": c["policy_version"],
+                }
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        log.info("export: %d klip → %s", len(clips), path)
+        return path
+
+    # ------------------------------------------------------------------- koşu
+    def run(self, stages: Sequence[str] | None = None) -> Path | None:
+        found = discover_sources(self.cfg)
+        added = self.store.add_sources(found)
+        ids = [s["id"] for s in self.store.sources() if s["path"] in {f["path"] for f in found}]
+        log.info("kaynak: %d bulundu, %d yeni, %d seçili", len(found), added, len(ids))
+        wanted = list(stages) if stages else [*SOURCE_STAGES, *CLIP_STAGES, "export"]
+        for name in wanted:
+            if name == "segment" and "boilerplate" not in wanted:
+                self.run_boilerplate(ids)
+            if name == "boilerplate":
+                self.run_boilerplate(ids)
+            elif name in SOURCE_STAGES:
+                self.run_source_stage(name, ids)
+            elif name in CLIP_STAGES:
+                self.run_clip_stage(name)
+            elif name == "export":
+                return self.export()
+            else:
+                raise KeyError(f"bilinmeyen asama: {name}")
+        return None

@@ -22,6 +22,11 @@ runtime:
   # örnekte doğrulandıktan sonra ve açık onayla yapılır; varsayılan bu
   # yüzden sınırlıdır, 0 = sınırsız değil, bilinçli olarak küçük tutulur.
   max_sources: 5
+  # Örnek koşuda kanal sayısı sınırı: 0 = sınırsız. Kanal başına birden çok
+  # kayıt gerektiren aşamalar (boilerplate madenciliği ≥3 kayıt ister) için
+  # max_sources ile birlikte kullanılır: max_channels 5, max_sources 15 →
+  # beş kanaldan üçer kayıt.
+  max_channels: 0
   max_clips: 0
 
 sources:
@@ -34,6 +39,9 @@ prepare:
   peak_ceiling_db: -1.0
   target_lufs: null       # klip başına normalizasyon yok, doğal seviye korunur
   ffmpeg_threads: 2
+  # Çözülen ses kapsayıcı süresinin bu oranından kısaysa kayıt
+  # `truncated_source` işareti alır (kesik indirme); işlenmeye devam eder.
+  truncated_ratio: 0.95
 
 # VAD artık kesim aracı değil: yalnızca ASR'ye verilecek konuşma bölgelerini
 # bulur. Kesim kararı transcript'te alınır.
