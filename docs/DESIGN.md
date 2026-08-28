@@ -150,15 +150,31 @@ isteğe bağlı bir dış sınıflandırıcının olasılığıdır. İkili `bac
 yanıtı yayımlanan `music_to_speech_db` sütunundan konfigdeki eşikle türetilir,
 yani kullanıcı veriyi yeniden üretmeden kendi eşiğini kesebilir.
 
-**Dış modeller üzerine not.** `AIGenLab/AST-speech-music-classifier` ve
-`AIGenLab/speech-music-classifier-v3`, `id2label = {0: music, 1: speech}` olan
-**ikili ve birbirini dışlayan** sınıflandırıcılardır (biri AST tabanlı,
-86,2M; diğeri whisper-small tabanlı, 88,4M). Yanıtladıkları soru "bu klip
-konuşma mı müzik mi", sorduğumuz soru ise "konuşmanın altında müzik var mı" —
-altında müzik olan bir anlatıma ikisi de "konuşma" der, çünkü karışık durum
-eğitim dağılımlarında yoktur. İkisinin de yayımlanmış başarım ölçümü yok,
-AST olanın model kartı hiç yok. Bu yüzden politikada kural olarak
-kullanılmazlar; istenirse üçüncü bir skor sütunu olarak yayımlanır ve
-sentetik denetiminin aynısı olan kör dinleme sınamasından geçmeden
-politikaya giremezler. Bu, v1'in 981 saate mal olan hatasının tam olarak
-tekrarlanmamasıdır.
+**Ölçüldü.** 70 klip, v1'in AudioSet skorunun beş bandından katmanlı
+örneklemeyle çekildi ve her biri hem AudioSet skoruyla hem ayrıştırma tabanlı
+dB ölçüsüyle ölçüldü. Sıra korelasyonları:
+
+| sinyal | müzik/konuşma dB ile rho |
+|---|---|
+| AudioSet müzik skoru (çok etiketli) | **+0,799** |
+| `AIGenLab/speech-music-classifier-v3` (ikili) | +0,311 |
+
+AudioSet skoru güçlü bir yordayıcı ama tek başına yeterli değil: örneklemde
+AudioSet 0,444 olan bir klipte hiç müzik yok (−80 dB), AudioSet 0,673 olan
+bir klipte müzik konuşmanın 33 dB altında, yani duyulmuyor. v1'in 0,25'lik
+`sinirda_muzik` eşiği bu yüzden hem yanlış işaretliyor hem kaçırıyordu;
+0,050 skorlu bir klipte müzik −15,7 dB, yani açıkça duyulur.
+
+İkili modeller üzerine not: `AIGenLab/AST-speech-music-classifier` ve
+`AIGenLab/speech-music-classifier-v3`, `id2label = {0: music, 1: speech}`
+olan **birbirini dışlayan** sınıflandırıcılardır (AST tabanlı 86,2M; whisper-
+small tabanlı 88,4M, ikisinin de yayımlanmış başarımı yok, AST olanın model
+kartı hiç yok). Yanıtladıkları soru "bu klip konuşma mı müzik mi", sorulan
+soru "konuşmanın altında müzik var mı". Ölçüm bunu doğruladı: müziği hiç
+olmayan kliplere 0,999 ve 0,915, müziği −22 dB'de açıkça duyulan kliplere
+0,006 ve 0,009 verdiler. Bu yüzden varsayılan konfigde kapalılar; istenirse
+`music.external_model` ile üçüncü bir skor sütunu olarak yayımlanırlar ama
+politikada kural olamazlar.
+
+Uygulama: [`kiraat/stages/music.py`](../kiraat/stages/music.py), ölçüm betiği
+[`scripts/probe_music.py`](../scripts/probe_music.py).

@@ -84,12 +84,22 @@ music:
   audioset_labels:
     ["Music", "Background music", "Soundtrack music", "Theme music",
      "Musical instrument", "Singing", "Song", "Jingle (music)"]
-  # Fiziksel ölçü: kaynak ayrıştırması, eşlik/konuşma enerji oranı.
-  separator: htdemucs
+  # Fiziksel ölçü: kaynak ayrıştırması (torchaudio HDEMUCS_HIGH_MUSDB_PLUS),
+  # eşlik (davul+bas+diğer) enerjisinin konuşma (vokal) enerjisine oranı.
+  separator: hdemucs_high_musdb_plus
+  # Ayrıştırma pahalı; AudioSet skoru bu eşiğin altındaki kliplerde hiç
+  # koşmaz ve sütuna taban değer (-80 dB) yazılır. Hangi kliplerde gerçekten
+  # koştuğu `music_db_separated` sütununda yayımlanır.
+  separator_screen: 0.05
+  # Bu dB'nin üstü "duyulur müzik" sayılır ve `background_music` işareti
+  # verilir. İşaret yayımlanan sütundan türetildiği için yeniden kesilebilir.
   inaudible_db: -30.0
   # Dış sınıflandırıcı, isteğe bağlı. İKİLİ konuşma/müzik modelidir; "altında
   # müzik var mı" sorusunu yanıtlamaz, bu yüzden yalnızca üçüncü bir skor
   # olarak yayımlanır ve kör dinleme denetimi yapılmadan politikaya girmez.
+  # 70 kliplik ölçümde bu modelin fiziksel ölçüyle sıra korelasyonu +0,311
+  # çıktı; AudioSet skorunun aynı ölçüyle korelasyonu +0,799. Bu yüzden
+  # varsayılan olarak kapalı. Açılırsa yalnızca sütun olarak yayımlanır.
   external_model: null   # örn. AIGenLab/speech-music-classifier-v3
   external_gate: false
 
