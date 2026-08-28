@@ -37,6 +37,10 @@ def test_store_gidis_donus(tmp_path):
     assert c["metrics"] == {"n_words": 1, "speech_ratio": 0.9} and c["flags"] == ["short", "x"]
     assert st.pending_clips("clip_qc", "1") == []
     assert st.pending_clips("clip_qc", "2") != []   # sürüm değişince yeniden yapılır
+    # Kaynak yeniden bölütlenince aynı kimlikli yeni klipler yeniden ölçülmeli.
+    st.replace_clips(sid, [{"id": "c1", "idx": 0, "channel": "k", "start": 0.0, "end": 3.0, "duration": 3.0,
+                            "text": "Merhaba dünya.", "flags": [], "metrics": {}}])
+    assert [c["id"] for c in st.pending_clips("clip_qc", "1")] == ["c1"]
 
 
 def test_kaynak_kesfi_kanal_donusumlu(tmp_path):
@@ -100,4 +104,21 @@ def test_tohumlu_rastgele_orneklem(tmp_path):
     assert a == b                                   # aynı tohum, aynı örneklem
     assert len(a) == 6 and len({s["channel"] for s in a}) == 2   # 2 kanal × 3 kayıt
     assert a != c or [s["channel"] for s in a] != [s["channel"] for s in c]
+
+
+def test_hizalama_parcalama():
+    from kiraat.stages.align import make_chunks
+
+    # 0,5 s'lik kelimeler, her 10 kelimede 0,4 s boşluk; 100 kelime ≈ 54 s
+    words, t = [], 0.0
+    for i in range(100):
+        words.append({"text": f"k{i}", "start": round(t, 2), "end": round(t + 0.5, 2)})
+        t += 0.5 + (0.4 if i % 10 == 9 else 0.0)
+    chunks = make_chunks(words, target_sec=20.0, max_sec=40.0, min_gap_sec=0.3, pad_sec=0.5)
+    assert [c.a for c in chunks][0] == 0 and chunks[-1].b == 100
+    for a, b in zip(chunks, chunks[1:]):
+        assert a.b == b.a                                   # boşluksuz, örtüşmesiz kelime kapsamı
+        assert words[a.b]["start"] - words[a.b - 1]["end"] >= 0.3   # kesim boşlukta
+    assert all(20.0 <= (words[c.b - 1]["end"] - words[c.a]["start"]) <= 40.0 for c in chunks[:-1])
+    assert chunks[0].start == 0.0 and chunks[0].end == words[chunks[0].b - 1]["end"] + 0.5
 

@@ -104,9 +104,12 @@ class Store:
 
     # ----------------------------------------------------------------- clips
     def replace_clips(self, source_id: int, clips: Sequence[Mapping[str, Any]]) -> None:
-        self.con.execute("delete from clips where source_id=?", (source_id,))
+        # Önce done, sonra clips: aksi hâlde alt sorgu boş döner ve eski klip
+        # kimliklerinin 'bitti' kayıtları kalır — yeni klipler aynı kimliği
+        # aldığında klip aşamaları onları atlar.
         self.con.execute("delete from done where kind='clip' and key in "
                          "(select id from clips where source_id=?)", (source_id,))
+        self.con.execute("delete from clips where source_id=?", (source_id,))
         self.con.executemany(
             'insert into clips(id, source_id, channel, idx, start, "end", duration, audio, '
             "text_raw, text, text_spoken, flags_json, metrics_json, meta_json) "

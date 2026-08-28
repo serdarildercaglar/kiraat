@@ -75,16 +75,7 @@ textarea.out{width:100%;min-height:120px;font-family:ui-monospace,Menlo,Consolas
 </header>
 
 <div class="wrap">
-  <section class="intro">
-    <div class="eyebrow">Ne yapmalı</div>
-    <p>Aşağıda __COUNT__ klip var; hangi kanaldan ve hangi sistemden kesildiği gizli. Her klibi bir kez dinle, transcript'e bakmadan da olur, ve üç soruya cevap ver. Cevapların tarayıcıda saklanır; ara verip dönebilirsin.</p>
-    <ol>
-      <li><strong>Başlangıç:</strong> klip bir cümlenin başında mı başlıyor, yoksa konuşmanın ortasına mı giriyorsun?</li>
-      <li><strong>Bitiş:</strong> klip cümle bitince mi bitiyor, yoksa cümle yarım mı kalıyor?</li>
-      <li><strong>Kesik kelime:</strong> ilk ya da son kelimenin bir parçası kesilmiş mi (ses aniden başlıyor / bitiyor)?</li>
-    </ol>
-    <p>Bittiğinde en alttaki <strong>Sonuçları kopyala</strong> düğmesine bas ve çıkan metni sohbete yapıştır.</p>
-  </section>
+  <section class="intro">__INTRO__</section>
 
   <div id="cards"></div>
 
@@ -103,11 +94,7 @@ let answers = {};
 try { answers = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { answers = {}; }
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(answers)); } catch (e) {} }
 
-const Q = [
-  {k:'start', label:'Başlangıç', hint:'cümle başında mı başlıyor?', opts:[['evet','Cümle başı'],['hayir','Ortadan giriyor','neg']]},
-  {k:'end',   label:'Bitiş',     hint:'cümle bitince mi bitiyor?',   opts:[['evet','Cümle sonu'],['hayir','Yarım kalıyor','neg']]},
-  {k:'cut',   label:'Kesik kelime', hint:'başta ya da sonda kelime kesilmiş mi?', opts:[['yok','Yok'],['bas','Başta','neg'],['son','Sonda','neg'],['iki','İkisi de','neg']]},
-];
+const Q = __QUESTIONS__;
 
 const cards = document.getElementById('cards');
 document.getElementById('total').textContent = ITEMS.length;

@@ -30,7 +30,43 @@ parser.add_argument("--prefer-small-gap", type=float, default=None,
 parser.add_argument("--seed", type=int, default=11)
 parser.add_argument("--score", default=None, help="cevap JSON'u; sayfa üretmek yerine skorla")
 parser.add_argument("--audit-name", default="boundary-v2")
+parser.add_argument("--questions", choices=["boundary", "music"], default="boundary")
 args = parser.parse_args()
+
+QUESTION_SETS = {
+    "boundary": {
+        "q": [
+            {"k": "start", "label": "Başlangıç", "hint": "cümle başında mı başlıyor?",
+             "opts": [["evet", "Cümle başı"], ["hayir", "Ortadan giriyor", "neg"]]},
+            {"k": "end", "label": "Bitiş", "hint": "cümle bitince mi bitiyor?",
+             "opts": [["evet", "Cümle sonu"], ["hayir", "Yarım kalıyor", "neg"]]},
+            {"k": "cut", "label": "Kesik kelime", "hint": "başta ya da sonda kelime kesilmiş mi?",
+             "opts": [["yok", "Yok"], ["bas", "Başta", "neg"], ["son", "Sonda", "neg"], ["iki", "İkisi de", "neg"]]},
+        ],
+        "intro": (
+            "<div class=\"eyebrow\">Ne yapmalı</div>"
+            "<p>Aşağıda __COUNT__ klip var; hangi kanaldan ve hangi sistemden kesildiği gizli. Her klibi bir kez dinle ve üç soruya cevap ver. Cevapların tarayıcıda saklanır; ara verip dönebilirsin.</p>"
+            "<ol><li><strong>Başlangıç:</strong> klip bir cümlenin başında mı başlıyor?</li>"
+            "<li><strong>Bitiş:</strong> klip cümle bitince mi bitiyor?</li>"
+            "<li><strong>Kesik kelime:</strong> ilk ya da son kelimenin bir parçası kesilmiş mi?</li></ol>"
+            "<p>Bittiğinde en alttaki <strong>Sonuçları kopyala</strong> düğmesine bas ve çıkan metni sohbete yapıştır.</p>"
+        ),
+    },
+    "music": {
+        "q": [
+            {"k": "music", "label": "Arka plan müziği", "hint": "konuşmanın altında müzik duyuluyor mu?",
+             "opts": [["yok", "Yok"], ["hafif", "Hafif, fark edilir"], ["belirgin", "Belirgin", "neg"], ["baskin", "Baskın", "neg"]]},
+            {"k": "train", "label": "Eğitime girsin mi?", "hint": "bu klip bir TTS modelinin öğrenmesini ister misin?",
+             "opts": [["evet", "Evet"], ["hayir", "Hayır", "neg"]]},
+        ],
+        "intro": (
+            "<div class=\"eyebrow\">Ne yapmalı</div>"
+            "<p>Aşağıda __COUNT__ klip var; kanal ve ölçülen müzik düzeyi gizli. Soru bu kez sınır değil, <strong>arka plan müziği</strong>: konuşmanın altında müzik var mı, varsa ne kadar; ve bu klibi bir TTS modelinin öğrenmesini ister misin?</p>"
+            "<p>Kulaklıkla dinle; \"hafif\" fark edilir ama rahatsız etmez demek, \"belirgin\" müzik açıkça duyuluyor, \"baskın\" konuşmayla yarışıyor.</p>"
+            "<p>Bittiğinde <strong>Sonuçları kopyala</strong> düğmesine bas ve çıkan metni sohbete yapıştır.</p>"
+        ),
+    },
+}
 
 out = Path(args.out)
 out.mkdir(parents=True, exist_ok=True)
@@ -88,11 +124,15 @@ for i, r in enumerate(sample, 1):
     b64 = base64.b64encode(ogg.read_bytes()).decode()
     items.append({"n": i, "dur": round(r["end"] - r["start"], 1), "text": r["text"],
                   "data": "data:audio/ogg;base64," + b64})
-    key[str(i)] = {"id": r["id"], "system": r["system"], "channel": r["channel"], "flags": r["flags"]}
+    key[str(i)] = {"id": r["id"], "system": r["system"], "channel": r["channel"], "flags": r["flags"],
+                   "music_to_speech_db": r.get("music_to_speech_db"), "music_score_audioset": r.get("music_score_audioset")}
 json.dump(key, (out / "key.json").open("w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
 template = Path(__file__).with_name("listen_template.html").read_text(encoding="utf-8")
+qs = QUESTION_SETS[args.questions]
 page = (template.replace("__DATA__", json.dumps(items, ensure_ascii=False))
+        .replace("__QUESTIONS__", json.dumps(qs["q"], ensure_ascii=False))
+        .replace("__INTRO__", qs["intro"])
         .replace("__AUDIT__", args.audit_name).replace("__COUNT__", str(len(items))))
 (out / "index.html").write_text(page, encoding="utf-8")
 print(f"{len(items)} klip ({len(pick_k)} kiraat, {len(pick_v)} v1), "
