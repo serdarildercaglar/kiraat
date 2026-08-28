@@ -53,6 +53,23 @@ başına üst sınırı aşan cümlenin iç noktalamasından bölünmesidir; o k
 `forced_split` işareti taşır ve önerilen alt kümeye girmez.
 Uygulama: [`kiraat/segment.py`](../kiraat/segment.py).
 
+**Ölçüldü (28 Ağu 2026, `scripts/probe_segment.py`).** Beş kanaldan birer
+kaydın ilk altı dakikası, aynı pencere için iki sistem yan yana:
+
+| | klip | küçük harfle başlayan | cümle sonu olmayan | süre medyanı |
+|---|---|---|---|---|
+| v1 (sessizlikte kesim) | 150 | 10 (%6,7) | 17 (%11,3) | 10,9 s |
+| kiraat (cümlede kesim, hedef 9 / tavan 20) | 143 | **0** | 2 (%1,4, ikisi `forced_split`) | 11,5 s |
+| kiraat (hedefi aşmayan kural, hedef 7 / tavan 15) | 232 | 2 (ikisi `forced_split`) | 8 (%3,4, hepsi `forced_split`) | 6,7 s |
+| kiraat (+ pay, boşluk kesimi, ek birleştirme, boilerplate) | 233 | 4 (hepsi işaretli) | 12 (11'i işaretli, 1'i pencere sonu) | 6,6 s |
+
+v1'in oranı kanala bağlı: idea_stüdyo'da 0/30, anahtarca'da 4/28 başlangıç
+ve 10/28 bitiş kırık. Kelime zaman damgaları bu koşuda Whisper'ın kendi
+hizalamasından; zorlamalı hizalayıcı bağlanınca tekrarlanacak. Kulakla
+denetim (üç kör tur, 72 kiraat + 32 v1 klibi): kiraat'ta kırık başlangıç
+0/72, kesik hece ses tabanlı sınır iyileştirmesinden (`kiraat/boundaries.py`)
+sonra 0/28; v1'de 32 klipte 2 kırık başlangıç, 5 kırık bitiş, 3 kesik kelime.
+
 ## 2. Doğrulanmamış bir sınıflandırıcıyı kapı yapmak
 
 v1, AudioSet AST'nin "Speech synthesizer" başlığını sentetik anlatım kapısı
@@ -130,6 +147,11 @@ klasik Whisper halüsinasyonları var: "İzlediğiniz için teşekkür ederim."
 aşaması, kayıt başı/sonu bölgelerine ağırlık vererek çalışır ve bulduklarını
 `boilerplate` işaretiyle damgalar. ASR tarafında `condition_on_previous_text`
 kapatılır; halüsinasyon zincirini kıran ayar budur.
+Uygulama: [`kiraat/boilerplate.py`](../kiraat/boilerplate.py); bulunan
+aralıklar bölütleyicide ayrı klip olur, komşusuyla birleşmez. 28 Ağu 2026'da
+5 kanal × 8 kayıtta sınandı: "seslendiren vasfiye sarıkaya", "son altyazı
+m k", "dinlediğiniz için teşekkür ederiz" yakalandı; isimleri değişen
+"Yazan X Seslendiren Y" kalıbı yakalanmadı (şablon madenciliği gerekecek).
 
 ## 6. Gerçek bir held-out yok
 

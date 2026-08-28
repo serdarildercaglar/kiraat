@@ -122,6 +122,224 @@ kesilebilir. Harici model varsayılan olarak kapalı.
 
 **Makaleye:** §Kalite ölçümleri, §Ablasyon (ikincil sonuç).
 
+## 2026-08-28 — Bölütleme, gerçek kayıtlarda ilk koşu (örnek)
+
+Hat henüz uçtan uca bağlı değil; bu koşu hazır parçaları (uzun form ASR →
+`kiraat.segment.segment`) beş kaydın ilk altı dakikasına elle bağlayarak
+yapıldı: `scripts/probe_segment.py`. Beş kayıt beş ayrı kanaldan seçildi,
+toplam 28,7 dakika, 3.059 kelime. ASR `faster-whisper` large-v3
+(`condition_on_previous_text=false`, sıcaklık 0, VAD yalnızca konuşma bölgesi
+bulucu); kelime zaman damgaları Whisper'ın kendi hizalamasından, çünkü
+konfigdeki zorlamalı hizalayıcı henüz bağlanmadı. Bu yüzden buradaki sayılar
+**hizalayıcı bağlandığında yeniden koşulmalı**.
+
+**Sonuç.** 143 klip üretildi. Küçük harfle başlayan klip **0**; cümle sonu
+noktalamasıyla bitmeyen **2** (%1,4), ikisi de `forced_split` işaretli, yani
+tasarımın öngördüğü ve önerilen alt kümeden düşen istisna. Süre medyanı
+11,5 s (p5 5,3, p95 18,6). İşaretler: `forced_split` 2, `oversize` 2,
+`short` 3. Klip başına asgari kelime olasılığı medyan 0,794; 0,40'ın
+altında 4 klip.
+
+**Çıktıda görülen üç kusur** — hepsi bölütleyicinin dışında, ama hattın
+sorumluluğunda:
+
+1. *Künye sızması.* Kaydın başındaki başlık ve seslendiren künyesi
+   ("… seslendiren Vasfiye Sarıkaya Sanki bir tufandı.") ilk cümleye
+   yapışıyor, çünkü ASR künyeden sonra noktalama koymuyor ve boilerplate
+   aşaması henüz yok. Beş kaydın üçünde ilk klip böyle.
+2. *Uzun sessizlik cümleyi bölmüyor.* Bir kayıtta başlık ile ilk cümle
+   arasında 49 saniyelik boşluk var (giriş müziği), ama noktalama olmadığı
+   için bölütleyici ikisini tek "cümle" sayıp 53,9 saniyelik `oversize`
+   klip üretti. `_split_oversize` iç noktalama bulamayınca uzun iç
+   boşluğu (`max_join_gap_sec` üstü) kesim adayı saymalı.
+3. *Kesme işaretinde bölünen belirteçler.* Whisper "Button 'ın",
+   "Arz -ı Mev 'ud" gibi 101/3.059 belirteci ayrı kelime olarak veriyor;
+   metin bu hâliyle yayımlanamaz. ASR sonrası kelime birleştirme adımı
+   (kesme/tire ile başlayan belirteç öncekine yapışır) gerekiyor.
+
+**Kör dinleme denetimi (aynı gün).** 40 klip — kayıt başına 4 kiraat + 4
+karşılaştırma klibi — kanal ve sistem gizli, karışık sırada bir dinleme
+sayfasına kondu; sorular: cümle başında mı başlıyor, cümle bitince mi
+bitiyor, başta/sonda kelime kesik mi. Anahtar
+`work/probe_segment/listen/key.json`, cevaplar `listen/answers-1.json`.
+Dinleyici 37/40 klibi cevapladı. kiraat'ın 20 klibinin **20'si** cümle
+başında başlıyor ve cümle sonunda bitiyor; karşılaştırma kliplerinde 2
+kırık başlangıç, 3 kırık bitiş, 3 kesik kelime. Yani metin ölçüsü
+(küçük harf / noktalama) ile kulak aynı şeyi söylüyor.
+
+Tek kusur, bir kiraat klibinde başa **önceki kelimenin son harfinin
+sızması** (çeyrek saniyeden az). Sebebi kelime zaman damgalarında:
+"kurduruyordu." 121,62'de bitiyor, "Bu" 121,74'te başlıyor, aradaki
+boşluk 0,12 s; `lead_pad_sec` 0,15 olduğu için klip başı önceki kelimenin
+bitişine dayanıyor ve Whisper'ın kelime bitişleri erken olduğundan sesin
+kuyruğu içeri giriyor. Örneklemde cümle sonundan sonraki boşlukların
+%28'i 0,15 s'nin altında (90/318, 30'u sıfır), yani bu tekil bir vaka
+değil. İki çözüm birlikte gerekli: pay, komşu kelimeye dayanmak yerine
+boşluğun ortasında durmalı (`_pad`), ve kelime bitişleri zorlamalı
+hizalayıcıdan gelmeli.
+
+**Ayrıca ölçüldü (modelsiz).** Metin normalizasyonu 50.000 cümlelik bir
+örnekte `text` üzerinde %5,28 satırı değiştiriyor (sayı, ondalık, yüzde,
+yıl), hafif temizlik %2,30; hata yok. İki kusur görüldü: "6. Bölüm" →
+"altı. Bölüm" (büyük harfli sıra sayısı takipçisi tanınmıyor) ve "1922'de" →
+"bin dokuz yüz yirmi iki'de" (ek, kesme işaretiyle kalıyor). Yineleme
+işaretleme (metin, konuşmacı) anahtarıyla 416 bin klipte 13 saniyede
+çalışıyor; farklı kanallarda tekrar eden 1.532 metin doğru biçimde
+korunuyor.
+
+**Makaleye:** §Ablasyon (ön sonuç; hizalayıcıyla yeniden koşulacak),
+§Metin işleme (bilinen sınırlar).
+
+## 2026-08-28 — Klip süresi: birleştirme kuralı ve tavan kararı
+
+İlk koşuda süre medyanı 11,5 s, p95 18,6 s çıktı; hedef 9 s iken. Kaynağı
+cümleler değil (tek cümle medyanı 4,0 s, 295 cümlenin yalnızca 42'si 9 s
+üstü), birleştirme kuralı: gruba "hedefe ulaşana kadar" cümle ekleniyordu,
+bu da klipleri hedef artı bir cümle uzunluğuna taşıyordu.
+
+**Karar.** Kural "hedefi aşma" olarak değiştirildi: grup `min_sec` üstündeyse
+ve bir cümle daha eklemek hedefi aşacaksa grup kapanır
+(`kiraat/segment.py`, testi `test_birlestirme_hedefi_asmaz`). Hedef 7 s,
+tavan 15 s. Tavan eğitim bütçesiyle tutarlı seçildi: dizi bütçesi ~25 s
+hedef sese izin veriyor ama otoregresif model eğitimde gördüğü sürenin
+ötesine iyi genellemediği için tek seferde üretilmesi beklenen en uzun
+cümle (15 s) tavan alındı; tek cümlelerin %97'si zaten bu sürenin altında,
+dolayısıyla tavan iç noktalamada bölmeye nadiren zorluyor.
+
+**Aynı beş kayıtta yeniden koşu (ASR önbellekten).** 232 klip, medyan
+6,7 s (p5 3,7, p95 13,6); dağılım 5 s altı 60, 5–10 s 132, 10–15 s 37,
+15 s üstü 3 (üçü de `oversize`, yani iç noktalaması olmayan tek cümleler).
+Küçük harfle başlayan 2, cümle sonu olmayan 8; bunların **hepsi
+`forced_split` işaretli** ve önerilen alt kümeden düşüyor — tek istisna
+pencere sonunda kesilen son klip, o da deneme penceresinin ürünü. 211/232
+klip işaretsiz. `forced_split` sayısı 2'den 14'e çıktı ve 10'u tek
+kanalda (uzun, liste gibi cümleler); tavanı düşürmenin bedeli bu ve
+kabul edildi.
+
+**Makaleye:** §Yöntem (süre politikası ve gerekçesi), §Korpus (süre
+dağılımı — hizalayıcı bağlanınca tam koşuda yeniden ölçülecek).
+
+## 2026-08-28 — Dört düzeltme ve ikinci koşu
+
+İlk koşuda görülen kusurlar düzeltildi ve aynı beş kayıt yeniden koşuldu
+(ASR önbellekten; 233 klip, medyan 6,6 s, p95 13,3 s).
+
+1. **Sınır payı boşluğun ortasını geçmiyor** (`segment._pad`). Kör
+   dinlemede duyulan harf sızmasının sebebi payın komşu kelimenin bitişine
+   dayanmasıydı. Bu koşuda 54 klibin baş boşluğu 0,15 s'nin altında; ikinci
+   dinleme turu bunlara öncelik veriyor.
+2. **Noktalamasız uzun "cümle" uzun iç sessizlikte kesiliyor**
+   (`_split_oversize`, `gap_split` işareti). 54 saniyelik klip artık 3,8 s'lik
+   başlık ("Edgar Allan Poe'dan Kuyu ve Sarkaç", `gap_split`) ve temiz bir
+   ilk cümle ("Bitkindim. O uzun acıyla…", işaretsiz). Metin olarak bütün
+   görünen parça işaret almıyor; kırık görünen alıyor ve önerilen alt
+   kümeden düşüyor.
+3. **Kesme işaretinde bölünen ekler birleştiriliyor** (`attach_clitics`):
+   "Button 'ın" → "Button'ın", "Arz -ı Mev 'ud" → "Arz-ı Mev'ud". Açılış
+   tırnağıyla başlayan gerçek kelimelere dokunulmuyor.
+4. **Boilerplate madenciliği** (`kiraat/boilerplate.py`,
+   `scripts/probe_boilerplate.py`): kanal başına 8 kaydın ilk ve son
+   dakikası çözülüp en az 3 kayıtta kelimesi kelimesine tekrar eden diziler
+   arandı. Bulunanlar: BirDinle "seslendiren vasfiye sarıkaya" (5/8),
+   ses-arşiv "son altyazı m k" (3/8 — ASR halüsinasyonu, tam da istenen
+   yakalama), idea_stüdyo "dinlediğiniz için teşekkür ederiz" (5/8) ve
+   "abone olmayı unutmayınız" (3/8); anahtarca'da künye yok, 0. Bulunan
+   aralıklar bölütleyicide ayrı klip oluyor ve `boilerplate` işareti
+   taşıyor: "Ferman Ömer Seyfettin | seslendiren Vasfiye Sarıkaya | Sanki
+   bir tufandı. Gök delinmiş…" — ilk gerçek cümle artık künyeden temiz.
+   **Sınır:** dinleyiniz'de künye "Yazan X Seslendiren Y" kalıbında ama
+   isimler kayıt başına değiştiği için kelimesi kelimesine tekrar 0 ifade
+   verdi. Kalıp madenciliği (isim yuvalı şablon) ayrıca gerekecek; şimdilik
+   o kanalda künye ilk klibe yapışık kalıyor ve yalnızca `short`/`no_end`
+   ölçüleriyle görünür.
+
+**Sonuç.** 233 klibin 209'u işaretsiz. Kırık uçlu 14 klibin 13'ü
+işaretli (`forced_split` 12, `gap_split` 4, `boilerplate` 1, `short` 6 —
+çakışmalı); işaretsiz tek kırık klip 6 dakikalık deneme penceresinin
+sonunda kesilen klip. Süre dağılımı: 5 s altı 63, 5–10 s 131, 10–15 s 37,
+15 s üstü 2 (`oversize`).
+
+**İkinci kör dinleme turu** yayına kondu: 32 klip (24 kiraat — baş/son
+boşluğu 0,15 s altındakiler öncelikli, yani pay düzeltmesinin sınandığı
+yer — ve 8 karşılaştırma klibi). Sayfa `scripts/listen_ui.py` ile
+üretiliyor, cevap `--score` ile anahtarla eşleştiriliyor.
+
+**Makaleye:** §Yöntem (boilerplate ve süre politikası), §Korpus (işaret
+dağılımı). Sayılar hizalayıcı bağlanınca tam koşuda yenilenecek.
+
+## 2026-08-28 — İkinci kör dinleme: kesik son hece ve sıfır boşluk
+
+32 klibin 32'si cevaplandı (`work/probe_segment/listen/answers-2.json`).
+kiraat'ın 24 klibinde kırık başlangıç **0**, kırık bitiş 2 (ikisi de
+`forced_split`, yani beklenen istisna), ama **3 klipte son hece kesik**:
+"anımsatıyor|du", "hissetti|m", "vardır|." Karşılaştırma kliplerinde
+kesik yok (8'de 0), kırık bitiş 1.
+
+**Teşhis.** Üç klibin üçünde de son kelimenin bitişi ile sonraki kelimenin
+başlangıcı Whisper'da aynı zaman damgası (boşluk 0,0 s): "anımsatıyordu."
+144,79–145,39 → "Ekim" 145,39. Whisper bir kelimenin bitişini bir
+sonrakinin başına yapıştırdığında boşluğu ortadan bölmenin de payın da
+verebileceği bir şey kalmıyor ve kelime bitişi erken olduğu için son hece
+dışarıda kalıyor. Dinlenen 24 klipte son boşluğu sıfır olan 6 klip vardı,
+3'ü kesik çıktı; sıfırdan büyük boşluklu 18 klipte hiç kesik yok. Tüm
+koşuda 233 klibin 22'sinde (%10) son boşluk sıfır, 22'sinde baş boşluk
+sıfır; yani kusur örneklemin değil zaman damgasının.
+
+**Çıkarım.** Sınır, ASR zaman damgasından değil sesten alınmalı: iki klip
+arasındaki gerçek sessizlik, damganın yakınında ama tam üstünde değil.
+Bölütleyici bugün sese hiç bakmıyor; komşu klipler arasında damga
+çevresinde küçük bir pencerede en düşük enerjili noktayı (nefes/sessizlik)
+bulup sınırı oraya çekmek gerekiyor. Zorlamalı hizalayıcı bağlansa da bu
+adım kalmalı, çünkü hizalayıcı da kelime sınırını ses enerjisine göre
+değil harf olasılığına göre koyar.
+
+**Makaleye:** §Yöntem (sınır iyileştirme adımı, gerekçesiyle).
+
+## 2026-08-28 — Ses tabanlı sınır iyileştirme
+
+Bir önceki kaydın çıkarımı uygulandı: `kiraat/boundaries.py`. Bölütlemeden
+sonra, damgalar arası boşluğun iki payı da (0,15 + 0,25 s) barındıramadığı
+her komşu klip çiftinde, önceki klibin son kelime damgasından 0,05 s önce
+başlayıp 0,6 s sonrasına uzanan pencerede 20 ms'lik enerji zarfına bakılır.
+Yerel konuşma seviyesinin (±1 s içinde 90. yüzdelik) 25 dB altındaki en az
+60 ms'lik en uzun sessizlik bulunursa önceki klip o sessizliğe 0,25 s
+uzar, sonraki klip sessizliğin sonundan 0,15 s önce başlar; sessizlik
+yoksa ikisi de penceredeki en sessiz ana konur. Pencere sonraki kelimenin
+damgasıyla kısılmaz — boşluk sıfırken o damga da yanlıştır — ama önceki
+kelimenin başına taşamaz ve klipler çakışmaz. Üç sentetik test
+(`tests/test_boundaries.py`): 80 ms erken biten damga sessizliğe düşer,
+kesintisiz konuşmada en sessiz an seçilir, geniş boşluklu çiftlere
+dokunulmaz.
+
+**Aynı beş kayıtta.** 233 klibin 92 çiftinde sınır taşındı; klip sonu ASR
+damgasına göre medyan **+0,35 s** ileri (en az +0,03, en çok +0,69).
+Sıfır boşluklu 22 klibin hepsi en az 0,05 s uzadı. İkinci turda kesik
+bulunan üç klip: +0,38, +0,35, +0,61 s. Çakışan çift 0. Süre dağılımı
+değişmedi (medyan 6,7 s).
+
+**Üçüncü kör dinleme turu** yayına kondu: 32 klip, 28'i kiraat ve sıfır
+boşluklu klipler öncelikli — yani düzeltmenin tam hedefi — 4'ü
+karşılaştırma. Soru aynı: kesik hece var mı.
+
+**Makaleye:** §Yöntem (sınır iyileştirme; hizalayıcı bağlansa da kalır).
+
+## 2026-08-28 — Üçüncü kör dinleme: sıfır boşluklu kliplerde kesik yok
+
+32 klibin 32'si cevaplandı (`work/probe_segment/listen/answers-3.json`).
+kiraat'ın 28 klibi — hepsi sıfır boşluklu, yani ikinci turda kesik veren
+sınıfın tamamı — **28/28 temiz**: kırık başlangıç 0, kırık bitiş 0, kesik
+hece 0. Karşılaştırma kliplerinde 4'te 1 kırık bitiş (cümle ortasından
+giren "sizin olacak denilmiştir. …" klibi), kesik yok.
+
+Üç turun toplamı, kiraat klipleri için: 72 dinlenen klipte kırık
+başlangıç 0; kırık bitiş 2, ikisi de `forced_split` işaretli; kesik hece
+ikinci turda 3 (zaman damgası kusuru), üçüncü turda ses tabanlı sınırla
+0. Sınır artık ASR damgasından değil sessizlikten alınıyor ve bu adım
+hizalayıcı bağlansa da kalacak.
+
+**Makaleye:** §Değerlendirme — kör dinleme protokolü ve sonuçları (tur
+başına klip sayısı, soru seti, kiraat/karşılaştırma ayrımı gizli).
+
 ---
 
 ## Koşulacak deneyler
