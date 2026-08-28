@@ -340,6 +340,52 @@ hizalayıcı bağlansa da kalacak.
 **Makaleye:** §Değerlendirme — kör dinleme protokolü ve sonuçları (tur
 başına klip sayısı, soru seti, kiraat/karşılaştırma ayrımı gizli).
 
+## 2026-08-28 — Hattın gövdesi ve ilk uçtan uca örnek koşu
+
+Bölütleme çekirdeği kapandıktan sonra hattın gövdesi yazıldı: sqlite durum
+deposu (`kiraat/store.py`), orkestratör (`kiraat/pipeline.py`,
+`python -m kiraat run`) ve aşamalar `prepare` (ffmpeg, 24 kHz mono,
+40 Hz yüksek geçiren, −1 dB tepe) → `asr` (faster-whisper large-v3, VAD
+yalnızca bölge bulucu) → `boilerplate` (kanal düzeyi) → `segment`
+(ek birleştirme, boilerplate aralıkları, cümle hizalı kesim, ses tabanlı
+sınır, flac kesimi, üç metin alanı) → `clip_qc` (silero konuşma oranı,
+kırpma, iç sessizlik, seviye) → `music` → `export` (politika, yineleme,
+manifest). Her aşama bitirdiği nesneyi sürümüyle `done` tablosuna yazar;
+yeniden koşu ucuzdur. Kaynak seçimi kanal-dönüşümlüdür.
+
+**Örnek koşu** (`runtime.max_sources: 5`, beş kanaldan birer kayıt, 8,4
+saat kapsayıcı süresi, `work/run-1.log`): 24 dakikada hatasız bitti.
+ASR toplam 14,8 dk (BirDinle'nin 161 dakikası 479 s), bölütleme 3 dk,
+clip_qc 3,7 dk, music 1,7 dk. **2.649 klip, 4,87 saat**; süre medyanı
+6,1 s (p5 3,0, p95 12,5), 15 s üstü 27. Önerilen alt küme 2.134 klip
+(%80,6), 3,79 saat. İşaretler: `forced_split` 110, `short` 81,
+`gap_split` 37, `oversize` 23, `background_music` 2. Metin: küçük harfle
+başlayan %2,3 ve cümle sonu olmayan %3,1 (hepsi işaretli parçalar),
+`text_spoken ≠ text` %3,9. Konuşma oranı medyanı 0,93, kelime güveni
+medyanı 0,888.
+
+**Üç bulgu.**
+
+1. *Kesik kaynak.* bizimkütüphane kaydının kapsayıcısı 210 dk diyor,
+   çözülen ses 19,4 dk ("partial file"); ffmpeg yine de 0 döndürüyor ve hat
+   kapsayıcı süresini kaydetmişti. Düzeltildi: süre çözülen sesten
+   alınır, kapsayıcı süresi ayrıca tutulur, oran `prepare.truncated_ratio`
+   altındaysa kayıt `truncated_source` işareti alır ve işlenmeye devam eder.
+   Ham malzemede başka kesik dosya olup olmadığı tam koşuda görülecek.
+2. *Künye sızması, beklenen biçimde.* Kanal başına tek kayıt olduğu için
+   madencilik hiçbir ifade bulamadı ve "Efsuncu Baba, Hüseyin Rahmi
+   Gürpınar, seslendiren Vasfiye Sarıkaya." ile "Kanalıma abone olmayı …
+   unutmayın." klip oldu. Madencilik ≥3 kayıt ister; örnek koşunun bunu
+   sınayabilmesi için `runtime.max_channels` eklendi (5 kanal × 3 kayıt =
+   15 kaynak). Bu koşu ölçek kararıdır, onay bekler.
+3. *Kelime güveni kuralı erken.* `word_confidence<0.6` kliplerin %10,4'ünü
+   düşürüyor ama sütun hâlâ Whisper'ın kendi olasılığı; politika zorlamalı
+   hizalama güveni için yazıldı. Hizalayıcı bağlanana kadar bu gerekçe
+   geçici sayılmalı; politika değiştirilmedi.
+
+**Makaleye:** §Hat (aşama sırası ve sözleşmeler), §Korpus (sayılar tam
+koşuda yenilenecek).
+
 ---
 
 ## Koşulacak deneyler
