@@ -84,3 +84,20 @@ def test_kesik_kaynak_isareti(tmp_path):
     row = PrepareStage(cfg).process_source({"id": 1, "path": str(src)})[0]
     assert abs(row["duration"] - 2.0) < 0.05 and "source_flags" not in row
 
+
+def test_tohumlu_rastgele_orneklem(tmp_path):
+    from kiraat.config import Config
+    from kiraat.pipeline import discover_sources
+
+    for ch in "abcdef":
+        (tmp_path / ch).mkdir()
+        for i in range(4):
+            (tmp_path / ch / f"{i}.wav").write_bytes(b"0")
+    base = {"paths": {"raw_root": str(tmp_path)}, "sources": {"extensions": [".wav"]}}
+    a = discover_sources(Config({**base, "runtime": {"max_sources": 6, "max_channels": 2, "sample_seed": 7}}))
+    b = discover_sources(Config({**base, "runtime": {"max_sources": 6, "max_channels": 2, "sample_seed": 7}}))
+    c = discover_sources(Config({**base, "runtime": {"max_sources": 6, "max_channels": 2, "sample_seed": 8}}))
+    assert a == b                                   # aynı tohum, aynı örneklem
+    assert len(a) == 6 and len({s["channel"] for s in a}) == 2   # 2 kanal × 3 kayıt
+    assert a != c or [s["channel"] for s in a] != [s["channel"] for s in c]
+

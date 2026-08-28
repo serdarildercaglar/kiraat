@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import time
 from pathlib import Path
 from typing import Any, Sequence
@@ -45,8 +46,16 @@ def discover_sources(cfg: Config) -> list[dict[str, Any]]:
         by_channel.setdefault(p.parent.name, []).append(p)
     limit = int(cfg.get("runtime.max_sources", 0) or 0)
     max_channels = int(cfg.get("runtime.max_channels", 0) or 0)
+    seed = cfg.get("runtime.sample_seed")
     out: list[dict[str, Any]] = []
     channels = sorted(by_channel.items(), key=lambda kv: kv[0].casefold())
+    if seed is not None:
+        # Rastgele örneklem: kanal sırası ve kanal içi kayıt sırası tohumla
+        # karıştırılır; sınırlar sonra uygulanır. Tam koşuyu taklit eden
+        # örnek koşular için (rastgele kanal, kanal başına birden çok kayıt).
+        rng = random.Random(int(seed))
+        channels = [(ch, rng.sample(ps, len(ps))) for ch, ps in channels]
+        rng.shuffle(channels)
     if max_channels:
         channels = channels[:max_channels]
     queues = {ch: list(ps) for ch, ps in channels}

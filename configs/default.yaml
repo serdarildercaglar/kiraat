@@ -27,6 +27,9 @@ runtime:
   # max_sources ile birlikte kullanılır: max_channels 5, max_sources 15 →
   # beş kanaldan üçer kayıt.
   max_channels: 0
+  # Tohum verilirse kanal sırası ve kanal içi kayıt sırası rastgele
+  # karıştırılır (tam koşuyu taklit eden örneklem); null = sıralı, belirli.
+  sample_seed: null
   max_clips: 0
 
 sources:
