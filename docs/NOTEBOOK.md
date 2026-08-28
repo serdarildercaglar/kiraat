@@ -386,6 +386,68 @@ medyanı 0,888.
 **Makaleye:** §Hat (aşama sırası ve sözleşmeler), §Korpus (sayılar tam
 koşuda yenilenecek).
 
+## 2026-08-28 — Rastgele örneklemle tam koşu provası (24 kaynak)
+
+Tam koşudan önce, tam koşuyu taklit eden bir örneklem: tohumlu rastgele
+8 kanal × 3 kayıt = 24 kaynak (`runtime.sample_seed: 2026`,
+`max_channels: 8`, `max_sources: 24`), ayrı çalışma dizini
+`work/sample-24`, hattın tamamı. Kapsayıcı süresi 37,6 saat, çözülen ses
+34,4 saat (bir kayıt kesik: 210 dk yerine 19 dk, `truncated_source`).
+
+**Sonuç.** 3 saat 10 dakikada hatasız: **17.933 klip, 32,89 saat** (ses
+saatinin %96'sı klibe dönüştü). Süre medyanı 6,2 s (p5 3,2, p95 12,0),
+15 s üstü 152. Önerilen alt küme 14.033 klip (%78,3), 24,86 saat.
+İşaretler: `background_music` 1.327 (%7,4), `forced_split` 857, `short`
+240, `oversize` 111, `gap_split` 107, `duplicate` 15 (kanal anahtarlı),
+`boilerplate` 6. Küçük harfle başlayan %2,6, cümle sonu olmayan %3,1;
+`text_spoken ≠ text` %4,2.
+
+**Kanal farkları.** Önerilen oran BirDinle %85, bizimkütüphane %86,
+denizinötesindekisesler %87, seslikutuphanemkanali %83 iken Peri_Mia
+**%32**: kliplerinin %63'ünde müzik −30 dB'nin üstünde (medyan −27,4 dB,
+p90 −20,7) — masal anlatımının altında sürekli müzik. anahtarca'da %23,
+Seslendiriyor'da %8. Yani `background_music` işareti kanal karakterini
+ölçüyor; müziğin eğitimde kabul edilebilir düzeyi (−30 dB) kör dinlemeyle
+doğrulanmalı, çünkü Peri_Mia gibi bir kanalın üçte ikisini eliyor.
+
+**Boilerplate.** Sekiz kanaldan yalnızca bizimkütüphane'de ifade bulundu:
+sponsor jingle'ı "Kitapların büyüsü kumaşlarda hayat buluyor. Book or Book,
+kitaplardan ilham alan edebi zarafet." — 13 kelime, `max_words: 12`
+yüzünden iki örtüşen 12'liye bölündü ve ilk kelime ("Kitapların") ayrı
+`short` parça olarak kaldı. BirDinle'de "Seslendiren Vasfiye Sarıkaya"
+bulunamadı: üç kaydından biri 0,4 dakikalık kanal fragmanı, künye iki
+kayıtta kaldı, `min_recordings: 3` geçilemedi; künye ilk klibe 14 s
+boyunca yapışık ("Peygamber Enoch'un kitabı Seslendiren Vasfiye Sarıkaya
+Enoch'un kitabının…"). denizinötesindekisesler'in kapanışı ("Kanalıma abone
+olmayı … unutmayın. Görüşmek üzere.") kayıttan kayıta küçük farklarla
+değişiyor, kelimesi kelimesine eşleşme yakalamıyor. Üç düzeltme:
+örtüşen ifadeleri birleştirmek ve `max_words`'ü büyütmek; `min_recordings`'i
+kanal kayıt sayısına oranla (ör. ≥%40, en az 2) vermek; ve baş/son
+bölgesinde **yaklaşık** eşleşme (kelime düzeyinde küçük düzenleme
+uzaklığı). Tam koşuda kanal başına onlarca kayıt olacağı için ilk ikisi
+yeterli olabilir; üçüncüsü ölçülerek karar verilir.
+
+**Kelime güveni.** `word_confidence<0.6` her kanalda %6–11 klibi
+düşürüyor ve düşenlerin çoğu metin olarak sağlam ("Besbelli milislerin
+ücreti olan günde on pesatayla…"). Sütun hâlâ Whisper olasılığı;
+hizalayıcı bağlanmadan bu kural klip kaybettiriyor. Öncelik: `align`.
+
+**Ölçek.** Ses saati başına: prepare 0,27 dk, ASR 3,41 dk, bölütleme
+0,66 dk (18 bin ffmpeg çağrısı), clip_qc 0,77 dk (silero, sıralı), music
+0,40 dk; toplam 5,5 dk → **10,9× gerçek zaman**, 2.942 saat için ≈ 11 gün.
+Tam koşu bu hızla yapılmaz. ASR bu koşuda GPU'yu iki Whisper konteyneriyle
+paylaştı (ilk koşuda 34× idi); yine de üç iyileştirme gerekli: toplu ASR
+(faster-whisper `BatchedInferencePipeline`), klip kesimini tek geçişte
+bellekten yazmak (ffmpeg çağrısı yerine soundfile), clip_qc'yi CPU
+işçilerine dağıtmak. Hedef ≥30× → tam koşu ≈ 4 gün.
+
+**Küçük.** "P .O .Y .M." gibi noktayla başlayan kısaltma parçaları
+birleştirilmiyor. Kör dinleme için 8 kanaldan 4'er önerilen klip (32)
+sayfaya kondu; sonuç bekleniyor.
+
+**Makaleye:** §Korpus (kanal düzeyinde müzik dağılımı), §Hat (ölçek ve
+maliyet), §Kalite ölçümleri.
+
 ---
 
 ## Koşulacak deneyler
