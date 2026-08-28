@@ -141,6 +141,13 @@ def refine_boundaries(
         # sıfırken o damga da yanlıştır ve bulunan sessizlik ondan güçlü kanıttır.
         prev_end = max(prev_end, words[prev.word_span[1] - 1].start + 0.05)
         next_start = max(next_start, prev_end)
+        # Sonraki klip tek kelimelik ve damgası yanlışsa bulunan sessizlik onun
+        # bitişinin ötesinde kalabilir; klip sıfır ya da eksi süreli olmasın diye
+        # sınır geri çekilir, gerekirse önceki klip de kısalır.
+        floor = nxt.end - 0.05
+        if next_start > floor:
+            next_start = max(floor, words[nxt.word_span[0]].start)
+            prev_end = min(prev_end, next_start)
         out[i] = replace(prev, end=prev_end, flags=tuple(sorted(set(prev.flags) | {"snapped_end"})))
         out[i + 1] = replace(nxt, start=next_start, flags=tuple(sorted(set(nxt.flags) | {"snapped_start"})))
     return out

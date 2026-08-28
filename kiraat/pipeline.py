@@ -23,13 +23,13 @@ from .boilerplate import mine
 from .config import Config
 from .dedupe import mark_duplicates
 from .scoring import annotate
-from .stages import asr, clip_qc, music, prepare, segmentation  # noqa: F401  (kayıt için)
+from .stages import align, asr, clip_qc, music, prepare, segmentation  # noqa: F401  (kayıt için)
 from .stages.asr import load_words
 from .store import Store
 
 log = logging.getLogger("kiraat")
 
-SOURCE_STAGES = ("prepare", "asr", "segment")
+SOURCE_STAGES = ("prepare", "asr", "align", "segment")
 CLIP_STAGES = ("clip_qc", "music")
 
 
@@ -202,6 +202,8 @@ class Pipeline:
                 self.run_boilerplate(ids)
             if name == "boilerplate":
                 self.run_boilerplate(ids)
+            elif name == "align" and not bool(self.cfg.get("align.enabled", True)):
+                log.info("align: kapalı (align.enabled=false)")
             elif name in SOURCE_STAGES:
                 self.run_source_stage(name, ids)
             elif name in CLIP_STAGES:

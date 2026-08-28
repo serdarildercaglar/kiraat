@@ -68,8 +68,19 @@ asr:
 # Kelime zaman damgalarının doğruluğu bölütlemenin tamamını taşıdığı için
 # zorlamalı hizalama ayrı bir aşamadır ve kendi güven skorunu üretir.
 align:
-  model: MahmoudAshraf/mms-300m-1130-forced-aligner
-  min_word_confidence: 0.40
+  enabled: true
+  # torchaudio MMS_FA (Meta MMS zorlamalı hizalayıcı, uroman sözlüğü); HF'deki
+  # MahmoudAshraf/mms-300m-1130-forced-aligner aynı modelin diğer paketi.
+  model: torchaudio/MMS_FA
+  language: tur
+  chunk_sec: 30.0        # Whisper damgaları kılavuz, parça başına hizalama
+  max_chunk_sec: 60.0
+  chunk_gap_sec: 0.3
+  pad_sec: 0.5
+  # word_confidence sütununun kaynağı: 'asr' (Whisper kelime olasılığı) ya da
+  # 'align' (hizalayıcı kare olasılığı). Hizalayıcı skoru kalibre edilene
+  # kadar 'asr'; skor her hâlükârda align_score_min/mean olarak yayımlanır.
+  confidence_source: asr
 
 # Süreler eğitim bütçesiyle tutarlı: tek cümlelerin %97'si 15 s altında,
 # dolayısıyla tavan neredeyse hiç iç noktalamada bölmeye zorlamaz; hedef,

@@ -33,15 +33,30 @@ def cut(mono: np.ndarray, sr: int, dst: Path, start: float, end: float) -> None:
 @register
 class SegmentStage(SourceStage):
     name = "segment"
-    version = "2"
-    depends_on = ("asr", "boilerplate")
+    version = "4"
+    depends_on = ("asr", "align", "boilerplate")
 
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
         import soundfile as sf
 
         seg_cfg = self.cfg.segment_config()
         work = Path(self.cfg.get("paths.work_root"))
-        words = attach_clitics([Word(w["text"], w["start"], w["end"], w.get("prob")) for w in load_words(source["words"])])
+        raw = load_words(source["words"])
+        # Hizalama varsa kelime zamanları oradan; güven kaynağı konfigden.
+        use_align = bool(self.cfg.get("align.enabled", True)) and source.get("aligned") and Path(source["aligned"]).exists()
+        conf_src = str(self.cfg.get("align.confidence_source", "asr"))
+        if use_align:
+            aligned = load_words(source["aligned"])
+            assert len(aligned) == len(raw), "hizalama dosyası ASR kelime dosyasıyla uyuşmuyor"
+            raw = aligned
+        words = attach_clitics([
+            Word(w["text"],
+                 w.get("align_start", w["start"]) if use_align else w["start"],
+                 w.get("align_end", w["end"]) if use_align else w["end"],
+                 w.get("align_score", w.get("prob")) if conf_src == "align" else w.get("prob"))
+            for w in raw
+        ])
+        align_scores = attach_clitics([Word(w["text"], 0.0, 0.0, w.get("align_score")) for w in raw]) if use_align else None
         if not words:
             return []
         phrases = []
@@ -59,6 +74,9 @@ class SegmentStage(SourceStage):
         out_dir.mkdir(parents=True, exist_ok=True)
         emit_raw = bool(self.cfg.get("text.emit_raw", True))
         emit_spoken = bool(self.cfg.get("text.emit_spoken", True))
+        bad = [c for c in clips if c.end <= c.start]
+        if bad:
+            raise RuntimeError(f"sifir/eksi sureli klip: {bad[0]}")
         rows: list[dict[str, Any]] = []
         for i, c in enumerate(clips):
             a, b = c.word_span
@@ -78,6 +96,9 @@ class SegmentStage(SourceStage):
                 "metrics": {
                     "word_confidence": round(min(probs), 3) if probs else None,
                     "word_confidence_mean": round(float(np.mean(probs)), 3) if probs else None,
+                    "confidence_source": conf_src if use_align else "asr",
+                    **({"align_score_min": round(min(sc), 3), "align_score_mean": round(float(np.mean(sc)), 3)}
+                       if align_scores and (sc := [w.prob for w in align_scores[a:b] if w.prob is not None]) else {}),
                     "n_words": b - a,
                     "lead_gap_sec": round(words[a].start - words[a - 1].end, 3) if a > 0 else None,
                     "trail_gap_sec": round(words[b].start - words[b - 1].end, 3) if b < len(words) else None,

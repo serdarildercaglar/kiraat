@@ -57,8 +57,13 @@ def _measure_one(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
         torch.set_num_threads(1)
         _VAD = load_silero_vad()
     clip_id, path, vad_opts = args
-    data, sr = sf.read(path, dtype="float32", always_2d=True)
+    try:
+        data, sr = sf.read(path, dtype="float32", always_2d=True)
+    except Exception:
+        return {"id": clip_id, "metrics": {}, "flags": ["unreadable_audio"]}
     mono = data.mean(axis=1)
+    if mono.size == 0:
+        return {"id": clip_id, "metrics": {}, "flags": ["unreadable_audio"]}
     metrics = level_metrics(mono)
     wave16 = torch.from_numpy(mono)
     if sr != 16000:

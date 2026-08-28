@@ -1,0 +1,189 @@
+"""Zorlamalı hizalama: ASR kelimelerine CTC tabanlı zaman damgası ve güven.
+
+Whisper'ın kelime damgaları çapraz-dikkat tahminidir ve bitişleri
+sistematik olarak erkendir (kör dinlemede görüldü). MMS_FA (torchaudio,
+1.100+ dil, uroman/romanize edilmiş karakter sözlüğü) her kelimeyi CTC
+zorlamalı hizalamasıyla sese oturtur ve kare olasılıklarından bir güven
+üretir. v1'in "iki geçiş CER'i" yerine geçen sinyal budur (hata #12).
+
+Uzun kayıt tek parçada hizalanamaz (kafes T×N); Whisper'ın kaba damgaları
+kılavuz alınarak ~30 s'lik parçalara bölünür, her parça kendi ses
+penceresinde hizalanır ve zamanlar kayıt eksenine taşınır. Çıktı, ASR
+kelime dosyasıyla satır satır aynı sırada bir kelime dosyasıdır; ek
+alanlar `align_start`, `align_end`, `align_score`.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+import numpy as np
+
+from ..base import SourceStage, register
+from .asr import load_words
+
+
+@dataclass(frozen=True)
+class Chunk:
+    a: int          # kelime dizini [a, b)
+    b: int
+    start: float    # ses penceresi (s)
+    end: float
+
+
+def make_chunks(words: Sequence[Mapping[str, Any]], *, target_sec: float = 30.0,
+                max_sec: float = 60.0, min_gap_sec: float = 0.3, pad_sec: float = 0.5,
+                total_sec: float | None = None) -> list[Chunk]:
+    """Kelimeleri, hedef süreyi aşınca ilk uygun boşlukta kesip parçalara böl.
+
+    Hedef aşıldıktan sonraki ilk `min_gap_sec` üstü boşlukta kesilir; `max_sec`
+    aşılırsa en büyük boşlukta zorla kesilir. Pencere iki yana `pad_sec` taşar.
+    """
+    chunks: list[Chunk] = []
+    if not words:
+        return chunks
+    a = 0
+    while a < len(words):
+        b = a + 1
+        best_gap, best_at = -1.0, None
+        while b < len(words):
+            dur = words[b - 1]["end"] - words[a]["start"]
+            gap = words[b]["start"] - words[b - 1]["end"]
+            if gap > best_gap:
+                best_gap, best_at = gap, b
+            if dur >= target_sec and gap >= min_gap_sec:
+                break
+            if dur >= max_sec:
+                b = best_at if best_at is not None else b
+                break
+            b += 1
+        start = max(words[a]["start"] - pad_sec, 0.0)
+        end = words[b - 1]["end"] + pad_sec
+        if total_sec is not None:
+            end = min(end, total_sec)
+        chunks.append(Chunk(a, b, start, end))
+        a = b
+    return chunks
+
+
+def romanize(tokens: Sequence[str], language: str = "tur") -> list[str | None]:
+    """Her belirteç için romanize karakter dizisi ('f e r m a n'); boş kalanlar None."""
+    from ctc_forced_aligner import get_uroman_tokens, text_normalize
+
+    out: list[str | None] = []
+    for tok in tokens:
+        norm = text_normalize(tok.strip(), language)
+        rom = get_uroman_tokens([norm], language)[0] if norm else ""
+        out.append(rom if rom.strip() else None)
+    return out
+
+
+@register
+class AlignStage(SourceStage):
+    name = "align"
+    version = "1"
+    gpu = True
+    depends_on = ("asr",)
+
+    def setup(self) -> None:
+        import torch
+        import torchaudio
+
+        self.device = str(self.cfg.get("runtime.device", "cuda:0"))
+        bundle = torchaudio.pipelines.MMS_FA
+        self.model = bundle.get_model(with_star=True).to(self.device).eval()
+        self.dictionary = bundle.get_dict(star="<star>")
+        self.sr = bundle.sample_rate
+        self.torch = torch
+
+    def teardown(self) -> None:
+        self.model = None
+
+    # ------------------------------------------------------------------
+    def _align_chunk(self, wave16: np.ndarray, words: Sequence[Mapping[str, Any]],
+                     roman: Sequence[str | None], chunk: Chunk) -> list[dict[str, Any] | None]:
+        """Parça için kelime başına (start, end, score) ya da None."""
+        import torchaudio.functional as F
+
+        torch = self.torch
+        a0, a1 = int(chunk.start * self.sr), int(chunk.end * self.sr)
+        audio = wave16[a0:a1]
+        if len(audio) < self.sr // 2:
+            return [None] * (chunk.b - chunk.a)
+        ids: list[int] = []
+        spans_per_word: list[int] = []
+        for i in range(chunk.a, chunk.b):
+            r = roman[i]
+            toks = [self.dictionary["<star>"]] + ([self.dictionary[c] for c in r.split(" ") if c in self.dictionary] if r else [])
+            ids += toks
+            spans_per_word.append(len(toks))
+        with torch.inference_mode():
+            em, _ = self.model(torch.from_numpy(audio).unsqueeze(0).to(self.device))
+            em = torch.log_softmax(em, dim=-1)
+        T = em.shape[1]
+        if T < len(ids) + 2:
+            return [None] * (chunk.b - chunk.a)
+        targets = torch.tensor([ids], dtype=torch.int32, device=self.device)
+        try:
+            aligned, scores = F.forced_align(em, targets, blank=0)
+        except Exception:
+            return [None] * (chunk.b - chunk.a)
+        spans = F.merge_tokens(aligned[0], scores[0].exp())
+        sec_per_frame = (len(audio) / self.sr) / T
+        out: list[dict[str, Any] | None] = []
+        k = 0
+        for n in spans_per_word:
+            seg = spans[k:k + n]
+            k += n
+            body = seg[1:]  # ilk belirteç <star>
+            if not body:
+                out.append(None)
+                continue
+            out.append({
+                "align_start": round(chunk.start + body[0].start * sec_per_frame, 3),
+                "align_end": round(chunk.start + body[-1].end * sec_per_frame, 3),
+                "align_score": round(float(np.mean([s.score for s in body])), 4),
+            })
+        return out
+
+    def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
+        import soundfile as sf
+        import torchaudio
+
+        words = load_words(source["words"])
+        out_path = Path(self.cfg.get("paths.work_root")) / "align" / f"src{source['id']:05d}.jsonl"
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if not words:
+            out_path.write_text("", encoding="utf-8")
+            return [{"aligned": str(out_path), "n_aligned": 0}]
+
+        data, sr = sf.read(source["audio"], dtype="float32", always_2d=True)
+        mono = data.mean(axis=1)
+        if sr != self.sr:
+            mono = torchaudio.functional.resample(self.torch.from_numpy(mono), sr, self.sr).numpy()
+        total = len(mono) / self.sr
+
+        roman = romanize([w["text"] for w in words], self.opts.get("language", "tur"))
+        chunks = make_chunks(words, target_sec=float(self.opts.get("chunk_sec", 30.0)),
+                             max_sec=float(self.opts.get("max_chunk_sec", 60.0)),
+                             min_gap_sec=float(self.opts.get("chunk_gap_sec", 0.3)),
+                             pad_sec=float(self.opts.get("pad_sec", 0.5)), total_sec=total)
+        results: list[dict[str, Any] | None] = []
+        for ch in chunks:
+            results.extend(self._align_chunk(mono, words, roman, ch))
+        assert len(results) == len(words)
+
+        n_ok = 0
+        with out_path.open("w", encoding="utf-8") as fh:
+            for w, r in zip(words, results):
+                row = dict(w)
+                if r is not None:
+                    row.update(r)
+                    n_ok += 1
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        scores = [r["align_score"] for r in results if r]
+        return [{"aligned": str(out_path), "n_aligned": n_ok, "n_chunks": len(chunks),
+                 "align_score_median": round(float(np.median(scores)), 4) if scores else None}]

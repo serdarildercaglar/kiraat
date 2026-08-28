@@ -53,3 +53,18 @@ def test_refine_klip_listesinde_yalnizca_dar_bosluklari_degistirir():
     assert "snapped_end" not in refined[1].flags and refined[2].start == clips[2].start
     for a, b in zip(refined, refined[1:]):
         assert a.end <= b.start
+
+
+def test_tek_kelimelik_klip_eksi_sureli_olmaz():
+    # "En" kelimesinin damgası 2120,10–2120,32; gerçek sessizlik ondan sonra. Sınır
+    # sessizliğe çekilince klip başı kendi bitişini geçmemeli.
+    wave = synth([(0.5, 2.0), (2.1, 2.3), (2.9, 4.0)], 5.0)   # ikinci kelime çok kısa
+    words = [Word("Birinci cümle.", 0.5, 1.9), Word("En", 1.9, 2.05), Word("Sonraki.", 2.9, 4.0)]
+    seg = SegmentConfig(min_sec=0.1, target_sec=0.5, max_sec=5.0)
+    clips = segment(words, seg)
+    refined = refine_boundaries(clips, words, envelope(wave, SR), seg)
+    for c in refined:
+        assert c.end > c.start, c
+    for a, b in zip(refined, refined[1:]):
+        assert a.end <= b.start
+
