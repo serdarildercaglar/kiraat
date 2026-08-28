@@ -1,0 +1,166 @@
+<title>Sınır Denetimi</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=Source+Sans+3:wght@400;600&family=Literata:opsz,wght@7..72,400;7..72,500&display=swap">
+<style>
+:root{
+  --bg:#F5F7F4; --surface:#FFFFFF; --ink:#1C2321; --muted:#5F6A66; --line:#D5DBD7;
+  --accent:#0E6B60; --accent-ink:#FFFFFF; --accent-soft:#DCEDE9;
+  --good:#2E7D3B; --bad:#B23A2F; --warn:#9A6B00;
+  --shadow:0 1px 2px rgba(20,30,27,.06), 0 4px 14px rgba(20,30,27,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131817; --surface:#1B2220; --ink:#E4E9E6; --muted:#98A39E; --line:#2C3634;
+    --accent:#45BFAD; --accent-ink:#0E1715; --accent-soft:#1E3A36;
+    --good:#5DBB6B; --bad:#E0695D; --warn:#D9A43A;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131817; --surface:#1B2220; --ink:#E4E9E6; --muted:#98A39E; --line:#2C3634;
+  --accent:#45BFAD; --accent-ink:#0E1715; --accent-soft:#1E3A36;
+  --good:#5DBB6B; --bad:#E0695D; --warn:#D9A43A;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:17px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:0 20px 96px}
+header.top{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:14px 0 12px;margin-bottom:28px}
+.top-row{display:flex;align-items:baseline;justify-content:space-between;gap:16px;max-width:760px;margin:0 auto;padding:0 20px}
+h1{font-family:"Bricolage Grotesque","Source Sans 3",sans-serif;font-weight:600;font-size:1.35rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.count{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
+.bar{height:4px;background:var(--line);border-radius:2px;max-width:760px;margin:10px auto 0;position:relative;overflow:hidden}
+.bar > i{position:absolute;inset:0 auto 0 0;background:var(--accent);width:0;transition:width .25s}
+@media (prefers-reduced-motion: reduce){.bar > i{transition:none}}
+.intro{display:grid;gap:10px;margin-bottom:32px}
+.intro p{margin:0;max-width:62ch}
+.intro ol{margin:0;padding-left:22px;max-width:62ch}
+.intro li{margin:4px 0}
+.eyebrow{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:18px 20px 16px;margin-bottom:18px}
+.card.done{border-color:var(--accent)}
+.card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.card-head .n{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.card-head .dur{color:var(--muted);font-variant-numeric:tabular-nums;font-size:.92rem}
+audio{width:100%;display:block;margin:4px 0 12px;border-radius:6px}
+.tx{font-family:"Literata",Georgia,serif;font-size:1.03rem;line-height:1.55;margin:0 0 16px;padding:12px 14px;border-left:3px solid var(--accent-soft);background:color-mix(in srgb, var(--accent-soft) 35%, transparent);border-radius:0 6px 6px 0}
+.q{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px 14px;padding:8px 0;border-top:1px solid var(--line)}
+.q:first-of-type{border-top:0}
+.q label{font-weight:600;font-size:.95rem}
+.q small{display:block;font-weight:400;color:var(--muted);font-size:.85rem}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{appearance:none;border:0;background:transparent;color:var(--ink);font:inherit;font-size:.9rem;font-weight:600;padding:6px 12px;cursor:pointer;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button:hover{background:var(--accent-soft)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.seg button.on.neg{background:var(--bad);color:#fff}
+.note{width:100%;margin-top:10px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);font:inherit;font-size:.92rem;padding:7px 10px}
+.note:focus-visible{outline:2px solid var(--accent)}
+.finish{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;margin-top:36px;display:grid;gap:12px}
+.finish h2{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:1.2rem;margin:0}
+.btn{appearance:none;border:0;border-radius:7px;background:var(--accent);color:var(--accent-ink);font:inherit;font-weight:600;font-size:1rem;padding:10px 18px;cursor:pointer;justify-self:start}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.btn[disabled]{opacity:.5;cursor:default}
+textarea.out{width:100%;min-height:120px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.82rem;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);padding:10px}
+.status{color:var(--muted);font-size:.92rem;min-height:1.4em}
+@media (max-width:520px){.q{grid-template-columns:1fr}.seg{justify-self:start}}
+</style>
+
+<header class="top">
+  <div class="top-row">
+    <h1>Kör sınır denetimi</h1>
+    <div class="count"><span id="doneCount">0</span> / <span id="total">0</span> tamam</div>
+  </div>
+  <div class="bar"><i id="barFill"></i></div>
+</header>
+
+<div class="wrap">
+  <section class="intro">
+    <div class="eyebrow">Ne yapmalı</div>
+    <p>Aşağıda __COUNT__ klip var; hangi kanaldan ve hangi sistemden kesildiği gizli. Her klibi bir kez dinle, transcript'e bakmadan da olur, ve üç soruya cevap ver. Cevapların tarayıcıda saklanır; ara verip dönebilirsin.</p>
+    <ol>
+      <li><strong>Başlangıç:</strong> klip bir cümlenin başında mı başlıyor, yoksa konuşmanın ortasına mı giriyorsun?</li>
+      <li><strong>Bitiş:</strong> klip cümle bitince mi bitiyor, yoksa cümle yarım mı kalıyor?</li>
+      <li><strong>Kesik kelime:</strong> ilk ya da son kelimenin bir parçası kesilmiş mi (ses aniden başlıyor / bitiyor)?</li>
+    </ol>
+    <p>Bittiğinde en alttaki <strong>Sonuçları kopyala</strong> düğmesine bas ve çıkan metni sohbete yapıştır.</p>
+  </section>
+
+  <div id="cards"></div>
+
+  <section class="finish">
+    <h2>Sonuçlar</h2>
+    <div class="status" id="status"></div>
+    <button class="btn" id="copyBtn">Sonuçları kopyala</button>
+    <textarea class="out" id="out" readonly aria-label="Sonuç JSON"></textarea>
+  </section>
+</div>
+
+<script>
+const ITEMS = __DATA__;
+const KEY = 'kiraat-audit-__AUDIT__';
+let answers = {};
+try { answers = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { answers = {}; }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(answers)); } catch (e) {} }
+
+const Q = [
+  {k:'start', label:'Başlangıç', hint:'cümle başında mı başlıyor?', opts:[['evet','Cümle başı'],['hayir','Ortadan giriyor','neg']]},
+  {k:'end',   label:'Bitiş',     hint:'cümle bitince mi bitiyor?',   opts:[['evet','Cümle sonu'],['hayir','Yarım kalıyor','neg']]},
+  {k:'cut',   label:'Kesik kelime', hint:'başta ya da sonda kelime kesilmiş mi?', opts:[['yok','Yok'],['bas','Başta','neg'],['son','Sonda','neg'],['iki','İkisi de','neg']]},
+];
+
+const cards = document.getElementById('cards');
+document.getElementById('total').textContent = ITEMS.length;
+
+function isDone(n){ const a = answers[n] || {}; return Q.every(q => a[q.k]); }
+function refresh(){
+  const d = ITEMS.filter(it => isDone(it.n)).length;
+  document.getElementById('doneCount').textContent = d;
+  document.getElementById('barFill').style.width = (100*d/ITEMS.length) + '%';
+  ITEMS.forEach(it => { const c = document.getElementById('c'+it.n); if (c) c.classList.toggle('done', isDone(it.n)); });
+}
+
+for (const it of ITEMS) {
+  const card = document.createElement('article');
+  card.className = 'card'; card.id = 'c'+it.n;
+  card.innerHTML =
+    '<div class="card-head"><span class="n">Klip '+it.n+'</span><span class="dur">'+it.dur.toFixed(1).replace('.',',')+' s</span></div>' +
+    '<audio controls preload="none" src="'+it.data+'"></audio>' +
+    '<p class="tx"></p>';
+  card.querySelector('.tx').textContent = it.text;
+  for (const q of Q) {
+    const row = document.createElement('div'); row.className = 'q';
+    const lab = document.createElement('label'); lab.textContent = q.label;
+    const sm = document.createElement('small'); sm.textContent = q.hint; lab.appendChild(sm);
+    const seg = document.createElement('div'); seg.className = 'seg'; seg.setAttribute('role','group'); seg.setAttribute('aria-label', q.label);
+    for (const [val, text, neg] of q.opts) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.dataset.val = val;
+      if (neg) b.classList.add('neg');
+      if ((answers[it.n]||{})[q.k] === val) b.classList.add('on');
+      b.addEventListener('click', () => {
+        answers[it.n] = answers[it.n] || {}; answers[it.n][q.k] = val; save();
+        seg.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+        refresh();
+      });
+      seg.appendChild(b);
+    }
+    row.appendChild(lab); row.appendChild(seg); card.appendChild(row);
+  }
+  const note = document.createElement('input'); note.className = 'note'; note.placeholder = 'Not (isteğe bağlı): ör. "ilk hece yok", "arkada müzik var"';
+  note.value = (answers[it.n]||{}).note || '';
+  note.addEventListener('input', () => { answers[it.n] = answers[it.n] || {}; answers[it.n].note = note.value; save(); });
+  card.appendChild(note);
+  cards.appendChild(card);
+}
+refresh();
+
+document.getElementById('copyBtn').addEventListener('click', async () => {
+  const done = ITEMS.filter(it => isDone(it.n)).length;
+  const out = { audit: '__AUDIT__', answered: done, total: ITEMS.length, answers };
+  const txt = JSON.stringify(out);
+  const ta = document.getElementById('out'); ta.value = txt;
+  const st = document.getElementById('status');
+  try { await navigator.clipboard.writeText(txt); st.textContent = 'Kopyalandı — sohbete yapıştır. (' + done + '/' + ITEMS.length + ' klip cevaplandı)'; }
+  catch (e) { ta.focus(); ta.select(); st.textContent = 'Panoya yazılamadı; kutudaki metni elle kopyala.'; }
+});
+</script>
