@@ -58,17 +58,24 @@ if args.score:
     raise SystemExit
 
 rows = [json.loads(l) for l in open(args.manifest, encoding="utf-8")]
+# Hat manifestosu (python -m kiraat run çıktısı) 'system' taşımaz: hepsi kiraat;
+# lead/trail boşlukları ölçüm adlarıyla gelir.
+for r in rows:
+    r.setdefault("system", "kiraat")
+    r.setdefault("lead_gap", r.get("lead_gap_sec"))
+    r.setdefault("trail_gap", r.get("trail_gap_sec"))
 rng = random.Random(args.seed)
 kiraat = [r for r in rows if r["system"] == "kiraat" and r.get("audio")]
 v1 = [r for r in rows if r["system"] == "v1" and r.get("audio")]
 if args.prefer_small_gap is not None:
-    risky = [r for r in kiraat if min(x for x in (r.get("lead_gap"), r.get("trail_gap")) if x is not None) < args.prefer_small_gap]
+    risky = [r for r in kiraat
+             if any(x is not None and x < args.prefer_small_gap for x in (r.get("lead_gap"), r.get("trail_gap")))]
     rest = [r for r in kiraat if r not in risky]
     rng.shuffle(risky); rng.shuffle(rest)
     pick_k = (risky + rest)[: args.n_kiraat]
 else:
     pick_k = rng.sample(kiraat, min(args.n_kiraat, len(kiraat)))
-pick_v = rng.sample(v1, min(args.n_v1, len(v1)))
+pick_v = rng.sample(v1, min(args.n_v1, len(v1))) if v1 else []
 sample = pick_k + pick_v
 rng.shuffle(sample)
 
