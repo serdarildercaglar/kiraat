@@ -442,8 +442,14 @@ bellekten yazmak (ffmpeg çağrısı yerine soundfile), clip_qc'yi CPU
 işçilerine dağıtmak. Hedef ≥30× → tam koşu ≈ 4 gün.
 
 **Küçük.** "P .O .Y .M." gibi noktayla başlayan kısaltma parçaları
-birleştirilmiyor. Kör dinleme için 8 kanaldan 4'er önerilen klip (32)
-sayfaya kondu; sonuç bekleniyor.
+birleştirilmiyor.
+
+**Kör dinleme (aynı gün).** 8 kanaldan 4'er önerilen klip, 32 klip,
+kanal gizli: **32/32 temiz** — cümle başında başlıyor, cümle sonunda
+bitiyor, kesik hece yok (`work/sample-24/listen/answers-1.json`).
+Deneme kayıtlarındaki sonuç ölçekte de tutuyor; dört turun toplamında
+kiraat'ın 104 önerilen/işaretsiz klibinde kırık başlangıç 0, kesik hece
+yalnızca ikinci turun 3'ü (sınır iyileştirmesinden önce).
 
 **Makaleye:** §Korpus (kanal düzeyinde müzik dağılımı), §Hat (ölçek ve
 maliyet), §Kalite ölçümleri.
