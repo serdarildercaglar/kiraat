@@ -1,4 +1,10 @@
-# Tasarım: v1'in kusurları ve v2'nin kararları
+# Tasarım: önceki hattın kusurları ve kiraat'ın kararları
+
+> **İÇ BELGE — makale malzemesi değildir.** Buradaki karşılaştırmalar
+> mühendislik gerekçesidir ve önceki bir veri kümesinin ölçümlerine dayanır.
+> Makale sıfırdan yazılıyor ve önceki yayına da önceki veri kümesine de
+> **hiç değinmiyor**; makaleye girecek her sayı bu depoda yeniden
+> üretilmelidir. Yayın malzemesi için [`NOTEBOOK.md`](NOTEBOOK.md).
 
 Bu belge, `turkish-tts-audiobooks` (v1) hattının ürettiği yayımlanmış korpus
 üzerinde yapılan ölçümleri ve her ölçümün kiraat'ta hangi tasarım kararına yol

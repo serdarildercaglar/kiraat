@@ -20,6 +20,19 @@ gerekçesi kayda yazılır. `ClipStage.validate_output`, bir aşamanın çıktı
 bir sınıflandırıcıyı kapı yapmak 981 saati ve korpusun kanal çeşitliliğini
 sildi. Yeni bir sinyal kapı olmadan önce kör dinleme denetiminden geçer.
 
+## Makale defteri
+
+Makale sıfırdan yazılıyor ve **önceki bir yayına ya da önceki bir veri
+kümesine hiç değinmiyor** — ne taban olarak, ne atıf olarak. Yapılan her iş,
+her ölçüm ve her deney tarihiyle [`docs/NOTEBOOK.md`](docs/NOTEBOOK.md)
+dosyasına düşülür; bir aşama bitip sonucu görüldüğünde oraya kayıt eklemek
+işin parçasıdır, sonraya bırakılmaz.
+
+Bir sayı makaleye girecekse bu depoda üretilmiş olmalı. Başka bir yerde
+ölçülmüş her şey defterde "yeniden koşulmalı" diye işaretlenir ve burada
+tekrarlanmadan makaleye taşınmaz. `docs/DESIGN.md` iç belgedir, makale
+malzemesi değildir.
+
 ## Çalışma yöntemi
 
 **Tam korpus tek seferde işlenmez.** Her aşama önce birkaç kayıtlık bir

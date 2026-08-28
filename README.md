@@ -48,7 +48,8 @@ kiraat/
     sentences.py    Türkçe cümle sınırı bulma
     normalize.py    okunuşa çevirme: sayılar, kısaltmalar, saat, para
 configs/default.yaml
-docs/DESIGN.md      v1'in ölçülmüş kusurları ve v2'nin kararları
+docs/NOTEBOOK.md    araştırma defteri — makale bundan yazılacak
+docs/DESIGN.md      iç belge: mühendislik gerekçeleri
 tests/
 ```
 
