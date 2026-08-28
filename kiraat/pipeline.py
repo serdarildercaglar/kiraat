@@ -124,7 +124,8 @@ class Pipeline:
         for channel, recs in by_channel.items():
             mined = mine(recs, min_recordings=int(opts.get("min_recordings", 3)),
                          min_words=int(opts.get("min_words", 3)), max_words=int(opts.get("max_words", 12)),
-                         head_words=int(opts.get("head_words", 80)), tail_words=int(opts.get("tail_words", 80)))
+                         head_words=int(opts.get("head_words", 80)), tail_words=int(opts.get("tail_words", 80)),
+                         min_ratio=opts.get("min_ratio"))
             phrases = [list(p) for p, _ in mined]
             json.dump(phrases, (out_dir / f"{channel}.json").open("w", encoding="utf-8"), ensure_ascii=False, indent=1)
             self.store.mark_done("channel", channel, "boilerplate", version)

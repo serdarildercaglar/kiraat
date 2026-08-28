@@ -132,3 +132,8 @@ def test_pay_komsuyla_bosluğun_ortasini_gecmez():
     mid = (a[-1].end + b[0].start) / 2
     assert clips[0].end <= mid + 1e-6 and clips[1].start >= mid - 1e-6
 
+
+def test_noktali_kisaltma_parcalari_birlesir():
+    words = [Word("P", 0, .2), Word(".O", .2, .4), Word(".Y", .4, .6), Word(".M.", .6, .8), Word("lağvedildi.", .9, 1.5)]
+    assert [w.text for w in attach_clitics(words)] == ["P.O.Y.M.", "lağvedildi."]
+

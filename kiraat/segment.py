@@ -16,7 +16,7 @@ from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 from .text.sentences import sentence_spans
-from .text.turkish import has_sentence_end, is_lower_start, lower
+from .text.turkish import has_sentence_end, is_lower_start, lower, upper
 
 #: Uzun bir cümle bölünmek zorunda kalırsa tercih sırasına göre iç noktalama.
 INTERNAL_BREAKS = (";", ":", "—", "–", ",")
@@ -35,6 +35,9 @@ def _is_clitic(token: str) -> bool:
     """Kesme/tire ile başlayan ek ('ın, -ı) ya da yalnız noktalama mı."""
     if not any(ch.isalnum() for ch in token):
         return True  # yalnız noktalama: "." "," "''"
+    # "P .O .Y .M." — kısaltma harfleri noktayla başlayan belirteç olarak gelir.
+    if token[0] == "." and len(token.rstrip(".")) == 2 and token[1].isalpha() and token[1] == upper(token[1]):
+        return True
     body = token.lstrip("'’-–")
     if body == token:
         return False
