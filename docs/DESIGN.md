@@ -5,6 +5,25 @@ Bu belge, `turkish-tts-audiobooks` (v1) hattının ürettiği yayımlanmış kor
 açtığını kaydeder. Sayılar v1'in yayımlanan manifestolarından ve durum
 veritabanından, 27–28 Ağustos 2026'da doğrudan sayıldı.
 
+## Hata kaydı — özet
+
+| # | v1'in kusuru | ölçü | v2'nin kararı |
+|---|---|---|---|
+| 1 | sessizlikte kesim cümleyi böler | `train`'in %9,4'ü cümle ortasından başlıyor | ASR sonrası, cümle sınırında kesim |
+| 2 | doğrulanmamış sınıflandırıcı kapı yapıldı | 981,3 saat tek gerekçeyle elendi, 131 denetim klibinde 0 doğru pozitif | hiçbir aşama karar veremez |
+| 3 | normalizasyon yuvası boş | `text_normalized` ≡ `text` | `text_spoken` gerçekten üretilir |
+| 4 | yineleme yanlış düzeyde | `train`'de 281 gerçek, 4.027 kanal içi kopya | anahtar (metin, konuşmacı) |
+| 5 | anons/künye metinleri sızdı | tek bir künye 32 kez | kanal düzeyinde boilerplate madenciliği |
+| 6 | gerçek held-out yok | `validation`'ın %5,9'u `train` ile aynı metin | ayrı, elle doğrulanmış `test` |
+| 7 | müzik ölçüsünün fiziksel karşılığı yok | AudioSet 0,444 → hiç müzik yok; 0,050 → −15,7 dB | ayrıştırma tabanlı dB sütunu |
+| 8 | konuşmacı kümeleme doygun | iki baskın kanalda 64 tavanı dolu, küme başına ~2.500 klip | tavan yok, kayıt-içi doğrulama |
+| 9 | ses seviyesi dağınık | %5–%95 arası 12,5 LU, kanal medyanları arası 18,4 LU | hedefli LUFS + sütun olarak yayım |
+| 10 | üç metin alanı tek alan | `text` ≠ `text_raw` yalnızca %2,39 | üç alan gerçekten farklı |
+| 11 | 16 kHz tavanı | — | 24 kHz taban |
+| 12 | ASR güven ölçüsü yanlış şeyi ölçüyor | iki geçiş CER medyanı 0,000 | zorlamalı hizalama güveni |
+
+Her satırın ayrıntısı ve gerekçesi aşağıda.
+
 ## 1. Sessizlikte kesmek cümleyi ortadan böler
 
 Yayımlanan `train` havuzu, 416.315 klip:
@@ -178,3 +197,70 @@ politikada kural olamazlar.
 
 Uygulama: [`kiraat/stages/music.py`](../kiraat/stages/music.py), ölçüm betiği
 [`scripts/probe_music.py`](../scripts/probe_music.py).
+
+## 8. Konuşmacı kümeleme doygun, üstelik tam yanlış yerde
+
+`speaker_id`, kanal içinde açgözlü en-yakın-merkez kümelemeyle üretiliyor:
+kosinüs 0,75, kanal başına en çok 64 küme. Tavan üç kanalda doldu ve
+bunlardan ikisi korpusun %79'unu taşıyan kanallar:
+
+| kanal | küme | klip | küme başına klip |
+|---|---|---|---|
+| seslikitaplarmavi | 64 (tavan) | 172.933 | 2.702 |
+| BirDinle | 64 (tavan) | 158.884 | 2.483 |
+| OkumaSaati | 64 (tavan) | 7.202 | 113 |
+
+Tavan dolduğunda yeni seslendiren kendi kümesini açamaz, en yakın mevcut
+kümeye yazılır. Yani korpusun büyük kısmında `speaker_id`, ayrı
+seslendirenleri birleştirmiş bir etikettir. TTS'te konuşmacı kimliği
+koşullama sinyali olduğu için bu, kusurlu değil doğrudan yanıltıcı bir alan.
+
+**Karar.** Kanal başına küme tavanı kaldırılır; kümeleme kayıt düzeyinde
+doğrulanır (bir kaydın baskın kümesi ile klip kümesi tutarlı olmalı) ve
+kümeleme güveni `speaker_cluster_margin` olarak yayımlanır. Küme sayısı
+veriden çıkar, konfigden değil.
+
+## 9. Ses seviyesi normalize edilmedi
+
+Karar bilinçliydi ve kartta yazılı, ama TTS için bedeli var. `train`
+havuzunda bütünleşik ses yüksekliği %5–%95 arasında **12,5 LU** yayılıyor;
+kanal medyanları arasında fark daha da büyük: `idea_stüdyo` −34,7 LUFS,
+`kitaplar` −16,3 LUFS, arada 18,4 LU var. Model bu haliyle ses yüksekliğini
+keyfî bir değişken olarak öğrenir.
+
+**Karar.** Kaynak düzeyinde hedefli LUFS uygulanır (klip başına değil, ki
+doğal dinamik korunsun), uygulanan kazanç ve ölçülen LUFS sütun olarak
+yayımlanır. Normalizasyonu istemeyen kullanıcı kazancı geri alabilir.
+
+## 10. Üç metin alanı aslında tek alan
+
+`text` ile `text_raw` yayımlanan `train` kliplerinin yalnızca **%2,39'unda**
+farklı; `text_normalized` ise hiç farklı değil. Üç sütun yayımlandı ama
+bilgi tek sütunluk.
+
+**Karar.** `text_raw` (ASR çıktısı), `text` (hafif temizlik),
+`text_spoken` (okunuşa çevrilmiş). Üçüncüsü [§3](#3-boş-normalizasyon-yuvası)
+ile birlikte gerçekten üretilir; hangi dönüşümlerin uygulandığı klip başına
+`text_ops` listesinde yayımlanır.
+
+## 11. 16 kHz tavanı
+
+v1 16 kHz mono yayımladı. Bu, korpusu güncel TTS mimarilerinin çoğu için
+üst sınırdan mahrum bırakıyor ve kaynak kayıtların çoğu daha yüksek hızda.
+
+**Karar.** 24 kHz taban (`prepare.target_sr`), kaynak daha düşükse yükseltme
+yapılmaz ve gerçek kaynak hızı `source_sample_rate` sütununda yayımlanır.
+
+## 12. İki geçişli ASR uyuşması yanlış şeyi ölçüyor
+
+v1'in transcript güvenilirlik sinyali, aynı modelin iki geçişi arasındaki
+CER'di. Yayımlanan `train` havuzunda bu değerin **medyanı 0,000**, p95'i
+0,018. Kararlı bir çözücü kendisiyle, ikisi de yanlışken bile uyuşur; ölçülen
+şey doğruluk değil çözücü kararlılığı. (İnsan referanslı denetimde temiz
+havuz CER'i 0,0012 çıktı — yani transcript'ler gerçekten iyi, ama bunu
+gösteren şey iki geçiş uyuşması değil, o ayrı denetimdi.)
+
+**Karar.** Güven sinyali zorlamalı hizalamadan gelir: kelime başına hizalama
+olasılığı, klip başına asgarisi ve ortalaması sütun olarak yayımlanır
+(`word_confidence`). Bu hem transcript'i hem zaman damgalarını sınar ve
+zaman damgaları zaten bölütlemenin dayanağıdır.
