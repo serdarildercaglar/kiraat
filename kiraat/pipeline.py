@@ -11,6 +11,7 @@ Kaynak seçimi kanal-dönüşümlüdür: `runtime.max_sources` küçükken bile
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import random
@@ -70,6 +71,20 @@ def discover_sources(cfg: Config) -> list[dict[str, Any]]:
     return out
 
 
+def stage_version(cfg: Config, stage: base.Stage) -> str:
+    """Kod sürümü + aşamanın konfig bölümünün özeti.
+
+    Konfigde eşik değişince (`segment.min_sec` gibi) 'bitti' kaydı eskimeli;
+    yalnızca kod sürümüne bakmak konfig değişikliğini görmezden geliyordu.
+    Bölütleme hizalama ayarlarına da bağlıdır.
+    """
+    sections = [stage.name]
+    if stage.name == "segment":
+        sections += ["align", "text"]
+    payload = json.dumps({s: cfg.section(s) for s in sections}, sort_keys=True, ensure_ascii=False, default=str)
+    return f"{stage.version}+{hashlib.sha1(payload.encode('utf-8')).hexdigest()[:8]}"
+
+
 class Pipeline:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -81,8 +96,9 @@ class Pipeline:
         stage_cls = base.get_stage(name)
         stage = stage_cls(self.cfg)
         assert isinstance(stage, base.SourceStage)
+        version = stage_version(self.cfg, stage)
         todo = [s for s in self.store.sources(source_ids)
-                if not self.store.is_done("source", str(s["id"]), name, stage.version) and not s.get("error")]
+                if not self.store.is_done("source", str(s["id"]), name, version) and not s.get("error")]
         if not todo:
             log.info("%s: yapılacak kaynak yok", name)
             return
@@ -105,7 +121,7 @@ class Pipeline:
                     meta = {**s["meta"], **(rows[0] if rows else {})}
                     fields = {k: meta[k] for k in ("audio", "duration", "source_sample_rate") if k in meta}
                     self.store.update_source(s["id"], meta=meta, **fields)
-                self.store.mark_done("source", str(s["id"]), name, stage.version)
+                self.store.mark_done("source", str(s["id"]), name, version)
                 log.info("%s: src%05d [%s] %.0fs", name, s["id"], s["channel"], time.time() - t0)
         finally:
             stage.teardown()
@@ -137,7 +153,8 @@ class Pipeline:
         stage_cls = base.get_stage(name)
         stage = stage_cls(self.cfg)
         assert isinstance(stage, base.ClipStage)
-        todo = self.store.pending_clips(name, stage.version)
+        version = stage_version(self.cfg, stage)
+        todo = self.store.pending_clips(name, version)
         if not todo:
             log.info("%s: yapılacak klip yok", name)
             return
@@ -151,7 +168,7 @@ class Pipeline:
                 base.ClipStage.validate_output(rows)
                 self.store.merge_clip_results(rows)
                 for c in chunk:
-                    self.store.mark_done("clip", c["id"], name, stage.version)
+                    self.store.mark_done("clip", c["id"], name, version)
                 log.info("%s: %d/%d", name, min(i + batch, len(todo)), len(todo))
         finally:
             stage.teardown()

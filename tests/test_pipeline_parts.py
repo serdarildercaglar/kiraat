@@ -122,3 +122,15 @@ def test_hizalama_parcalama():
     assert all(20.0 <= (words[c.b - 1]["end"] - words[c.a]["start"]) <= 40.0 for c in chunks[:-1])
     assert chunks[0].start == 0.0 and chunks[0].end == words[chunks[0].b - 1]["end"] + 0.5
 
+
+def test_asama_surumu_konfigle_degisir():
+    from kiraat.config import Config
+    from kiraat.pipeline import stage_version
+    from kiraat.stages.segmentation import SegmentStage
+
+    base = {"segment": {"min_sec": 2.5, "target_sec": 7.0, "max_sec": 15.0}, "align": {"enabled": True}, "text": {}}
+    a = stage_version(Config(base), SegmentStage(Config(base)))
+    b = stage_version(Config({**base, "segment": {**base["segment"], "min_sec": 1.5}}), SegmentStage(Config(base)))
+    c = stage_version(Config({**base, "music": {"x": 1}}), SegmentStage(Config(base)))
+    assert a != b and a == c and a.startswith(SegmentStage.version + "+")
+

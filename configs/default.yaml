@@ -86,7 +86,7 @@ align:
 # dolayısıyla tavan neredeyse hiç iç noktalamada bölmeye zorlamaz; hedef,
 # cümle birleştirmenin aşmayacağı üst sınırdır (grup min_sec üstündeyse).
 segment:
-  min_sec: 2.5
+  min_sec: 1.5
   target_sec: 7.0
   max_sec: 15.0
   max_join_gap_sec: 1.2
