@@ -14,7 +14,7 @@ case "${1:-}" in
   start)
     MODEL=${2:-openai/whisper-large-v3}
     docker rm -f "$NAME" >/dev/null 2>&1 || true
-    docker run -d --name "$NAME" --gpus '"device=${GPU:-1}"' --ipc=host -p "$PORT:$PORT" \
+    docker run -d --name "$NAME" --gpus "device=${GPU:-1}" --ipc=host -p "$PORT:$PORT" \
       -v "$HOME/.cache/huggingface:/root/.cache/huggingface" "$IMAGE" \
       "$MODEL" --host 0.0.0.0 --port "$PORT" --dtype auto --gpu-memory-utilization 0.25
     echo "bekleniyor..."; for i in $(seq 1 120); do curl -s -m 2 "http://localhost:$PORT/v1/models" >/dev/null && break; sleep 5; done
