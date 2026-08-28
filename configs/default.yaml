@@ -18,6 +18,11 @@ runtime:
   lease_sec: 900
   max_job_attempts: 3
   log_level: INFO
+  # Örnek koşu sınırları. Tam korpus koşusu ancak hattın tamamı küçük
+  # örnekte doğrulandıktan sonra ve açık onayla yapılır; varsayılan bu
+  # yüzden sınırlıdır, 0 = sınırsız değil, bilinçli olarak küçük tutulur.
+  max_sources: 5
+  max_clips: 0
 
 sources:
   extensions: [".m4a", ".mp3", ".wav", ".flac", ".opus", ".webm"]

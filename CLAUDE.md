@@ -20,6 +20,20 @@ gerekçesi kayda yazılır. `ClipStage.validate_output`, bir aşamanın çıktı
 bir sınıflandırıcıyı kapı yapmak 981 saati ve korpusun kanal çeşitliliğini
 sildi. Yeni bir sinyal kapı olmadan önce kör dinleme denetiminden geçer.
 
+## Çalışma yöntemi
+
+**Tam korpus tek seferde işlenmez.** Her aşama önce birkaç kayıtlık bir
+örnekte koşturulur, çıktısı somut olarak gösterilir — ölçülen sayılar, örnek
+transcript'ler, dinlenebilir klipler — ve ancak doğrulandıktan sonra ölçek
+büyütülür. Tam koşu, hattın tamamı doğrulanmadan ve açık onay alınmadan
+başlatılmaz. `runtime.max_sources` varsayılan olarak 5'tir ve bilinçli olarak
+küçüktür; büyütmek bir karardır, varsayılan değil.
+
+Bunun sebebi v1: kusurların hepsi korpus yayımlandıktan sonra görüldü, oysa
+hepsi birkaç yüz kliplik bir örnekte görünürdü. Her aşamanın yanında
+çıktısını gözle denetlenebilir kılan küçük bir betik bulunur;
+[`scripts/probe_music.py`](scripts/probe_music.py) bunun örüntüsüdür.
+
 ## Çalıştırma
 
 Testler ve model işleri base conda ortamında koşmaz:
