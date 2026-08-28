@@ -20,7 +20,7 @@ from .segment import SegmentConfig
 #: yazım hatası olan bir bölüm sessizce yok sayılmasın diye.
 SECTIONS = frozenset(
     {"paths", "runtime", "sources", "prepare", "vad", "asr", "align", "segment",
-     "clip_qc", "dnsmos", "speaker", "events", "text", "dedupe",
+     "clip_qc", "dnsmos", "speaker", "events", "music", "text", "dedupe",
      "recommended_subset", "export"}
 )
 

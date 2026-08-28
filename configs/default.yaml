@@ -76,6 +76,23 @@ events:
   # verdi. v2'de skoru yayımlanır, politikada kural olarak kullanılmaz.
   gate_synthetic: false
 
+# Arka plan müziği. Üç ölçüm de yayımlanır; hiçbiri kapı değildir.
+# `background_music` işareti yalnızca yayımlanan music_to_speech_db
+# sütunundan türetilir, dolayısıyla kullanıcı kendi eşiğini kesebilir.
+music:
+  # Ucuz, çok etiketli sinyal — konuşmayla birlikte var olabilir.
+  audioset_labels:
+    ["Music", "Background music", "Soundtrack music", "Theme music",
+     "Musical instrument", "Singing", "Song", "Jingle (music)"]
+  # Fiziksel ölçü: kaynak ayrıştırması, eşlik/konuşma enerji oranı.
+  separator: htdemucs
+  inaudible_db: -30.0
+  # Dış sınıflandırıcı, isteğe bağlı. İKİLİ konuşma/müzik modelidir; "altında
+  # müzik var mı" sorusunu yanıtlamaz, bu yüzden yalnızca üçüncü bir skor
+  # olarak yayımlanır ve kör dinleme denetimi yapılmadan politikaya girmez.
+  external_model: null   # örn. AIGenLab/speech-music-classifier-v3
+  external_gate: false
+
 text:
   emit_raw: true
   emit_spoken: true
@@ -100,6 +117,9 @@ recommended_subset:
       min: 0.60
     - metric: dnsmos_ovrl
       min: 3.0
+      allow_missing: true
+    - metric: music_to_speech_db
+      max: -30.0
       allow_missing: true
     - flag_absent: [oversize, forced_split, short, duplicate, boilerplate]
 

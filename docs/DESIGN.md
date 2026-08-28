@@ -123,3 +123,42 @@ saatlik ham malzeme, iki farklı bölütleme stratejisi. Ölçülebilir iki katk
 çıkıyor — sessizlik hizalı kesimin cümle bütünlüğüne maliyeti (%9,4 kırık
 giriş → 0), ve doğrulanmamış bir sınıflandırıcıyı kapı yapmanın maliyeti
 (981 saat ve kanal çeşitliliği). İkisi de v1 verisiyle kanıtlanabilir.
+
+## 7. Arka plan müziği: sütun zaten vardı, sorusu yanlıştı
+
+v1 bu sütunu yayımlıyor — her satırda `quality_music_score`, AudioSet AST'nin
+müzik etiketleri (Music, Background music, Soundtrack music, Singing,
+Jingle...) üzerinden pencere bazında azami skor. Yayımlanan dağılım:
+
+| havuz | medyan | p90 | p99 | ≥0,2 | ≥0,5 |
+|---|---|---|---|---|---|
+| train | 0,002 | 0,008 | 0,165 | %0,6 | %0,0 |
+| review | 0,001 | 0,418 | 0,669 | %15,4 | %7,3 |
+
+Üst değerler eşiklerin izidir: 0,70 üstü sert eleme (hiç yüklenmedi), 0,25
+üstü `sinirda_muzik`. Yani sinyal bilgilendirici ve zaten elde.
+
+Eksik olan, ölçünün **fiziksel bir karşılığının olmaması**. 0,418'lik bir
+AudioSet skoru "müzik ne kadar yüksek" sorusunu yanıtlamaz; eşik seçimi de
+bu yüzden keyfî kalır.
+
+**Karar.** Üç sütun birden yayımlanır. `music_score_audioset` ucuz ve çok
+etiketli sinyaldir (konuşmayla birlikte var olabilir). `music_to_speech_db`
+kaynak ayrıştırmasından gelen fiziksel ölçüdür — eşlik enerjisinin konuşma
+enerjisine oranı; −30 dB duyulmaz, −10 dB belirgin müzik. `music_prob_external`
+isteğe bağlı bir dış sınıflandırıcının olasılığıdır. İkili `background_music`
+yanıtı yayımlanan `music_to_speech_db` sütunundan konfigdeki eşikle türetilir,
+yani kullanıcı veriyi yeniden üretmeden kendi eşiğini kesebilir.
+
+**Dış modeller üzerine not.** `AIGenLab/AST-speech-music-classifier` ve
+`AIGenLab/speech-music-classifier-v3`, `id2label = {0: music, 1: speech}` olan
+**ikili ve birbirini dışlayan** sınıflandırıcılardır (biri AST tabanlı,
+86,2M; diğeri whisper-small tabanlı, 88,4M). Yanıtladıkları soru "bu klip
+konuşma mı müzik mi", sorduğumuz soru ise "konuşmanın altında müzik var mı" —
+altında müzik olan bir anlatıma ikisi de "konuşma" der, çünkü karışık durum
+eğitim dağılımlarında yoktur. İkisinin de yayımlanmış başarım ölçümü yok,
+AST olanın model kartı hiç yok. Bu yüzden politikada kural olarak
+kullanılmazlar; istenirse üçüncü bir skor sütunu olarak yayımlanır ve
+sentetik denetiminin aynısı olan kör dinleme sınamasından geçmeden
+politikaya giremezler. Bu, v1'in 981 saate mal olan hatasının tam olarak
+tekrarlanmamasıdır.
