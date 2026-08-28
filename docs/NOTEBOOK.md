@@ -454,6 +454,78 @@ yalnızca ikinci turun 3'ü (sınır iyileştirmesinden önce).
 **Makaleye:** §Korpus (kanal düzeyinde müzik dağılımı), §Hat (ölçek ve
 maliyet), §Kalite ölçümleri.
 
+## 2026-08-29 — Dört iş birden: ölçek, hizalayıcı, müzik eşiği, boilerplate
+
+Provanın dört bulgusu aynı gün uygulandı ve beş kaynaklık örnek temiz bir
+dizinde (`work/sample-5b`, 5,22 saat ses) yeniden koşuldu.
+
+**1. Ölçek: 10,9× → 31× gerçek zaman.** Toplu ASR (faster-whisper
+`BatchedInferencePipeline`, `asr.batch_size: 16`; pencereler bağımsız
+olduğu için önceki metne koşullanma zaten yok), klip kesimi kayıt başına
+tek çözümle bellekten (soundfile; 18 bin ffmpeg süreci yerine), clip_qc
+CPU işçi havuzunda. Ses saati başına dakika: ASR 3,41 → 0,77; bölütleme
+0,66 → 0,25; clip_qc 0,77 → 0,15; music 0,40 → 0,27; yeni hizalama 0,31.
+Toplam 5,5 → 1,95 dk/saat. **Tam korpus 2.942 saat ≈ 4 gün** (önce 11).
+Not: GPU bu ölçümde iki boşta Whisper konteyneriyle paylaşılıyordu.
+
+**2. Zorlamalı hizalama bağlandı** (`stages/align.py`, torchaudio MMS_FA,
+unidecode ile romanizasyon, Whisper damgaları kılavuz olarak ~30 s
+parçalar, CTC `forced_align`). 31.982 kelimenin %99,6'sı hizalandı.
+Hizalayıcı damgası Whisper'a göre başta **+0,19 s** (p10 +0,11, p90
++0,41), sonda **+0,10 s** (p10 +0,03, p90 +0,20) ileride — Whisper'ın
+"erken damga" kusuru artık sayıyla ölçülü. Bölütleme hizalanmış zamanları
+kullanıyor; sınır iyileştirme üstünde kalıyor. Güven: klip başına asgari
+hizalayıcı skoru medyan 0,40, ortalama 0,48; Whisper asgari olasılığıyla
+sıra korelasyonu yalnızca +0,34 — iki sinyal farklı şeyler ölçüyor. 37
+kelimede (%0,12) skor tam sıfır: hepsi cümle başındaki kısa sözcükler
+("Bu", "Ey", "Biz"), hizalayıcı onları önceki cümlenin hemen ardındaki
+40–140 ms'ye sıkıştırmış. Bu yüzden `word_confidence` kaynağı şimdilik
+Whisper (`align.confidence_source: asr`), hizalayıcı skoru
+`align_score_min/mean` olarak yayımlanıyor; kural olabilmesi için klip
+düzeyinde asgari yerine dayanıklı bir istatistik (10. yüzdelik) ve insan
+referanslı CER ile kalibrasyon gerekiyor (koşulacak deney 3).
+
+**3. Müzik eşiği kör dinlemeyle −30 → −40 dB** (politika v2). 34 klip,
+beş dB bandından 6'şar + ayrıştırılmamış 4 kontrol, kanal ve dB gizli.
+Sonuç: −40 dB altındaki 10 klipte 9 "yok" 1 "hafif"; **−40…−33 bandında
+6/6 "belirgin"**; −33'ün üstünde karışık ama çoğunluk belirgin/baskın.
+"Belirgin/baskın"ı ayıran en az hatalı eşik −40 dB (34'te 7 hata; −30'da
+13). İlk tahmin olan −30 dB, kulağın açıkça duyduğu müziği kabul ediyordu.
+Karşı örnekler öğretici: −29,6 / −26,6 / −22,0 / −21,6 dB'de dört klip
+"yok" — üçü Seslendiriyor ve anahtarca; ayrıştırıcı oda tonunu ya da
+efekti eşliğe yazmış olabilir, AudioSet skoru bunlardan ikisinde düşük
+(0,17, 0,36). Yani dB tek başına yeterli değil; ileride "dB yüksek ama
+AudioSet düşük" durumu ayrı incelenmeli. Etki (24 kaynaklık örneklem):
+`background_music` %7,4 → %11,4; Peri_Mia %63 → %91, anahtarca %23 → %34,
+Seslendiriyor %8 → %18. Peri_Mia için bu, kanalın karakteridir: masal
+anlatımının altında sürekli müzik.
+
+**4. Boilerplate:** örtüşen ifadeler birleşiyor, `max_words` 24, eşik
+kanal kayıt sayısının %40'ı (en az 2). Noktayla başlayan kısaltma
+parçaları ("P .O .Y .M.") birleşiyor. 24 kaynaklık örneklemde henüz yeniden
+koşulmadı.
+
+**Yol üstünde bulunan hata.** Sınır iyileştirme tek kelimelik bir klipte
+("En", damgası yanlış) başı bitişinin ötesine çekip −0,01 s'lik klip
+üretti, sıfır örnekli FLAC clip_qc'yi düşürdü. Düzeltildi: sınır klibin
+kendi bitişini geçemez, gerekirse önceki klip kısalır; clip_qc okunamayan
+dosyayı `unreadable_audio` ile işaretler, koşuyu düşürmez.
+
+**Açık politika sorusu — kısa klipler.** Hizalayıcı zamanlarıyla `short`
+işareti %3,1 → %5,7 (154 klip): gerçek boşluklar Whisper'ınkinden büyük
+olduğu için kısa cümleler ("Haydi oku.", "Yola düşer.") 1,2 s'den uzun
+duraklarla ayrı kalıyor. 154'ün 87'si 1,5–2,5 s arasında ve metin olarak
+bütün cümleler. `segment.min_sec: 2.5` bunları önerilen alt kümeden
+düşürüyor; 1,5'e inmek 5 dakikalık örnekte ~90 klibi geri kazandırır.
+Kullanıcı kararı.
+
+**Kör dinleme, hizalayıcı turu** yayında: 5 kanaldan 5'er önerilen klip
+(25). Sonuç bekleniyor.
+
+**Makaleye:** §Hat (ölçek), §Yöntem (hizalama ve sınır), §Kalite ölçümleri
+(müzik eşiği ve dinleme protokolü), §Ablasyon (Whisper vs hizalayıcı damga
+kayması).
+
 ---
 
 ## Koşulacak deneyler

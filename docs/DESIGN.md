@@ -226,6 +226,12 @@ politikada kural olamazlar.
 Uygulama: [`kiraat/stages/music.py`](../kiraat/stages/music.py), ölçüm betiği
 [`scripts/probe_music.py`](../scripts/probe_music.py).
 
+**Eşik kulakla ölçüldü (28 Ağu 2026).** 34 klip, beş dB bandı, kanal ve dB
+gizli: −40 dB altında 10 klipte 9 "yok"; −40…−33 bandında 6/6 "belirgin".
+İlk tahmin −30 dB, kulağın açıkça duyduğu müziği kabul ediyordu; politika
+v2 ile eşik −40 dB. dB yüksek ama kulak "yok" diyen dört karşı örnek var
+(ayrıştırıcının oda tonunu eşliğe yazması); dB tek başına yeterli değil.
+
 ## 8. Konuşmacı kümeleme doygun, üstelik tam yanlış yerde
 
 `speaker_id`, kanal içinde açgözlü en-yakın-merkez kümelemeyle üretiliyor:

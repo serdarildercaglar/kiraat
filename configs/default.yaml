@@ -127,7 +127,10 @@ music:
   separator_screen: 0.05
   # Bu dB'nin üstü "duyulur müzik" sayılır ve `background_music` işareti
   # verilir. İşaret yayımlanan sütundan türetildiği için yeniden kesilebilir.
-  inaudible_db: -30.0
+  # Kör dinleme (28 Ağu 2026, 34 klip, 5 bant): −40 dB altında 10 klipte
+  # 9 "yok" 1 "hafif"; −40…−33 bandında 6/6 "belirgin". İlk tahmin −30 idi;
+  # ölçüm −40 dedi.
+  inaudible_db: -40.0
   # Dış sınıflandırıcı, isteğe bağlı. İKİLİ konuşma/müzik modelidir; "altında
   # müzik var mı" sorusunu yanıtlamaz, bu yüzden yalnızca üçüncü bir skor
   # olarak yayımlanır ve kör dinleme denetimi yapılmadan politikaya girmez.
@@ -162,7 +165,8 @@ dedupe:
 # Önerilen alt küme. Bu bloğu değiştirmek veriyi yeniden üretmez, yalnızca
 # `recommended` bayrağını yeniden hesaplar.
 recommended_subset:
-  version: "1"
+  # v2 (28 Ağu 2026): müzik eşiği −30 → −40 dB, kör dinlemeyle.
+  version: "2"
   rules:
     - metric: speech_ratio
       min: 0.60
