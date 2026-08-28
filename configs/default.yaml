@@ -56,10 +56,13 @@ align:
   model: MahmoudAshraf/mms-300m-1130-forced-aligner
   min_word_confidence: 0.40
 
+# Süreler eğitim bütçesiyle tutarlı: tek cümlelerin %97'si 15 s altında,
+# dolayısıyla tavan neredeyse hiç iç noktalamada bölmeye zorlamaz; hedef,
+# cümle birleştirmenin aşmayacağı üst sınırdır (grup min_sec üstündeyse).
 segment:
   min_sec: 2.5
-  target_sec: 9.0
-  max_sec: 20.0
+  target_sec: 7.0
+  max_sec: 15.0
   max_join_gap_sec: 1.2
   lead_pad_sec: 0.15
   trail_pad_sec: 0.25
@@ -108,6 +111,16 @@ music:
   external_model: null   # örn. AIGenLab/speech-music-classifier-v3
   external_gate: false
 
+# Künye/anons madenciliği: kanalın kayıtlarının baş ve son bölgelerinde en az
+# `min_recordings` ayrı kayıtta kelimesi kelimesine tekrar eden ifadeler.
+# Bulunanlar ayrı klip olur ve `boilerplate` işareti alır; silinmez.
+boilerplate:
+  min_recordings: 3
+  min_words: 3
+  max_words: 12
+  head_words: 80
+  tail_words: 80
+
 text:
   emit_raw: true
   emit_spoken: true
@@ -136,7 +149,7 @@ recommended_subset:
     - metric: music_to_speech_db
       max: -30.0
       allow_missing: true
-    - flag_absent: [oversize, forced_split, short, duplicate, boilerplate]
+    - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate]
 
 export:
   sample_rate: 24000

@@ -13,8 +13,10 @@ yalnızca konuşma bölgesi bulucu olarak, ASR'den önce kullanılır.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from typing import Sequence
 
 from .text.sentences import sentence_spans
+from .text.turkish import has_sentence_end, is_lower_start, lower
 
 #: Uzun bir cümle bölünmek zorunda kalırsa tercih sırasına göre iç noktalama.
 INTERNAL_BREAKS = (";", ":", "—", "–", ",")
@@ -25,13 +27,44 @@ class Word:
     text: str
     start: float
     end: float
+    #: ASR/hizalayıcının kelime güveni; birleştirmede asgarisi alınır.
+    prob: float | None = None
+
+
+def _is_clitic(token: str) -> bool:
+    """Kesme/tire ile başlayan ek ('ın, -ı) ya da yalnız noktalama mı."""
+    if not any(ch.isalnum() for ch in token):
+        return True  # yalnız noktalama: "." "," "''"
+    body = token.lstrip("'’-–")
+    if body == token:
+        return False
+    return body[0].isalpha() and body[0] == lower(body[0])
+
+
+def attach_clitics(words: list[Word]) -> list[Word]:
+    """Whisper'ın ayrı belirteç verdiği ekleri ("Button", "'ın") öncekine yapıştır.
+
+    Açılış tırnağıyla başlayan gerçek kelimeler ("''Padişahım") dokunulmadan
+    kalır; yalnızca kesme/tire sonrası küçük harfle devam eden parçalar ve
+    tek başına kalmış noktalama birleştirilir. Zaman aralığı birleşir, güven
+    ikisinin asgarisidir.
+    """
+    out: list[Word] = []
+    for w in words:
+        if out and _is_clitic(w.text):
+            prev = out[-1]
+            probs = [x for x in (prev.prob, w.prob) if x is not None]
+            out[-1] = Word(prev.text + w.text, prev.start, w.end, min(probs) if probs else None)
+        else:
+            out.append(w)
+    return out
 
 
 @dataclass(frozen=True)
 class SegmentConfig:
     min_sec: float = 2.5
-    target_sec: float = 9.0
-    max_sec: float = 20.0
+    target_sec: float = 7.0
+    max_sec: float = 15.0
     #: İki cümle arasındaki bu süreden uzun sessizlik bölüm geçişi sayılır ve
     #: cümleler aynı klibe yapıştırılmaz.
     max_join_gap_sec: float = 1.2
@@ -85,6 +118,26 @@ def _split_oversize(
     if sent.duration <= cfg.max_sec:
         return [(sent.a, sent.b, ())]
 
+    # Önce uzun iç sessizlik: noktalamasız bir "cümle" içinde `max_join_gap_sec`
+    # üstü bir boşluk, büyük olasılıkla ASR'nin noktalamadığı bir cümle
+    # sınırıdır (başlık → ilk cümle arasındaki 49 s'lik giriş müziği gibi).
+    # En büyük boşlukta kesilir; parça metin olarak bütün görünüyorsa
+    # (büyük harfle başlıyor, cümle sonuyla bitiyor) işaret almaz, aksi hâlde
+    # `gap_split` alır ve önerilen alt kümeden düşer.
+    gaps = [(words[i + 1].start - words[i].end, i) for i in range(sent.a, sent.b - 1)]
+    big = [(g, i) for g, i in gaps if g > cfg.max_join_gap_sec]
+    if big:
+        _, pivot = max(big)
+        left = _Sentence(sent.a, pivot + 1, sent.start, words[pivot].end)
+        right = _Sentence(pivot + 1, sent.b, words[pivot + 1].start, sent.end)
+        out: list[tuple[int, int, tuple[str, ...]]] = []
+        for part in (left, right):
+            for a, b, flags in _split_oversize(words, part, cfg):
+                text = _text(words, a, b)
+                complete = not is_lower_start(text) and has_sentence_end(text)
+                out.append((a, b, flags if complete else tuple(sorted(set(flags) | {"gap_split"}))))
+        return out
+
     for mark in INTERNAL_BREAKS:
         cuts = [
             i
@@ -109,23 +162,55 @@ def _split_oversize(
 def _pad(
     clip: Clip, words: list[Word], cfg: SegmentConfig, prev_end: float, next_start: float
 ) -> Clip:
-    """Klibin iki ucuna, komşuya taşmadan, nefes payı bırak."""
-    start = max(clip.start - cfg.lead_pad_sec, prev_end, 0.0)
+    """Klibin iki ucuna nefes payı bırak; komşuyla arayı en fazla ortadan böl.
+
+    Pay komşu kelimenin bitişine dayanırsa, ASR kelime bitişleri erken
+    olduğu için önceki kelimenin kuyruğu klibe sızıyor (kör dinlemede
+    duyuldu). Bu yüzden sınır, komşuya olan boşluğun ortasını geçemez.
+    """
+    start = max(clip.start - cfg.lead_pad_sec, (clip.start + prev_end) / 2.0, 0.0)
     end = clip.end + cfg.trail_pad_sec
     if next_start is not None:
-        end = min(end, next_start)
+        end = min(end, (clip.end + next_start) / 2.0)
     return replace(clip, start=round(start, 3), end=round(end, 3))
 
 
-def segment(words: list[Word], cfg: SegmentConfig | None = None) -> list[Clip]:
-    """Kelime zaman damgalarından cümle hizalı klipler üret."""
+def _cut_at_boilerplate(
+    sentences: list[_Sentence], words: list[Word], spans: Sequence[tuple[int, int]]
+) -> list[tuple[_Sentence, bool]]:
+    """Cümleleri boilerplate aralıklarının sınırlarında böl; (parça, boilerplate mi)."""
+    marks = sorted(set(x for span in spans for x in span))
+    out: list[tuple[_Sentence, bool]] = []
+    for sent in sentences:
+        cuts = [sent.a] + [m for m in marks if sent.a < m < sent.b] + [sent.b]
+        for a, b in zip(cuts, cuts[1:]):
+            is_bp = any(x <= a and b <= y for x, y in spans)
+            out.append((_Sentence(a, b, words[a].start, words[b - 1].end), is_bp))
+    return out
+
+
+def segment(
+    words: list[Word],
+    cfg: SegmentConfig | None = None,
+    boilerplate: Sequence[tuple[int, int]] = (),
+) -> list[Clip]:
+    """Kelime zaman damgalarından cümle hizalı klipler üret.
+
+    `boilerplate`, kanal düzeyinde madenlenmiş künye/anons ifadelerinin
+    kelime aralıklarıdır (`kiraat.boilerplate.find_spans`). Bu aralıklar
+    kendi başına klip olur, `boilerplate` işareti taşır ve komşularıyla
+    birleşmez; böylece künye ilk cümleye yapışmaz.
+    """
     cfg = cfg or SegmentConfig()
     if not words:
         return []
 
     pieces: list[tuple[int, int, tuple[str, ...]]] = []
-    for sent in _sentences(words):
-        pieces.extend(_split_oversize(words, sent, cfg))
+    for sent, is_bp in _cut_at_boilerplate(_sentences(words), words, boilerplate):
+        if is_bp:
+            pieces.append((sent.a, sent.b, ("boilerplate",)))
+        else:
+            pieces.extend(_split_oversize(words, sent, cfg))
 
     clips: list[Clip] = []
     cur_a = cur_b = None
@@ -136,11 +221,17 @@ def segment(words: list[Word], cfg: SegmentConfig | None = None) -> list[Clip]:
             cur_a, cur_b, cur_flags = a, b, set(flags)
             continue
         gap = start - words[cur_b - 1].end
+        current = words[cur_b - 1].end - words[cur_a].start
         joined = end - words[cur_a].start
         too_long = joined > cfg.max_sec
         long_pause = gap > cfg.max_join_gap_sec
-        enough = (words[cur_b - 1].end - words[cur_a].start) >= cfg.target_sec
-        if too_long or long_pause or enough:
+        # Hedef aşılmaz: grup zaten `min_sec` üstündeyse ve bir cümle daha
+        # eklemek hedefi aşacaksa grup kapanır. "Hedefe ulaşana kadar ekle"
+        # kuralı klipleri hedef + bir cümle uzunluğuna taşıyordu (28 dakikalık
+        # örnekte medyan 11,5 s, hedef 9 s iken).
+        overshoot = current >= cfg.min_sec and joined > cfg.target_sec
+        hard = "boilerplate" in flags or "boilerplate" in cur_flags
+        if too_long or long_pause or overshoot or hard:
             clips.append(
                 Clip(words[cur_a].start, words[cur_b - 1].end,
                      _text(words, cur_a, cur_b), (cur_a, cur_b),
@@ -161,6 +252,8 @@ def segment(words: list[Word], cfg: SegmentConfig | None = None) -> list[Clip]:
     for clip in clips:
         if (
             merged
+            and "boilerplate" not in merged[-1].flags
+            and "boilerplate" not in clip.flags
             and merged[-1].duration < cfg.min_sec
             and (clip.end - merged[-1].start) <= cfg.max_sec
             and (clip.start - merged[-1].end) <= cfg.max_join_gap_sec

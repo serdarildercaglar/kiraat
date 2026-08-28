@@ -15,8 +15,8 @@ def test_varsayilan_konfig_yuklenir():
 
 def test_segment_konfigi_dataclassa_donuyor():
     seg = Config.load(DEFAULT).segment_config()
-    assert seg.target_sec == 9.0
-    assert seg.max_sec == 20.0
+    assert seg.target_sec == 7.0
+    assert seg.max_sec == 15.0
 
 
 def test_politika_kurallari_okunuyor():

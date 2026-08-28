@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from kiraat.segment import Clip, SegmentConfig, Word, segment
+from kiraat.segment import Clip, SegmentConfig, Word, attach_clitics, segment
 from kiraat.text.turkish import has_sentence_end, is_lower_start
 
 
@@ -84,3 +84,51 @@ def test_hicbir_kelime_kaybolmaz():
     clips = segment(words, CFG)
     covered = [i for c in clips for i in range(*c.word_span)]
     assert covered == list(range(len(words)))
+
+
+def test_birlestirme_hedefi_asmaz():
+    # Her cümle 3 s; hedef 4 s. İki cümle birleşince 6 s olur ve hedefi aşar,
+    # dolayısıyla her cümle kendi klibi olmalı. Eski kural "hedefe ulaşana
+    # kadar ekle" dediği için 6 s'lik klipler üretiyordu.
+    text = " ".join(f"Cümle {i} altı kelime ile burada bitiyor." for i in range(6))
+    clips = segment(mk(text), SegmentConfig(min_sec=1.0, target_sec=4.0, max_sec=10.0))
+    assert len(clips) == 6
+    for c in clips:
+        assert c.duration <= 4.0 + 0.25 + 0.15, c
+
+
+def test_tek_cumle_hedefi_asabilir_ama_maxi_asamaz():
+    text = "bir iki üç dört beş altı yedi sekiz dokuz on. Kısa."
+    clips = segment(mk(text, word_sec=0.6), SegmentConfig(min_sec=1.0, target_sec=4.0, max_sec=10.0))
+    assert clips[0].text.endswith("on.")
+    assert 4.0 < clips[0].duration <= 10.0
+
+
+def test_kesme_isareti_ekleri_birlesir():
+    words = [Word("Benjamin", 0, 0.5, 0.9), Word("Button", 0.5, 1.0, 0.8), Word("'ın", 1.0, 1.2, 0.3),
+             Word("''Padişahım,", 1.5, 2.0, 0.9), Word("-ı", 2.0, 2.1), Word(".", 2.1, 2.2)]
+    out = attach_clitics(words)
+    assert [w.text for w in out] == ["Benjamin", "Button'ın", "''Padişahım,-ı."]
+    assert out[1].start == 0.5 and out[1].end == 1.2 and out[1].prob == 0.3
+
+
+def test_uzun_ic_bosluk_noktalamasiz_cumleyi_boler():
+    # "Başlık" + 49 s giriş müziği + gerçek cümle; ASR araya noktalama koymadı.
+    title = mk("Edgar Allan Poe'dan Kuyu ve Sarkaç")
+    body = [Word(w.text, w.start + 52.0, w.end + 52.0) for w in mk("Bitkindim uzun acıyla ölecek gibiydim.")]
+    clips = segment(title + body, SegmentConfig(min_sec=0.5, target_sec=7.0, max_sec=15.0))
+    assert len(clips) == 2
+    assert "gap_split" in clips[0].flags          # başlık: cümle sonu yok → işaretli
+    assert "gap_split" not in clips[1].flags      # gerçek cümle bütün → işaretsiz
+    assert clips[1].text.startswith("Bitkindim")
+
+
+def test_pay_komsuyla_bosluğun_ortasini_gecmez():
+    # İki cümle arasında yalnızca 0,10 s var; pay 0,15 olsa da sınır ortada durur.
+    a = mk("Bir cümle burada bitiyor.")
+    b = [Word(w.text, w.start + a[-1].end + 0.10, w.end + a[-1].end + 0.10) for w in mk("Sonraki cümle başlıyor.")]
+    clips = segment(a + b, SegmentConfig(min_sec=0.5, target_sec=1.0, max_sec=8.0, lead_pad_sec=0.15, trail_pad_sec=0.25))
+    assert len(clips) == 2
+    mid = (a[-1].end + b[0].start) / 2
+    assert clips[0].end <= mid + 1e-6 and clips[1].start >= mid - 1e-6
+
