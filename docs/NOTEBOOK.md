@@ -526,6 +526,25 @@ Kullanıcı kararı.
 (müzik eşiği ve dinleme protokolü), §Ablasyon (Whisper vs hizalayıcı damga
 kayması).
 
+## 2026-08-29 — Kısa klip kararı ve hizalayıcı dinleme turu
+
+**Karar:** `segment.min_sec` 2,5 → 1,5 (kullanıcı). Beş kaynaklık örnekte
+`short` 154 → 56 klip (%5,7 → %2,0), önerilen alt küme %83,1 → %86,9
+(2.405 klip, 4,01 saat); süre p5 2,4 s. Yol üstünde bir açık kapandı:
+aşamaların "bitti" sürümü artık konfig bölümünün özetini de içeriyor,
+yani bir eşik değişince ilgili aşama kendiliğinden yenileniyor — daha önce
+yalnızca kod sürümüne bakıyordu ve `min_sec` değişikliği yeniden koşuyu
+tetiklemiyordu.
+
+**Kör dinleme, hizalayıcı turu:** hizalanmış zamanlarla kesilmiş 25 önerilen
+klip (5 kanal × 5), **25/25 temiz** — kırık başlangıç 0, kırık bitiş 0,
+kesik hece 0 (`work/sample-5b/listen/answers-1.json`). Beş turun toplamı:
+kiraat'ın 129 önerilen klibinde kırık başlangıç 0, kesik hece yalnızca
+ikinci turun 3'ü (sınır iyileştirmesinden önce).
+
+**Makaleye:** §Yöntem (süre politikası), §Değerlendirme (dinleme turları
+özet tablosu).
+
 ---
 
 ## Koşulacak deneyler
