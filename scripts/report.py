@@ -50,7 +50,7 @@ print("\ndışlama gerekçeleri (bir klip birden çok taşıyabilir):")
 for reason, n in collections.Counter(x for r in rows for x in r["exclusion_reasons"]).most_common():
     print(f"  {reason:32s} {n:5d} ({pct(n, len(rows))})")
 
-for name in ("word_confidence", "speech_ratio", "internal_silence_sec", "music_to_speech_db", "music_score_audioset", "rms_dbfs"):
+for name in ("word_confidence", "align_score_min", "align_score_mean", "speech_ratio", "internal_silence_sec", "music_to_speech_db", "music_score_audioset", "rms_dbfs"):
     vals = [r[name] for r in rows if r.get(name) is not None]
     if vals:
         print(f"{name:22s} n={len(vals):5d}  med {statistics.median(vals):7.3f}  p5 {q(vals,.05):7.3f}  p95 {q(vals,.95):7.3f}")
