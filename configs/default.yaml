@@ -1,0 +1,111 @@
+# kiraat — Türkçe okuma-konuşma korpusu hattı, v2
+#
+# İki ilke bu dosyanın biçimini belirliyor:
+#   1. Hiçbir eşik koda gömülmez; hat tamamen buradan tanımlanır.
+#   2. Hiçbir eşik klip elemez. Eşikler yalnızca `recommended_subset`
+#      politikasını besler; klipler her hâlükârda ölçümleriyle yayımlanır.
+
+paths:
+  raw_root: /mnt/310C8DBF109E2BFC/projects/turkish-tts/data-preparing/audio-data
+  work_root: /mnt/310C8DBF109E2BFC/projects/turkish-tts/kiraat/work
+  db: /mnt/310C8DBF109E2BFC/projects/turkish-tts/kiraat/work/db/state.sqlite
+
+runtime:
+  device: cuda:0
+  gpu_batch_size: 32
+  source_workers: 6
+  gpu_stage_concurrency: 1
+  lease_sec: 900
+  max_job_attempts: 3
+  log_level: INFO
+
+sources:
+  extensions: [".m4a", ".mp3", ".wav", ".flac", ".opus", ".webm"]
+  exclude_patterns: []
+
+prepare:
+  target_sr: 24000        # v1 16 kHz'di; modern TTS için 24 kHz taban alınıyor
+  highpass_hz: 40.0
+  peak_ceiling_db: -1.0
+  target_lufs: null       # klip başına normalizasyon yok, doğal seviye korunur
+  ffmpeg_threads: 2
+
+# VAD artık kesim aracı değil: yalnızca ASR'ye verilecek konuşma bölgelerini
+# bulur. Kesim kararı transcript'te alınır.
+vad:
+  threshold: 0.50
+  min_speech_duration_ms: 250
+  min_silence_duration_ms: 300
+  speech_pad_ms: 100
+
+asr:
+  model: openai/whisper-large-v3
+  language: tr
+  word_timestamps: true
+  condition_on_previous_text: false   # halüsinasyon zincirini kırar
+  temperature: 0.0
+
+# Kelime zaman damgalarının doğruluğu bölütlemenin tamamını taşıdığı için
+# zorlamalı hizalama ayrı bir aşamadır ve kendi güven skorunu üretir.
+align:
+  model: MahmoudAshraf/mms-300m-1130-forced-aligner
+  min_word_confidence: 0.40
+
+segment:
+  min_sec: 2.5
+  target_sec: 9.0
+  max_sec: 20.0
+  max_join_gap_sec: 1.2
+  lead_pad_sec: 0.15
+  trail_pad_sec: 0.25
+
+clip_qc:
+  enabled: true
+
+dnsmos:
+  enabled: true
+
+speaker:
+  model: pyannote/wespeaker-voxceleb-resnet34-LM
+  cluster_cosine: 0.75
+
+events:
+  model: MIT/ast-finetuned-audioset-10-10-0.4593
+  # v1'de bu modelin "Speech synthesizer" başlığı kapı olarak kullanıldı ve
+  # 981 saati sildi; kör denetimde 131 işaretli klipte sıfır doğru pozitif
+  # verdi. v2'de skoru yayımlanır, politikada kural olarak kullanılmaz.
+  gate_synthetic: false
+
+text:
+  emit_raw: true
+  emit_spoken: true
+
+dedupe:
+  speaker_field: speaker_id
+  # Aynı metin + aynı ses yinelemedir; aynı metin + farklı ses korunur.
+  enabled: true
+
+# Önerilen alt küme. Bu bloğu değiştirmek veriyi yeniden üretmez, yalnızca
+# `recommended` bayrağını yeniden hesaplar.
+recommended_subset:
+  version: "1"
+  rules:
+    - metric: speech_ratio
+      min: 0.60
+    - metric: clip_ratio
+      max: 0.002
+    - metric: internal_silence_sec
+      max: 1.0
+    - metric: word_confidence
+      min: 0.60
+    - metric: dnsmos_ovrl
+      min: 3.0
+      allow_missing: true
+    - flag_absent: [oversize, forced_split, short, duplicate, boilerplate]
+
+export:
+  sample_rate: 24000
+  shard_rows: 2000
+  # Kanal başına saat tavanı: v1'de iki kanal temiz saatlerin %79'unu
+  # tutuyordu. Tavan yalnızca önerilen alt kümeye uygulanır.
+  max_hours_per_channel: 120
