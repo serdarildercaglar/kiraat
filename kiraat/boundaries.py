@@ -1,0 +1,146 @@
+"""Klip sınırlarını ASR zaman damgasından sese çekme.
+
+Kör dinlemede görülen kusur: Whisper bir kelimenin bitişini bir sonrakinin
+başına yapıştırdığında (boşluk 0,0 s; koşuda kliplerin %10'u) kelime bitişi
+erken olduğu için son hece klibin dışında kalıyor — "anımsatıyor|du".
+Zaman damgası çevresinde pay bırakmak bunu çözmez, çünkü verilecek boşluk
+yok. Oysa gerçek sessizlik (nefes) damganın hemen yakınında duruyor.
+
+Bu modül bölütlemeden sonra çalışır: komşu iki klip arasındaki damga
+çevresinde küçük bir pencerede ses enerjisine bakar, sessizlik bulursa
+sınırı oraya koyar; bulamazsa penceredeki en düşük enerjili ana koyar.
+Metne dokunmaz, klip sırasını ve kelime aralıklarını değiştirmez.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from typing import Sequence
+
+import numpy as np
+
+from .segment import Clip, SegmentConfig, Word
+
+
+@dataclass(frozen=True)
+class RefineConfig:
+    #: Damgadan ne kadar önce/sonra aranır (s). Öncesi kasıtlı olarak kısa:
+    #: Whisper kelime bitişleri erken olduğu için sessizlik hep sonradadır.
+    before_sec: float = 0.05
+    after_sec: float = 0.60
+    frame_ms: float = 20.0
+    hop_ms: float = 10.0
+    #: Yerel konuşma seviyesinin bu kadar altı sessizlik sayılır (dB).
+    silence_drop_db: float = 25.0
+    #: Sessizlik sayılması için asgari süre (s).
+    min_silence_sec: float = 0.06
+
+
+@dataclass(frozen=True)
+class Envelope:
+    """Kısa zamanlı enerji, dBFS; `t(i)` ile karenin ortası saniye."""
+
+    db: np.ndarray
+    hop: float
+    frame: float
+
+    def index(self, t: float) -> int:
+        return int(np.clip(round((t - self.frame / 2) / self.hop), 0, len(self.db) - 1))
+
+    def t(self, i: int) -> float:
+        return i * self.hop + self.frame / 2
+
+
+def envelope(wave: np.ndarray, sr: int, cfg: RefineConfig = RefineConfig()) -> Envelope:
+    wave = np.asarray(wave, dtype=np.float32).ravel()
+    frame = max(int(sr * cfg.frame_ms / 1000), 1)
+    hop = max(int(sr * cfg.hop_ms / 1000), 1)
+    n = max((len(wave) - frame) // hop + 1, 1)
+    padded = np.pad(wave, (0, max(frame + (n - 1) * hop - len(wave), 0)))
+    idx = np.arange(n)[:, None] * hop + np.arange(frame)[None, :]
+    rms = np.sqrt(np.mean(padded[idx] ** 2, axis=1))
+    db = 20.0 * np.log10(np.maximum(rms, 1e-6))
+    return Envelope(db=db, hop=hop / sr, frame=frame / sr)
+
+
+def _silence_runs(mask: np.ndarray) -> list[tuple[int, int]]:
+    runs: list[tuple[int, int]] = []
+    start = None
+    for i, m in enumerate(mask):
+        if m and start is None:
+            start = i
+        elif not m and start is not None:
+            runs.append((start, i))
+            start = None
+    if start is not None:
+        runs.append((start, len(mask)))
+    return runs
+
+
+def find_boundary(
+    env: Envelope, t_end: float, t_next: float, seg: SegmentConfig, cfg: RefineConfig = RefineConfig()
+) -> tuple[float, float]:
+    """(önceki klibin bitişi, sonraki klibin başlangıcı).
+
+    `t_end` önceki klibin son kelimesinin, `t_next` sonrakinin ilk kelimesinin
+    ASR damgası. Pencere içinde en uzun sessizlik bulunursa önceki klip o
+    sessizliğe `trail_pad_sec` kadar uzar, sonraki klip sessizliğin sonundan
+    `lead_pad_sec` önce başlar; ikisi çakışmaz. Sessizlik yoksa ikisi de
+    penceredeki en sessiz ana konur.
+    """
+    # Pencere `t_next`e göre kısılmaz: boşluk sıfırken sonraki kelimenin
+    # damgası da yanlış yerdedir ve gerçek sessizlik ikisinin de ötesindedir.
+    # Sonraki kelimeye taşma, çağıranın kelime bitişine göre kırpmasıyla önlenir.
+    lo = env.index(t_end - cfg.before_sec)
+    hi = env.index(max(t_next, t_end) + cfg.after_sec)
+    if hi <= lo:
+        t = env.t(lo)
+        return t, t
+    ctx_lo, ctx_hi = env.index(t_end - 1.0), env.index(t_next + 1.0) + 1
+    level = float(np.percentile(env.db[ctx_lo:ctx_hi], 90))
+    window = env.db[lo:hi + 1]
+    quiet = window < (level - cfg.silence_drop_db)
+    min_frames = max(int(round(cfg.min_silence_sec / env.hop)), 1)
+    runs = [(a, b) for a, b in _silence_runs(quiet) if b - a >= min_frames]
+    if runs:
+        a, b = max(runs, key=lambda r: r[1] - r[0])
+        s0, s1 = env.t(lo + a) - env.frame / 2, env.t(lo + b - 1) + env.frame / 2
+        prev_end = min(s0 + seg.trail_pad_sec, s1)
+        next_start = max(s1 - seg.lead_pad_sec, prev_end)
+        return round(prev_end, 3), round(next_start, 3)
+    t = env.t(lo + int(np.argmin(window)))
+    return round(t, 3), round(t, 3)
+
+
+def refine_boundaries(
+    clips: Sequence[Clip],
+    words: Sequence[Word],
+    env: Envelope,
+    seg: SegmentConfig,
+    cfg: RefineConfig = RefineConfig(),
+) -> list[Clip]:
+    """Komşu klip çiftlerinin ortak sınırını sese göre yeniden koy.
+
+    Yalnızca damgalar arası boşluğun iki payı da barındıramadığı çiftler
+    değiştirilir; geniş boşluklu çiftlerde bölütleyicinin payı zaten
+    sessizliğin içindedir. İlk klibin başı ve son klibin sonu dokunulmaz.
+    """
+    if not clips:
+        return []
+    out = list(clips)
+    room = seg.lead_pad_sec + seg.trail_pad_sec
+    for i in range(len(out) - 1):
+        prev, nxt = out[i], out[i + 1]
+        t_end = words[prev.word_span[1] - 1].end
+        t_next = words[nxt.word_span[0]].start
+        if t_next - t_end >= room:
+            continue
+        prev_end, next_start = find_boundary(env, t_end, t_next, seg, cfg)
+        # Sınır önceki klibin son kelimesinin başına taşamaz ve iki klip
+        # çakışmaz. Sonraki kelimenin damgasına göre kırpma yapılmaz: boşluk
+        # sıfırken o damga da yanlıştır ve bulunan sessizlik ondan güçlü kanıttır.
+        prev_end = max(prev_end, words[prev.word_span[1] - 1].start + 0.05)
+        next_start = max(next_start, prev_end)
+        out[i] = replace(prev, end=prev_end, flags=tuple(sorted(set(prev.flags) | {"snapped_end"})))
+        out[i + 1] = replace(nxt, start=next_start, flags=tuple(sorted(set(nxt.flags) | {"snapped_start"})))
+    return out
