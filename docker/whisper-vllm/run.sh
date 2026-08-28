@@ -3,6 +3,7 @@
 #   ./run.sh build          imajı kur (whisper-vllm:v0.27.1)
 #   ./run.sh start [MODEL]  konteyneri başlat (varsayılan openai/whisper-large-v3, port 8001)
 #   ./run.sh test  FILE     verbose_json ile istek at, ham yanıtı bas
+# GPU: makinede GPU 0 GTX 1650 (Turing), GPU 1 RTX 3090; varsayılan GPU=1.
 set -euo pipefail
 TAG=${VLLM_TAG:-v0.27.1}
 IMAGE=whisper-vllm:${TAG}
@@ -13,7 +14,7 @@ case "${1:-}" in
   start)
     MODEL=${2:-openai/whisper-large-v3}
     docker rm -f "$NAME" >/dev/null 2>&1 || true
-    docker run -d --name "$NAME" --gpus all --ipc=host -p "$PORT:$PORT" \
+    docker run -d --name "$NAME" --gpus '"device=${GPU:-1}"' --ipc=host -p "$PORT:$PORT" \
       -v "$HOME/.cache/huggingface:/root/.cache/huggingface" "$IMAGE" \
       "$MODEL" --host 0.0.0.0 --port "$PORT" --dtype auto --gpu-memory-utilization 0.25
     echo "bekleniyor..."; for i in $(seq 1 120); do curl -s -m 2 "http://localhost:$PORT/v1/models" >/dev/null && break; sleep 5; done
