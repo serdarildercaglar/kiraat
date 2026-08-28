@@ -23,18 +23,23 @@ def whisper_name(model: str) -> str:
 @register
 class AsrStage(SourceStage):
     name = "asr"
-    version = "1"
+    version = "2"
     gpu = True
     depends_on = ("prepare",)
 
     def setup(self) -> None:
-        from faster_whisper import WhisperModel
+        from faster_whisper import BatchedInferencePipeline, WhisperModel
 
         device = str(self.cfg.get("runtime.device", "cuda:0"))
         self.model = WhisperModel(whisper_name(self.opts.get("model", "large-v3")),
                                   device=device.split(":")[0],
                                   device_index=int(device.split(":")[1]) if ":" in device else 0,
                                   compute_type="float16" if device.startswith("cuda") else "int8")
+        # Toplu çıkarım: VAD'ın bulduğu konuşma bölgeleri 30 s'lik pencerelere
+        # toplanıp birlikte çözülür. Pencereler bağımsızdır, yani
+        # condition_on_previous_text zaten yoktur — halüsinasyon zinciri kırık kalır.
+        self.batch_size = int(self.opts.get("batch_size", 0) or 0)
+        self.pipeline = BatchedInferencePipeline(self.model) if self.batch_size > 0 else None
 
     def teardown(self) -> None:
         self.model = None
@@ -43,12 +48,10 @@ class AsrStage(SourceStage):
         vad = self.cfg.section("vad")
         out = Path(self.cfg.get("paths.work_root")) / "asr" / f"src{source['id']:05d}.jsonl"
         out.parent.mkdir(parents=True, exist_ok=True)
-        segments, info = self.model.transcribe(
-            source["audio"],
+        common = dict(
             language=self.opts.get("language", "tr"),
             beam_size=5,
             temperature=float(self.opts.get("temperature", 0.0)),
-            condition_on_previous_text=bool(self.opts.get("condition_on_previous_text", False)),
             word_timestamps=bool(self.opts.get("word_timestamps", True)),
             vad_filter=True,
             vad_parameters=dict(
@@ -58,6 +61,14 @@ class AsrStage(SourceStage):
                 speech_pad_ms=int(vad.get("speech_pad_ms", 100)),
             ),
         )
+        if self.pipeline is not None:
+            segments, info = self.pipeline.transcribe(source["audio"], batch_size=self.batch_size, **common)
+        else:
+            segments, info = self.model.transcribe(
+                source["audio"],
+                condition_on_previous_text=bool(self.opts.get("condition_on_previous_text", False)),
+                **common,
+            )
         n = 0
         with out.open("w", encoding="utf-8") as fh:
             for seg in segments:
@@ -68,8 +79,8 @@ class AsrStage(SourceStage):
                     fh.write(json.dumps({"text": tok, "start": round(w.start, 3), "end": round(w.end, 3),
                                          "prob": round(w.probability, 4)}, ensure_ascii=False) + "\n")
                     n += 1
-        return [{"words": str(out), "n_words": n,
-                 "asr_model": self.opts.get("model"), "language_prob": round(info.language_probability, 3)}]
+        return [{"words": str(out), "n_words": n, "asr_model": self.opts.get("model"),
+                 "asr_batch_size": self.batch_size, "language_prob": round(info.language_probability, 3)}]
 
 
 def load_words(path: str) -> list[dict[str, Any]]:

@@ -142,7 +142,7 @@ class Pipeline:
             log.info("%s: yapılacak klip yok", name)
             return
         log.info("%s: %d klip", name, len(todo))
-        batch = int(self.cfg.get("runtime.gpu_batch_size", 32)) if stage.gpu else 256
+        batch = int(self.cfg.get("runtime.gpu_batch_size", 32)) if stage.gpu else 512
         stage.setup()
         try:
             for i in range(0, len(todo), batch):

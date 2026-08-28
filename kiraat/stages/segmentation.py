@@ -8,7 +8,6 @@ Aşama ölçüm üretir (süre, kelime güveni, boşluklar), karar vermez.
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -22,17 +21,19 @@ from ..text.normalize import light_clean, to_spoken
 from .asr import load_words
 
 
-def cut(src_wav: str, dst: Path, start: float, end: float) -> None:
-    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-ss", f"{start:.3f}",
-           "-t", f"{end - start:.3f}", "-i", src_wav, "-c:a", "flac", str(dst)]
-    if subprocess.run(cmd).returncode != 0 or not dst.exists():
-        raise RuntimeError(f"kesim basarisiz: {dst}")
+def cut(mono: np.ndarray, sr: int, dst: Path, start: float, end: float) -> None:
+    """Bellekteki tek kanallı sesten klip yaz. Kayıt başına bir ffmpeg çözümü
+    yeter; klip başına süreç açmak 18 bin klipte dakikalar tutuyordu."""
+    import soundfile as sf
+
+    a, b = int(round(start * sr)), int(round(end * sr))
+    sf.write(str(dst), mono[a:b], sr, format="FLAC", subtype="PCM_16")
 
 
 @register
 class SegmentStage(SourceStage):
     name = "segment"
-    version = "1"
+    version = "2"
     depends_on = ("asr", "boilerplate")
 
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
@@ -64,7 +65,7 @@ class SegmentStage(SourceStage):
             probs = [w.prob for w in words[a:b] if w.prob is not None]
             text = light_clean(c.text)
             dst = out_dir / f"{i:05d}.flac"
-            cut(source["audio"], dst, c.start, c.end)
+            cut(mono, sr, dst, c.start, c.end)
             flags = [f for f in c.flags if not f.startswith("snapped")]
             rows.append({
                 "id": f"src{source['id']:05d}-{i:05d}", "idx": i, "channel": source["channel"],

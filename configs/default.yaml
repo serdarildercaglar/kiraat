@@ -60,6 +60,10 @@ asr:
   word_timestamps: true
   condition_on_previous_text: false   # halüsinasyon zincirini kırar
   temperature: 0.0
+  # Toplu çıkarım (faster-whisper BatchedInferencePipeline): VAD bölgeleri
+  # 30 s pencerelere toplanıp birlikte çözülür; pencereler bağımsız olduğu
+  # için önceki metne koşullanma zaten yoktur. 0 = sıralı.
+  batch_size: 16
 
 # Kelime zaman damgalarının doğruluğu bölütlemenin tamamını taşıdığı için
 # zorlamalı hizalama ayrı bir aşamadır ve kendi güven skorunu üretir.
