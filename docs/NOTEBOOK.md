@@ -1017,6 +1017,84 @@ klip kartları bölütleme bitince sınanacak. Bu tur kör dinleme değildir —
 kanal ve ölçümler görünür — amacı kanal başına kusur envanteri çıkarmak ve
 hangi sinyallerin kör dinlemeye alınacağını belirlemektir.
 
+## 2026-08-29 — sample-25 sonuçları: 27 kanal, 12.958 klip, 22,4 saat; hız 27×
+
+Koşu 13:31–14:26, **54 dakikada 24,7 saat ses ≈ 27× gerçek zaman**
+(sample-5b'de 31× ölçülmüştü; fark müzik aşamasının payı — bu örneklemde
+müzikli klip oranı yüksek). Aşama süreleri: prepare 5 dk (~290×), ASR
+21 dk (~71×), hizalama 7 dk, bölütleme 6 dk, clip_qc 5 dk, müzik 11 dk.
+Tam korpus (2.942 saat, v1 tabanı) bu hızla ≈ 110 saat ≈ 4,5 gün.
+
+**Klipler:** 12.958 klip / 22,42 saat (ses saatinin %91'i klip oldu),
+medyan 5,9 s, p5 2,6 / p95 11,6 s. Önerilen alt küme (politika v3)
+10.121 klip (%78,1), 17,07 saat. Dışlanma sebepleri: `background_music`
+1.251 (+ birleşik 100 kadar), `word_confidence<0.6` 974, `forced_split`
+421, `short` 125, `internal_silence>1 s` 59, `oversize` 38. Küçük harfle
+başlayan 243 klibin 242'si forced/gap split ya da künye parçası
+(tasarım gereği, hepsi dışlanmış); **bir** önerilen klip küçük harfle
+başlıyor (`src00001-00000`, kaydın ilk cümlesi — Whisper kaydın ilk
+kelimesini büyük harfe çevirmemiş; sınır değil metin kusuru, açık madde).
+
+**Kanal başına** (klip, önerilen %, müzik işareti %): Peri_Mia 539 / %18 /
+%80; SESLİKİTAPEVİ 455 / %49 / %38; sess-Seslikitap 608 / %53 / %40;
+Pandoramedyaseslikitap %69 / %19; SesliKitaPodcast %70 / %20; kitaplar
+%72 / %22; anahtarca %76 / %16; kalan 20 kanal %77–91, müzik ≤%6.
+Müzik işareti kanala göre keskin ayrışıyor: üç kanal (Peri_Mia,
+SESLİKİTAPEVİ, sess-Seslikitap) fon müziği ile okuyor. `word_confidence`
+kuralı 974 klip (%7,5) düşürüyor — kural hâlâ dinleme denetimi bekliyor
+(madde 7); bu tur o klipleri de içerecek.
+
+**Künye madenciliği (3 kayıt/kanal, min 2):** 27 kanalın 7'sinde ifade
+bulundu: `seslendiren <ad>` üç kanalda (kitaplar, SESLİKİTAPEVİ, ses-arşiv),
+kanal açılış/kapanış anonsları (SesliKitaPodcast 5 ifade, Peri_Mia,
+seslikitapturkish, bizimkütüphane). 20 kanalda 0 ifade — şablon künye
+sorunu (madde 10) sürüyor; `boilerplate` işaretli klip 31.
+
+**Kaynaklar:** 81/81 hatasız. Bilinen kesik `bizimkütüphane` dosyası
+(src00058, kapsayıcı 210 dk, ses 19,4 dk) 20 dk tavanın %97'sini
+verdiği için `truncated_source` işareti almadı — tavan kesik-indirme
+tespitini maskeliyor; ses sağlam olduğu için sorun değil ama tam koşuda
+(tavan 0) işaret yine düşer. ffmpeg bu dosyada "partial file" uyarısı
+bastı, çıktı sağlam. En kısa kaynak BirDinle src00057: 25 s, 4 klip.
+
+**Sütun doğrulaması (43 denetim):** ilk koşuda 5 FAIL; üçü denetleyicinin
+kusuruydu ve düzeltildi — `truncated_source` denetimi 20 dk tavanını
+bilmiyordu (63/81 yanlış alarm; artık min(kapsayıcı, tavan)), `M.Ö.` gibi
+harf kısaltmaları "düz metin" sayılıyordu (`text_spoken` "milattan önce"
+doğruydu), `duplicate_of` karşılaştırması noktalama farkını sayıyordu
+(dedupe anahtarıyla karşılaştırılıyor), künye klipleri cümle sınırı
+denetiminden dışlanmamıştı. Yeniden koşu: **41 geçti, 2 FAIL**, ikisi de
+gerçek:
+
+1. *Küçük harfle başlayan 4 klip* (12.408 içinde): `src00001-00000` kaydın
+   ilk cümlesi — Whisper kaydın ilk kelimesini büyük harfe çevirmemiş
+   (önerilen alt kümede, tek klip); diğer üçü künye kesiminin artığı —
+   "Merhaba değerli dinleyicilerimiz, sizlerle …" cümlesinde künye ifadesi
+   virgüle kadar kesilince kalan "sizlerle …" parçası küçük harfle
+   başlayan ayrı klip oluyor (üçü de müzik işaretiyle zaten dışlanmış).
+   Açık madde 11: künye sonrası kalan cümle parçasına `forced_split`
+   benzeri işaret; kayıt başı büyük harf.
+2. *Klip ilk kelimesini kapsamıyor: 180 klip (%1,4)*, hepsi
+   `snapped_start`. Kalıp tek: klip başı, hizalayıcının ilk kelime
+   başlangıcından tam **0,46 s** sonra (112/181), ASR damgasından 0,64 s
+   sonra. Sınır iyileştirme, damganın hemen ardında (≤0,10 s içinde
+   başlayan) ~0,7 s'lik bir enerji sessizliği buluyor ve sınırı sessizliğin
+   sonuna koyuyor; `silence_after_word_sec` kuralı sessizliğin başına
+   baktığı için tetiklenmiyor. İki açıklama var: ya Whisper ve hizalayıcı
+   duraklardan sonraki ilk kelimeyi 0,5–0,7 s erken damgalıyor (28 Ağu
+   üçüncü dinleme turunda enerji tabanlı sınır 28/28 temizdi, bu yönde) ya
+   da ilk hece gerçekten kesiliyor. Karar kulağın: 181 klip
+   `work/sample-25/listen-cut-start.txt` dosyasında; Keşif sekmesindeki
+   "hazır liste" seçicisi (`listen-*.txt` dosyalarını okur) listeyi tek
+   seçimle açıyor. Sonuca göre ya kural değişir (sessizliğin sonu damgayı
+   0,3 s'den fazla geçemez gibi) ya da denetim ölçütü hizalayıcı damgasından
+   sese taşınır.
+
+Manuel denetim: `python scripts/browse_ui.py --work work/sample-25`
+sayfası açık; manifest hazır olduğundan kanal desteleri artık kalıcı
+çekiliyor (önerilen alt küme havuzu). Beklenen: 27 kanal × 20 klip = 540
+karar + 181 kliplik sınır listesi (baş kesik / temiz).
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -1047,6 +1125,11 @@ tamamlandığında yukarıya tarihli bir kayıt olarak taşınır.
 9. **Metin normalizasyonu: harf+rakam belirteçleri** — "MI6", "M5", "3G"
    okunuşa çevrilmiyor (`to_spoken`); ve tek başına sıra sayısı ("… 1.
    Naip …") ayrı cümle sayılıp 0,1 s'lik klip oluyor. İkisi için kural ve test.
+11. **Künye kesiminin cümle artığı ve kayıt başı büyük harf** — künye
+    ifadesi cümle ortasında bitince kalan parça ("sizlerle …") küçük harfle
+    başlayan klip oluyor (sample-25'te 3); Whisper kaydın ilk kelimesini
+    büyük harfe çevirmiyor (1). İlkine işaret, ikincisine `to_spoken`
+    öncesi ilk harf düzeltmesi; test.
 10. **Şablon künye madenciliği** — kelimesi kelimesine n-gram, "<yazar>'ın
     <kitap> adlı kitabından" gibi değişken yuvalı kalıpları bulamıyor
     (sample-15'te 5 kanalda 0 ifade). Sabit iskelet + yuva madenciliği ya da

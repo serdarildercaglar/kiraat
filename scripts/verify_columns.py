@@ -123,14 +123,16 @@ check("peak/rms/clip_ratio yeniden hesap (±0,05 dB)", bad_level, n)
 check("text boş değil", [r["id"] for r in manifest if not (r["text"] or "").strip()], len(manifest))
 # Değişmez: iç noktalamadan/boşluktan bölünmüş parçalar (forced_split, gap_split)
 # dışında hiçbir klip küçük harfle başlamaz; o parçalar zaten önerilen alt kümede değildir.
-whole = [r for r in manifest if not ({"forced_split", "gap_split"} & set(r["flags"]))]
-check("text küçük harfle başlamıyor (forced_split/gap_split dışında; cümle sınırı değişmezi)",
+# Künye klipleri ifade düzeyinde kesilir ("seslendiren X"), cümle değildir; onlar da dışarıda.
+whole = [r for r in manifest if not ({"forced_split", "gap_split", "boilerplate"} & set(r["flags"]))]
+check("text küçük harfle başlamıyor (forced_split/gap_split/boilerplate dışında; cümle sınırı değişmezi)",
       [(r["id"], r["text"][:30]) for r in whole if is_lower_start(r["text"] or "")], len(whole))
 split_lower = [r for r in manifest if ({"forced_split", "gap_split"} & set(r["flags"])) and is_lower_start(r["text"] or "")]
 check("küçük harfle başlayan bölünmüş parçalar önerilmiyor", [(r["id"],) for r in split_lower if r["recommended"]], len(split_lower))
 check("n_words = text kelime sayısı",
       [(r["id"], r["n_words"], len(r["text"].split())) for r in manifest if r["n_words"] != len(r["text"].split())], len(manifest))
-plain = [r for r in manifest if not re.search(r"\d|%|₺|\$|€", r["text"]) and not re.search(r"\b(vb|vs|vd|örn|bkz|yy|dr|prof|doç|sn|hz|no|tel|cad|sok)\.", r["text"], re.I)]
+plain = [r for r in manifest if not re.search(r"\d|%|₺|\$|€", r["text"]) and not re.search(r"\b(vb|vs|vd|örn|bkz|yy|dr|prof|doç|sn|hz|no|tel|cad|sok)\.", r["text"], re.I)
+         and not re.search(r"\b(?:[A-ZÇĞİÖŞÜ]\.){1,3}", r["text"])]   # M.Ö., M.S., T.C. gibi harf kısaltmaları
 check("text_spoken = text (sayı/kısaltma yoksa)", [r["id"] for r in plain if r["text_spoken"] != r["text"]], len(plain))
 digits = [r for r in manifest if re.search(r"\d", r["text"])]
 alnum = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşü]\d|\d[A-Za-zÇĞİÖŞÜçğıöşü]")   # MI6, M5, 3G: normalizasyon kapsamı dışı (açık madde)
@@ -210,7 +212,9 @@ def music_rule(r):
 check(f"background_music ⇔ music_to_speech_db > {inaud}" + (f" ve audioset ≥ {amin}" if amin is not None else ""),
       [(r["id"], r["music_to_speech_db"], r["music_score_audioset"]) for r in manifest if ("background_music" in r["flags"]) != music_rule(r)], len(manifest))
 check("duplicate ⇔ duplicate_of dolu", [(r["id"],) for r in manifest if ("duplicate" in r["flags"]) != bool(r["duplicate_of"])], len(manifest))
-check("duplicate_of geçerli bir klip ve aynı metin", [(r["id"], r["duplicate_of"]) for r in manifest if r["duplicate_of"] and (r["duplicate_of"] not in by_id or by_id[r["duplicate_of"]]["text"].lower() != r["text"].lower())], len(manifest))
+from kiraat.dedupe import dedupe_key  # noqa: E402
+check("duplicate_of geçerli bir klip ve aynı metin (dedupe anahtarıyla: noktalama/boşluk/büyük-küçük harf sayılmaz)",
+      [(r["id"], r["duplicate_of"]) for r in manifest if r["duplicate_of"] and (r["duplicate_of"] not in by_id or dedupe_key(by_id[r["duplicate_of"]]["text"]) != dedupe_key(r["text"]))], len(manifest))
 check(f"oversize → duration > {seg_max}", [(r["id"], r["duration"]) for r in manifest if "oversize" in r["flags"] and r["duration"] <= seg_max], len(manifest))
 shorts = [r for r in manifest if "short" in r["flags"]]
 check(f"short → kelime süresi < {seg_min} (pay eklenmeden)", [(r["id"], r["duration"]) for r in shorts if r["duration"] - 0.4 >= seg_min], len(shorts))
@@ -233,13 +237,15 @@ check("recommended → exclusion_reasons boş", [(r["id"],) for r in manifest if
 bad = []
 for sid, s in sources.items():
     m = s["meta"]; cont = m.get("container_duration") or 0
-    trunc = bool(cont) and (s["duration"] or 0) < 0.95 * cont
+    cap = m.get("cap_sec") or 0                       # prepare.max_minutes tavanı: beklenen süre tavanla kapsayıcının küçüğü
+    expected = min(cont, cap) if (cont and cap) else cont
+    trunc = bool(expected) and (s["duration"] or 0) < 0.95 * expected
     if trunc != ("truncated_source" in m.get("source_flags", [])):
         bad.append((sid, s["duration"], cont))
     rows = per_src.get(sid, [])
     if rows and any(r["source_sample_rate"] != s["source_sample_rate"] or r["channel"] != s["channel"] for r in rows):
         bad.append((sid, "klip kaynak alanları uyuşmuyor"))
-check("truncated_source ⇔ çözülen süre < 0,95·kapsayıcı; klip kaynak alanları", bad, len(sources))
+check("truncated_source ⇔ çözülen süre < 0,95·min(kapsayıcı, tavan); klip kaynak alanları", bad, len(sources))
 
 # ---------------------------------------------------------------- J. DB ↔ manifest
 check("DB klip sayısı = manifest", [] if set(db_clips) == set(by_id) else [(len(db_clips), len(by_id))], 1)

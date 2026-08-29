@@ -198,6 +198,7 @@
           <label>Süre <input type="number" id="f-dmin" placeholder="min" step="0.5"> – <input type="number" id="f-dmax" placeholder="max" step="0.5"> s</label>
           <input type="search" id="f-q" placeholder="transcript'te ara" style="min-width:200px">
           <input type="text" id="f-ids" placeholder="klip kimlikleri (boşluk/virgülle; yapıştır)" style="min-width:260px" title="Yalnızca bu kimlikler: src00001-00005 src00002-00010 …">
+          <label>Hazır liste <select id="f-list" title="work/&lt;koşu&gt;/listen-*.txt dosyaları"><option value="">—</option></select></label>
         </div>
         <div class="bar" id="quick">
           <span style="font-size:12px;color:var(--mute)">Hazır kategoriler:</span>
@@ -479,10 +480,19 @@ $('#c-add').onclick = () => {
 $('#c-val').onkeydown = e => { if (e.key==='Enter') $('#c-add').onclick(); };
 $('#f-clear').onclick = () => {
   state.conds = []; for (const id of ['f-rec','f-noted']) $('#'+id).value = 'all';
-  for (const id of ['f-reason','f-flag','f-channel','f-dmin','f-dmax','f-q','f-ids']) $('#'+id).value = '';
+  for (const id of ['f-reason','f-flag','f-channel','f-dmin','f-dmax','f-q','f-ids','f-list']) $('#'+id).value = '';
   renderConds(); apply();
 };
 $('#f-apply').onclick = () => apply();
+let LISTS = [];
+async function loadLists() {
+  try { LISTS = await api('/api/lists'); setOptions($('#f-list'), LISTS.map(l=>[l.name, `${l.name} (${l.n})`]), false); } catch (e) {}
+}
+$('#f-list').onchange = () => {
+  const l = LISTS.find(x=>x.name===$('#f-list').value);
+  $('#f-ids').value = l ? l.ids : ''; if (l) { $('#f-rec').value='all'; $('#s-n').value = Math.min(500, l.n); } apply();
+};
+loadLists();
 for (const id of ['f-rec','f-reason','f-flag','f-channel','f-noted']) $('#'+id).onchange = () => apply();
 $('#f-q').onkeydown = e => { if (e.key==='Enter') apply(); };
 $('#f-ids').onkeydown = e => { if (e.key==='Enter') apply(); };

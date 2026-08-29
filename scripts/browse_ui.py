@@ -522,6 +522,16 @@ def print_findings() -> None:
             print(f"  {c['clip_id']:18s} {c['channel']:24s} {c['verdict']:11s} {','.join(c['tags']):30s} {c['note'][:40]:40s} | {c['text'][:70]}")
 
 
+def listen_lists() -> list[dict]:
+    """`<work>/listen-*.txt` dosyaları: boşlukla ayrılmış klip kimlikleri. Keşif
+    sekmesinde "hazır liste" olarak seçilir (ör. sınır denetimi için 181 klip)."""
+    out = []
+    for p in sorted(WORK.glob("listen-*.txt")):
+        ids = p.read_text(encoding="utf-8").split()
+        out.append({"name": p.stem[len("listen-"):], "n": len(ids), "ids": " ".join(ids)})
+    return out
+
+
 # ---------------------------------------------------------------- sunucu
 def audio_path(clip_id: str) -> Path | None:
     con = connect()
@@ -620,6 +630,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(deck(params))
             elif u.path == "/api/notes":
                 self._json(load_notes())
+            elif u.path == "/api/lists":
+                self._json(listen_lists())
             elif u.path == "/api/findings":
                 self._json(findings())
             elif u.path == "/api/findings.csv":
