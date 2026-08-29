@@ -51,6 +51,13 @@ class ClipStage(Stage):
     """
 
     FORBIDDEN_FIELDS = frozenset({"recommended", "decision", "accept", "reject"})
+    #: Aşamanın üretebileceği bütün ölçüm anahtarları ve işaretler. Aşama yeniden
+    #: koşunca depo önce bunları siler, sonra yeni çıktıyı katar; böylece artık
+    #: üretilmeyen bir sütun ya da kalkan bir işaret hayalet olarak kalmaz
+    #: (29 Ağu 2026: dış model kapatıldığı hâlde `music_prob_external`
+    #: manifestoda kaldı).
+    produces_metrics: tuple[str, ...] = ()
+    produces_flags: tuple[str, ...] = ()
 
     @abstractmethod
     def process_clips(self, clips: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:

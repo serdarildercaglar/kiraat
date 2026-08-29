@@ -17,7 +17,7 @@ import logging
 import random
 import time
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Callable, Any, Sequence
 
 from . import base
 from .boilerplate import mine
@@ -34,7 +34,20 @@ SOURCE_STAGES = ("prepare", "asr", "align", "segment")
 CLIP_STAGES = ("clip_qc", "music")
 
 
-def discover_sources(cfg: Config) -> list[dict[str, Any]]:
+def discover_sources(cfg: Config, duration_of: Callable[[str], float] | None = None) -> list[dict[str, Any]]:
+    """Kaynakları bul ve örnek sınırlarını uygula.
+
+    `runtime.max_hours` verilirse seçim, kapsayıcı sürelerinin toplamı bütçeye
+    ulaşınca durur (`duration_of` varsayılan olarak ffprobe; testte
+    enjekte edilir). Bütçeyi aşan ilk kayıt da alınır ki bütçe alt sınır
+    olsun; "20 saat" istenince 19,4 değil ≥20 gelir.
+
+    `runtime.max_sources_per_channel` her kanaldan en çok bu kadar kayıt
+    alır; `prepare.max_minutes` verilmişse bütçe kesilmiş süreyle sayılır
+    (kayıt 2 saat, tavan 20 dk → 20 dk). İkisi birlikte "tüm kanallar, kanal
+    başına eşit saat" örneklemini kurar; kayıt seçimi yine rastgeledir,
+    kısa kayıtlara doğru eğilmez.
+    """
     root = Path(cfg.get("paths.raw_root"))
     exts = {e.lower() for e in cfg.get("sources.extensions", [])}
     excl = list(cfg.get("sources.exclude_patterns", []) or [])
@@ -46,7 +59,22 @@ def discover_sources(cfg: Config) -> list[dict[str, Any]]:
             continue
         by_channel.setdefault(p.parent.name, []).append(p)
     limit = int(cfg.get("runtime.max_sources", 0) or 0)
+    max_hours = float(cfg.get("runtime.max_hours", 0) or 0)
     max_channels = int(cfg.get("runtime.max_channels", 0) or 0)
+    per_channel = int(cfg.get("runtime.max_sources_per_channel", 0) or 0)
+    cap_sec = float(cfg.get("prepare.max_minutes", 0) or 0) * 60.0
+    if max_hours and duration_of is None:
+        import subprocess
+        from .stages.prepare import ffprobe
+
+        def duration_of(path: str) -> float:
+            # Bozuk dosya keşfi düşürmesin; prepare aşaması kaydı hata ile işaretler.
+            try:
+                return ffprobe(path)["duration"]
+            except (subprocess.CalledProcessError, ValueError, KeyError):
+                log.warning("ffprobe basarisiz, süre 0 sayıldı: %s", path)
+                return 0.0
+    total_sec = 0.0
     seed = cfg.get("runtime.sample_seed")
     out: list[dict[str, Any]] = []
     channels = sorted(by_channel.items(), key=lambda kv: kv[0].casefold())
@@ -59,13 +87,19 @@ def discover_sources(cfg: Config) -> list[dict[str, Any]]:
         rng.shuffle(channels)
     if max_channels:
         channels = channels[:max_channels]
-    queues = {ch: list(ps) for ch, ps in channels}
-    while queues and (not limit or len(out) < limit):
+    queues = {ch: list(ps[:per_channel] if per_channel else ps) for ch, ps in channels}
+    def budget_full() -> bool:
+        return bool(limit and len(out) >= limit) or bool(max_hours and total_sec >= max_hours * 3600)
+
+    while queues and not budget_full():
         for ch in list(queues):
-            if limit and len(out) >= limit:
+            if budget_full():
                 break
             p = queues[ch].pop(0)
             out.append({"path": str(p), "channel": ch, "ext": p.suffix.lower(), "bytes": p.stat().st_size})
+            if max_hours:
+                dur = float(duration_of(str(p)) or 0.0)
+                total_sec += min(dur, cap_sec) if cap_sec else dur
             if not queues[ch]:
                 del queues[ch]
     return out
@@ -166,7 +200,8 @@ class Pipeline:
                 chunk = todo[i:i + batch]
                 rows = stage.process_clips(chunk)
                 base.ClipStage.validate_output(rows)
-                self.store.merge_clip_results(rows)
+                self.store.merge_clip_results(rows, owned_metrics=stage.produces_metrics,
+                                              owned_flags=stage.produces_flags)
                 for c in chunk:
                     self.store.mark_done("clip", c["id"], name, version)
                 log.info("%s: %d/%d", name, min(i + batch, len(todo)), len(todo))

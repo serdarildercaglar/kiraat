@@ -73,9 +73,26 @@ def music_to_speech_db(speech, accompaniment, *, floor_db: float = FLOOR_DB) -> 
     return max(20.0 * math.log10(music_rms / speech_rms), floor_db)
 
 
-def has_background_music(db: float | None, threshold_db: float = INAUDIBLE_DB) -> bool:
-    """Yayımlanan sütundan türetilen ikili yanıt — 'var mı yok mu'."""
-    return db is not None and db > threshold_db
+#: AudioSet müzik skoru bu eşiğin altındaysa dB oranı tek başına işaret üretmez.
+AUDIOSET_MIN = 0.3
+
+
+def has_background_music(db: float | None, threshold_db: float = INAUDIBLE_DB,
+                         audioset: float | None = None, audioset_min: float | None = AUDIOSET_MIN) -> bool:
+    """Yayımlanan sütunlardan türetilen ikili yanıt — 'var mı yok mu'.
+
+    İki koşul birden: eşlik/konuşma oranı `threshold_db` üstünde **ve** AudioSet
+    müzik skoru `audioset_min` üstünde. Tek başına dB, ayrıştırıcının konuşma
+    kaydındaki oda tınısını "eşlik" saydığı kanallarda müziksiz klipleri
+    işaretliyordu (29 Ağu 2026, sample-15: 41/74 işaret tek kanaldan, kullanıcı
+    dinledi, müzik yok; o kliplerde AudioSet medyanı 0,10, gerçek müzikte 0,53).
+    `audioset_min=None` yalnızca dB kuralına döner.
+    """
+    if db is None or db <= threshold_db:
+        return False
+    if audioset_min is None:
+        return True
+    return audioset is not None and audioset >= audioset_min
 
 
 @dataclass
@@ -228,7 +245,11 @@ class MusicStage(ClipStage):
     """Klip başına müzik ölçümlerini üretir. Karar vermez."""
 
     name = "music"
+    version = "2"   # v2: sahipli anahtarlar bildirildi (yeniden koşuda hayalet sütun kalmaz)
     gpu = True
+    produces_metrics = ("music_score_audioset", "music_to_speech_db", "music_db_separated",
+                        "music_stem_db", "music_prob_external")
+    produces_flags = ("background_music",)
 
     def setup(self) -> None:
         self.measurer = MusicMeasurer(
@@ -243,12 +264,15 @@ class MusicStage(ClipStage):
 
     def process_clips(self, clips: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:
         threshold = float(self.opts.get("inaudible_db", INAUDIBLE_DB))
+        audioset_min = self.opts.get("audioset_min", AUDIOSET_MIN)
+        audioset_min = None if audioset_min is None else float(audioset_min)
         rows: list[dict[str, Any]] = []
         for clip in clips:
             wave, sr = load_audio(clip["audio"])
             metrics = self.measurer.measure(wave, sr)
             flags = ["background_music"] if has_background_music(
-                metrics["music_to_speech_db"], threshold
+                metrics["music_to_speech_db"], threshold,
+                audioset=metrics.get("music_score_audioset"), audioset_min=audioset_min,
             ) else []
             rows.append({"id": clip["id"], "metrics": metrics, "flags": flags})
         self.validate_output(rows)

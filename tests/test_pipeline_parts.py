@@ -134,3 +134,84 @@ def test_asama_surumu_konfigle_degisir():
     c = stage_version(Config({**base, "music": {"x": 1}}), SegmentStage(Config(base)))
     assert a != b and a == c and a.startswith(SegmentStage.version + "+")
 
+
+
+def test_prepare_sinirlayici_otomatik_seviye_kapali():
+    from kiraat.stages.prepare import ffmpeg_filters
+
+    filters = ffmpeg_filters({"highpass_hz": 40.0, "peak_ceiling_db": -1.0})
+    lim = [f for f in filters if f.startswith("alimiter")][0]
+    assert "level=false" in lim and "limit=0.8913" in lim
+    assert filters[0] == "highpass=f=40.0"
+
+
+def test_saat_butcesi_alt_sinir(tmp_path):
+    from kiraat.config import Config
+    from kiraat.pipeline import discover_sources
+
+    for ch, files in {"a": ["1.m4a", "2.m4a"], "b": ["3.m4a", "4.m4a"]}.items():
+        (tmp_path / ch).mkdir()
+        for f in files:
+            (tmp_path / ch / f).write_bytes(b"0")
+    cfg = Config({"paths": {"raw_root": str(tmp_path)},
+                  "sources": {"extensions": [".m4a"], "exclude_patterns": []},
+                  "runtime": {"max_sources": 0, "max_hours": 1.0}})
+    # her kayıt 40 dk: 1 saat bütçesi ikinci kayıtla aşılır ve orada durur (alt sınır)
+    picked = discover_sources(cfg, duration_of=lambda p: 2400.0)
+    assert [s["path"].rsplit("/", 1)[-1] for s in picked] == ["1.m4a", "3.m4a"]
+    # bütçe sıfırsa sınırsız
+    cfg0 = Config({**cfg.data, "runtime": {"max_sources": 0, "max_hours": 0}})
+    assert len(discover_sources(cfg0, duration_of=lambda p: 2400.0)) == 4
+
+
+def test_kanal_basina_kayit_ve_dakika_tavani(tmp_path):
+    from kiraat.config import Config
+    from kiraat.pipeline import discover_sources
+
+    for ch in ("a", "b", "c"):
+        (tmp_path / ch).mkdir()
+        for i in range(5):
+            (tmp_path / ch / f"{i}.m4a").write_bytes(b"0")
+    base = {"paths": {"raw_root": str(tmp_path)}, "sources": {"extensions": [".m4a"]}}
+    # kanal başına 2 kayıt: 3 kanal × 2 = 6, dönüşümlü sırayla
+    picked = discover_sources(Config({**base, "runtime": {"max_sources": 0, "max_sources_per_channel": 2}}))
+    assert [s["channel"] for s in picked] == ["a", "b", "c", "a", "b", "c"]
+    # saat bütçesi kesilmiş süreyle sayılır: her kayıt 2 saat ama tavan 20 dk →
+    # 1 saat bütçesi 3. kayıtta dolar (alt sınır), tavansız olsaydı 1. kayıtta dolardı
+    cfg = Config({**base, "runtime": {"max_sources": 0, "max_hours": 1.0}, "prepare": {"max_minutes": 20}})
+    assert len(discover_sources(cfg, duration_of=lambda p: 7200.0)) == 3
+    cfg0 = Config({**base, "runtime": {"max_sources": 0, "max_hours": 1.0}})
+    assert len(discover_sources(cfg0, duration_of=lambda p: 7200.0)) == 1
+
+
+def test_prepare_dakika_tavani(tmp_path):
+    import numpy as np
+    import soundfile as sf
+    from kiraat.config import Config
+    from kiraat.stages.prepare import PrepareStage
+
+    src = tmp_path / "k" / "x.wav"
+    src.parent.mkdir()
+    sf.write(str(src), np.zeros(24000 * 6, dtype="float32"), 24000)   # 6 s
+    cfg = Config({"paths": {"work_root": str(tmp_path / "work")}, "prepare": {"target_sr": 24000, "max_minutes": 4 / 60}})
+    row = PrepareStage(cfg).process_source({"id": 1, "path": str(src)})[0]
+    # 4 s'de kesildi; kapsayıcı süresi korunur, kesik-indirme işareti verilmez
+    assert abs(row["duration"] - 4.0) < 0.05 and abs(row["container_duration"] - 6.0) < 0.05
+    assert row["cap_sec"] == 4.0 and "source_flags" not in row
+
+
+def test_asama_yeniden_kosunca_sahipli_anahtarlar_silinir(tmp_path):
+    from kiraat.store import Store
+
+    st = Store(tmp_path / "s.sqlite")
+    sid = st.add_sources([{"path": "/x/a.m4a", "channel": "k", "ext": ".m4a", "bytes": 1}]) and 1
+    st.replace_clips(sid, [{"id": "c1", "idx": 0, "channel": "k", "start": 0.0, "end": 2.0, "duration": 2.0,
+                            "text": "Merhaba.", "flags": [], "metrics": {}}])
+    st.merge_clip_results([{"id": "c1", "metrics": {"music_to_speech_db": -10.0, "music_prob_external": 0.9, "speech_ratio": 0.8},
+                            "flags": ["background_music", "short"]}])
+    # müzik aşaması yeniden koşuyor: dış model kapalı, işaret yok
+    st.merge_clip_results([{"id": "c1", "metrics": {"music_to_speech_db": -50.0}, "flags": []}],
+                          owned_metrics=("music_to_speech_db", "music_prob_external"), owned_flags=("background_music",))
+    c = st.clips()[0]
+    assert c["metrics"] == {"speech_ratio": 0.8, "music_to_speech_db": -50.0}   # hayalet anahtar yok, başka aşamanınki duruyor
+    assert c["flags"] == ["short"]                                             # sahipli işaret düştü, başkası kaldı

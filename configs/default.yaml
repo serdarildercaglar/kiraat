@@ -31,6 +31,15 @@ runtime:
   # karıştırılır (tam koşuyu taklit eden örneklem); null = sıralı, belirli.
   sample_seed: null
   max_clips: 0
+  # Saat bütçesi: kaynak seçimi kapsayıcı sürelerinin toplamı bu değere
+  # ulaşınca durur (0 = sınırsız). max_sources ile birlikte kullanılabilir;
+  # hangisi önce dolarsa. Bütçeyi aşan ilk kayıt alınır (alt sınır).
+  max_hours: 0
+  # Kanal başına kayıt sayısı sınırı (0 = sınırsız). Tüm kanalları eşit
+  # temsil eden örnek koşular için `prepare.max_minutes` ile birlikte:
+  # 27 kanal × 3 kayıt × ≤20 dk ≈ 25 saat. Kayıtlar yine rastgele seçilir;
+  # kısa kayıtlara doğru eğilim yoktur, uzunlar tavanda kesilir.
+  max_sources_per_channel: 0
 
 sources:
   extensions: [".m4a", ".mp3", ".wav", ".flac", ".opus", ".webm"]
@@ -45,6 +54,10 @@ prepare:
   # Çözülen ses kapsayıcı süresinin bu oranından kısaysa kayıt
   # `truncated_source` işareti alır (kesik indirme); işlenmeye devam eder.
   truncated_ratio: 0.95
+  # Kayıt başına dakika tavanı (0 = tam kayıt): yalnızca ilk bu kadar dakika
+  # çözülür. Kanalların medyan kaydı 0,2–2 saat arasında değiştiği için kanal
+  # başına eşit saatlik örneklem ancak böyle kurulur. Tam koşuda 0.
+  max_minutes: 0
 
 # VAD artık kesim aracı değil: yalnızca ASR'ye verilecek konuşma bölgelerini
 # bulur. Kesim kararı transcript'te alınır.
@@ -125,6 +138,13 @@ music:
   # koşmaz ve sütuna taban değer (-80 dB) yazılır. Hangi kliplerde gerçekten
   # koştuğu `music_db_separated` sütununda yayımlanır.
   separator_screen: 0.05
+  # `background_music` işareti iki koşul ister: dB > inaudible_db VE AudioSet
+  # skoru ≥ audioset_min. 29 Ağu 2026 sample-15: dB tek başına bir kanalda
+  # (MuratKaraOfficial2021) 41 müziksiz klibi işaretledi (kullanıcı dinledi);
+  # o kliplerde AudioSet medyan 0,10 / p90 0,20, diğer kanallardaki gerçek
+  # müzikte medyan 0,53. 0,3 eşiği yanlış pozitiflerin 38/41'ini düşürür,
+  # gerçek müziğin 28/33'ünü tutar. null = yalnızca dB.
+  audioset_min: 0.3
   # Bu dB'nin üstü "duyulur müzik" sayılır ve `background_music` işareti
   # verilir. İşaret yayımlanan sütundan türetildiği için yeniden kesilebilir.
   # Kör dinleme (28 Ağu 2026, 34 klip, 5 bant): −40 dB altında 10 klipte
@@ -137,7 +157,10 @@ music:
   # 70 kliplik ölçümde bu modelin fiziksel ölçüyle sıra korelasyonu +0,311
   # çıktı; AudioSet skorunun aynı ölçüyle korelasyonu +0,799. Bu yüzden
   # varsayılan olarak kapalı. Açılırsa yalnızca sütun olarak yayımlanır.
-  external_model: null   # örn. AIGenLab/speech-music-classifier-v3
+  # Dış konuşma/müzik sınıflandırıcıları (AIGenLab v3/AST) 29 Ağu 2026'da
+  # sınandı ve kullanılmıyor: v3 müziksiz kliplerin üçte ikisine "müzik"
+  # dedi; AST varyantı AudioSet skoruyla aynı bilgiyi verdi. Yuva boş kalır.
+  external_model: null
   external_gate: false
 
 # Künye/anons madenciliği: kanalın kayıtlarının baş ve son bölgelerinde en az
@@ -166,7 +189,10 @@ dedupe:
 # `recommended` bayrağını yeniden hesaplar.
 recommended_subset:
   # v2 (28 Ağu 2026): müzik eşiği −30 → −40 dB, kör dinlemeyle.
-  version: "2"
+  # v3 (29 Ağu 2026): müzik kuralı dB sütunundan `background_music` işaretine
+  # taşındı (dB VE AudioSet ≥ 0,3); dB tek başına bir kanalda müziksiz
+  # klipleri eliyordu. Eşikler dinleme denetimiyle kesinleşene kadar geçici.
+  version: "3"
   rules:
     - metric: speech_ratio
       min: 0.60
@@ -179,10 +205,7 @@ recommended_subset:
     - metric: dnsmos_ovrl
       min: 3.0
       allow_missing: true
-    - metric: music_to_speech_db
-      max: -30.0
-      allow_missing: true
-    - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate]
+    - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate, background_music]
 
 export:
   sample_rate: 24000

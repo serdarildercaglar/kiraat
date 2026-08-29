@@ -34,6 +34,9 @@ class RefineConfig:
     silence_drop_db: float = 25.0
     #: Sessizlik sayılması için asgari süre (s).
     min_silence_sec: float = 0.06
+    #: Bulunan sessizlik sonraki kelimenin damgasından bu kadar sonra
+    #: başlıyorsa kelime çoktan başlamıştır; sınır damgayı geçemez (s).
+    silence_after_word_sec: float = 0.10
 
 
 @dataclass(frozen=True)
@@ -80,13 +83,23 @@ def _silence_runs(mask: np.ndarray) -> list[tuple[int, int]]:
 def find_boundary(
     env: Envelope, t_end: float, t_next: float, seg: SegmentConfig, cfg: RefineConfig = RefineConfig()
 ) -> tuple[float, float]:
+    """(önceki klibin bitişi, sonraki klibin başlangıcı); bkz. `find_boundary_ex`."""
+    prev_end, next_start, _ = find_boundary_ex(env, t_end, t_next, seg, cfg)
+    return prev_end, next_start
+
+
+def find_boundary_ex(
+    env: Envelope, t_end: float, t_next: float, seg: SegmentConfig, cfg: RefineConfig = RefineConfig()
+) -> tuple[float, float, float | None]:
     """(önceki klibin bitişi, sonraki klibin başlangıcı).
 
     `t_end` önceki klibin son kelimesinin, `t_next` sonrakinin ilk kelimesinin
     ASR damgası. Pencere içinde en uzun sessizlik bulunursa önceki klip o
     sessizliğe `trail_pad_sec` kadar uzar, sonraki klip sessizliğin sonundan
     `lead_pad_sec` önce başlar; ikisi çakışmaz. Sessizlik yoksa ikisi de
-    penceredeki en sessiz ana konur.
+    penceredeki en sessiz ana konur. Üçüncü değer bulunan sessizliğin
+    başlangıcıdır (yoksa None); çağıran, sessizliğin sonraki kelime
+    başladıktan sonra mı geldiğine bununla karar verir.
     """
     # Pencere `t_next`e göre kısılmaz: boşluk sıfırken sonraki kelimenin
     # damgası da yanlış yerdedir ve gerçek sessizlik ikisinin de ötesindedir.
@@ -107,9 +120,9 @@ def find_boundary(
         s0, s1 = env.t(lo + a) - env.frame / 2, env.t(lo + b - 1) + env.frame / 2
         prev_end = min(s0 + seg.trail_pad_sec, s1)
         next_start = max(s1 - seg.lead_pad_sec, prev_end)
-        return round(prev_end, 3), round(next_start, 3)
+        return round(prev_end, 3), round(next_start, 3), round(s0, 3)
     t = env.t(lo + int(np.argmin(window)))
-    return round(t, 3), round(t, 3)
+    return round(t, 3), round(t, 3), None
 
 
 def refine_boundaries(
@@ -135,12 +148,27 @@ def refine_boundaries(
         t_next = words[nxt.word_span[0]].start
         if t_next - t_end >= room:
             continue
-        prev_end, next_start = find_boundary(env, t_end, t_next, seg, cfg)
+        prev_end, next_start, silence_at = find_boundary_ex(env, t_end, t_next, seg, cfg)
         # Sınır önceki klibin son kelimesinin başına taşamaz ve iki klip
-        # çakışmaz. Sonraki kelimenin damgasına göre kırpma yapılmaz: boşluk
-        # sıfırken o damga da yanlıştır ve bulunan sessizlik ondan güçlü kanıttır.
+        # çakışmaz.
         prev_end = max(prev_end, words[prev.word_span[1] - 1].start + 0.05)
         next_start = max(next_start, prev_end)
+        # Sonraki kelimenin damgasının ötesine yalnızca güçlü kanıtla geçilir:
+        # damgada ya da hemen ardında başlayan bir sessizlik, kelimenin henüz
+        # başlamadığını gösterir (Whisper'ın yapıştırdığı kelimeler). Sessizlik
+        # yoksa ("en sessiz an" pencerenin uzak kenarına düşer) ya da sessizlik
+        # kelime başladıktan sonra geliyorsa sınır kelime başını geçemez —
+        # sample-15'te kliplerin %2,5'i ilk hecesi kesik başlıyordu.
+        if silence_at is None or silence_at > t_next + cfg.silence_after_word_sec:
+            next_start = min(next_start, t_next)
+            prev_end = min(prev_end, next_start)
+        # Hizalayıcı damgaları çakışıyorsa (sonraki kelime öncekinin bitişinden
+        # önce "başlıyor") hangi kelimenin kesileceği belirsizdir; sınır çakışma
+        # aralığının ortasına konur ki kayıp iki tarafa da en az olsun.
+        if t_next < t_end and next_start < t_end:
+            mid = round((t_end + t_next) / 2, 3)
+            next_start = max(next_start, mid)
+            prev_end = min(max(prev_end, mid), next_start)
         # Sonraki klip tek kelimelik ve damgası yanlışsa bulunan sessizlik onun
         # bitişinin ötesinde kalabilir; klip sıfır ya da eksi süreli olmasın diye
         # sınır geri çekilir, gerekirse önceki klip de kısalır.

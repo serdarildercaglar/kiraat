@@ -68,13 +68,16 @@ def _measure_one(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
     wave16 = torch.from_numpy(mono)
     if sr != 16000:
         wave16 = torchaudio.functional.resample(wave16, sr, 16000)
+    # return_seconds=True zamanı 0,1 s'ye yuvarlıyor; sessizlik sütunları o
+    # çözünürlükte kalıyordu. Örnek indeksinden ms çözünürlükle çevrilir.
     ts = get_speech_timestamps(
-        wave16, _VAD, sampling_rate=16000, return_seconds=True,
+        wave16, _VAD, sampling_rate=16000, return_seconds=False,
         threshold=float(vad_opts.get("threshold", 0.5)),
         min_speech_duration_ms=int(vad_opts.get("min_speech_duration_ms", 250)),
         min_silence_duration_ms=int(vad_opts.get("min_silence_duration_ms", 300)),
         speech_pad_ms=int(vad_opts.get("speech_pad_ms", 100)),
     )
+    ts = [{"start": t["start"] / 16000, "end": t["end"] / 16000} for t in ts]
     metrics.update(speech_metrics(ts, len(mono) / sr))
     return {"id": clip_id, "metrics": metrics, "flags": []}
 
@@ -82,7 +85,10 @@ def _measure_one(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
 @register
 class ClipQcStage(ClipStage):
     name = "clip_qc"
-    version = "1"   # ölçümler değişmedi; yalnızca paralel
+    version = "2"   # v2: VAD damgaları örnek tabanlı (ms çözünürlük), 0,1 s yuvarlama kalktı
+    produces_metrics = ("clip_ratio", "peak_dbfs", "rms_dbfs", "speech_ratio", "internal_silence_sec",
+                        "leading_silence_sec", "trailing_silence_sec")
+    produces_flags = ("unreadable_audio",)
 
     def setup(self) -> None:
         import multiprocessing as mp

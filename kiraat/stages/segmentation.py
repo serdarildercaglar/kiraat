@@ -16,7 +16,7 @@ import numpy as np
 from ..base import SourceStage, register
 from ..boilerplate import find_spans
 from ..boundaries import envelope, refine_boundaries
-from ..segment import Word, attach_clitics, segment
+from ..segment import Word, attach_clitics, segment, clamp_to_audio
 from ..text.normalize import light_clean, to_spoken
 from .asr import load_words
 
@@ -33,7 +33,7 @@ def cut(mono: np.ndarray, sr: int, dst: Path, start: float, end: float) -> None:
 @register
 class SegmentStage(SourceStage):
     name = "segment"
-    version = "4"
+    version = "8"
     depends_on = ("asr", "align", "boilerplate")
 
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
@@ -69,6 +69,7 @@ class SegmentStage(SourceStage):
         audio, sr = sf.read(source["audio"], dtype="float32", always_2d=True)
         mono = audio.mean(axis=1)
         clips = refine_boundaries(clips, words, envelope(mono, sr), seg_cfg)
+        clips = clamp_to_audio(clips, len(mono) / sr)
 
         out_dir = work / "clips" / source["channel"] / f"src{source['id']:05d}"
         out_dir.mkdir(parents=True, exist_ok=True)

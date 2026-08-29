@@ -68,3 +68,53 @@ def test_tek_kelimelik_klip_eksi_sureli_olmaz():
     for a, b in zip(refined, refined[1:]):
         assert a.end <= b.start
 
+
+
+def test_sinir_sonraki_klibin_ilk_kelimesini_gecmez():
+    """Sessizlik bulunamayınca 'en sessiz an' pencerenin uzak kenarına düşüp
+    sonraki klibin ilk hecesini kesiyordu; sınır kelime başlangıcını geçemez."""
+    import numpy as np
+    from kiraat.boundaries import envelope, refine_boundaries
+    from kiraat.segment import Clip, SegmentConfig, Word
+
+    sr = 16000
+    # 3 s boyunca kesintisiz gürültü: hiçbir yerde sessizlik yok
+    rng = np.random.default_rng(0)
+    wave = (rng.standard_normal(3 * sr) * 0.3).astype("float32")
+    words = [Word("Bir.", 0.5, 1.0), Word("İki.", 1.02, 1.6)]
+    clips = [Clip(0.4, 1.01, "Bir.", (0, 1)), Clip(1.01, 1.7, "İki.", (1, 2))]
+    out = refine_boundaries(clips, words, envelope(wave, sr), SegmentConfig())
+    assert out[1].start <= words[1].start
+    assert out[0].end <= out[1].start
+
+
+def test_kelime_basladiktan_sonraki_sessizlik_siniri_ileri_itmez():
+    """Whisper/hizalayıcı damgası doğru, kelime kısa ve ardından sessizlik
+    varsa bulunan sessizlik kelimenin SONRASIDIR; sınır oraya taşınırsa klip
+    kendi kelimesini kaybeder (sample-15'te 0,1 s'lik '1.' klipleri)."""
+    from kiraat.boundaries import envelope, refine_boundaries
+    from kiraat.segment import Clip, SegmentConfig, Word
+
+    # konuşma 0,5–1,15 (önceki), 1,17–1,50 (kısa kelime), sonra sessizlik 1,5–2,2, konuşma 2,2–3,0
+    wave = synth([(0.5, 1.15), (1.17, 1.50), (2.2, 3.0)], 3.5)
+    words = [Word("Bir.", 0.5, 1.15), Word("İki.", 1.17, 1.50), Word("Üç.", 2.2, 3.0)]
+    clips = [Clip(0.4, 1.16, "Bir.", (0, 1)), Clip(1.16, 1.75, "İki.", (1, 2)), Clip(2.05, 3.2, "Üç.", (2, 3))]
+    out = refine_boundaries(clips, words, envelope(wave, SR), SegmentConfig())
+    assert out[1].start <= words[1].start, out[1]
+    assert out[0].end <= out[1].start
+
+
+def test_cakisan_damgalarda_sinir_ortaya_konur():
+    """Hizalayıcı sonraki kelimeyi öncekinin bitişinden önce başlatmışsa iki
+    kelimeden biri kesilecek; sınır çakışmanın ortasında olmalı, önceki
+    klibin sonu kelimesinin 0,3 s içine çekilmemeli."""
+    import numpy as np
+    from kiraat.boundaries import envelope, refine_boundaries
+    from kiraat.segment import Clip, SegmentConfig, Word
+
+    sr = 16000
+    wave = (np.random.default_rng(1).standard_normal(3 * sr) * 0.3).astype("float32")  # sessizlik yok
+    words = [Word("Bir.", 0.5, 1.40), Word("İki.", 1.10, 1.9)]   # 0,3 s çakışma
+    clips = [Clip(0.4, 1.25, "Bir.", (0, 1)), Clip(1.25, 2.0, "İki.", (1, 2))]
+    out = refine_boundaries(clips, words, envelope(wave, sr), SegmentConfig())
+    assert abs(out[0].end - 1.25) < 0.02 and abs(out[1].start - 1.25) < 0.02, out

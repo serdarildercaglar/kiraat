@@ -137,17 +137,24 @@ class Store:
         d["meta"] = json.loads(d.pop("meta_json") or "{}")
         return d
 
-    def merge_clip_results(self, rows: Iterable[Mapping[str, Any]]) -> None:
-        """Bir klip aşamasının ölçüm ve işaretlerini mevcut sütunlara katar."""
+    def merge_clip_results(self, rows: Iterable[Mapping[str, Any]], *,
+                           owned_metrics: Iterable[str] = (), owned_flags: Iterable[str] = ()) -> None:
+        """Bir klip aşamasının ölçüm ve işaretlerini mevcut sütunlara katar.
+
+        `owned_*`, aşamanın sahip olduğu anahtarlar: önce silinir, sonra yeni
+        çıktı katılır. Yeniden koşan bir aşamanın artık üretmediği ölçüm ya da
+        vermediği işaret böylece kalkar; başka aşamaların alanlarına dokunulmaz.
+        """
+        owned_metrics, owned_flags = set(owned_metrics), set(owned_flags)
         for row in rows:
             cur = self.con.execute("select flags_json, metrics_json from clips where id=?", (row["id"],)).fetchone()
             if cur is None:
                 raise KeyError(f"klip yok: {row['id']}")
-            flags = json.loads(cur["flags_json"])
+            flags = [f for f in json.loads(cur["flags_json"]) if f not in owned_flags]
             for f in row.get("flags", ()):
                 if f not in flags:
                     flags.append(f)
-            metrics = json.loads(cur["metrics_json"])
+            metrics = {k: v for k, v in json.loads(cur["metrics_json"]).items() if k not in owned_metrics}
             metrics.update(row.get("metrics", {}))
             self.con.execute("update clips set flags_json=?, metrics_json=? where id=?",
                              (json.dumps(flags, ensure_ascii=False), json.dumps(metrics, ensure_ascii=False), row["id"]))

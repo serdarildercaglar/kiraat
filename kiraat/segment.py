@@ -178,6 +178,21 @@ def _pad(
     return replace(clip, start=round(start, 3), end=round(end, 3))
 
 
+def clamp_to_audio(clips: list[Clip], total_sec: float) -> list[Clip]:
+    """Klip sınırlarını kaydın gerçek süresine kelepçele.
+
+    Son klibin nefes payı (`trail_pad_sec`) kaydın sonunu aşabilir; kesim
+    bunu sessizce kırpıyordu ama `end`/`duration` sütunları aşan değeri
+    taşıyordu (beş kayıtlık örnekte bir klipte 0,19 s). Sütun, dosyadaki
+    sesle aynı olmalı.
+    """
+    out: list[Clip] = []
+    for c in clips:
+        end = min(c.end, round(total_sec, 3))
+        out.append(replace(c, end=end) if end != c.end else c)
+    return out
+
+
 def _cut_at_boilerplate(
     sentences: list[_Sentence], words: list[Word], spans: Sequence[tuple[int, int]]
 ) -> list[tuple[_Sentence, bool]]:

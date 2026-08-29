@@ -36,9 +36,22 @@ def test_taban_asilmaz():
 
 
 def test_ikili_yanit_esikten_turetilir():
-    assert not has_background_music(-40.0)
-    assert has_background_music(-10.0)
-    assert not has_background_music(None)
+    # Yalnızca dB kuralı (audioset_min=None): eşik üstü var, altı yok.
+    assert not has_background_music(-40.0, audioset_min=None)
+    assert has_background_music(-10.0, audioset_min=None)
+    assert not has_background_music(None, audioset_min=None)
     # Kullanici kendi esigini kesebilir.
-    assert has_background_music(-40.0, threshold_db=-50.0)
+    assert has_background_music(-40.0, threshold_db=-50.0, audioset_min=None)
+    # Varsayılan: AudioSet kanıtı olmadan dB tek başına işaret üretmez.
+    assert not has_background_music(-10.0)
     assert INAUDIBLE_DB == -30.0
+
+
+def test_isaret_db_ve_audioset_birlikte_ister():
+    # dB tek başına yetmez: AudioSet kanıtı yoksa (oda tınısı) işaret yok
+    assert not has_background_music(-10.0, audioset=0.10, audioset_min=0.3)
+    assert has_background_music(-10.0, audioset=0.55, audioset_min=0.3)
+    # AudioSet yüksek ama dB eşiğin altında: duyulmuyor, işaret yok
+    assert not has_background_music(-45.0, audioset=0.9, audioset_min=0.3)
+    # audioset_min=None yalnızca dB kuralı
+    assert has_background_music(-10.0, audioset=0.0, audioset_min=None)

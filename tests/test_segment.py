@@ -137,3 +137,13 @@ def test_noktali_kisaltma_parcalari_birlesir():
     words = [Word("P", 0, .2), Word(".O", .2, .4), Word(".Y", .4, .6), Word(".M.", .6, .8), Word("lağvedildi.", .9, 1.5)]
     assert [w.text for w in attach_clitics(words)] == ["P.O.Y.M.", "lağvedildi."]
 
+
+
+def test_klip_sonu_kayit_suresini_asmaz():
+    from kiraat.segment import Clip, clamp_to_audio
+
+    clips = [Clip(0.0, 5.0, "Bir.", (0, 1)), Clip(5.2, 9.85, "İki.", (1, 2))]
+    out = clamp_to_audio(clips, 9.6)
+    assert out[0] == clips[0]                      # aşmayan klip dokunulmaz
+    assert out[1].end == 9.6 and out[1].start == 5.2
+    assert out[1].text == "İki." and out[1].word_span == (1, 2)
