@@ -46,7 +46,18 @@ runtime:
   max_sources_per_channel: 0
 
 sources:
-  extensions: [".m4a", ".mp3", ".wav", ".flac", ".opus", ".webm"]
+  # Ham veri azaltılmaz (kullanıcı kararı, 30 Ağu 2026): liste dar tutulduğu
+  # için dört `.m4aa` dosyası (12,41 saat) sessizce atlanıyordu. Artık
+  # ffmpeg'in ses akışı çıkarabildiği bütün kapsayıcılar alınır; video
+  # kapsayıcıları da listededir, çünkü `prepare` yalnızca ses akışını çözer.
+  # Ses akışı olmayan ya da bozuk dosya atlanmaz: kayıt `error` ile işaretlenir
+  # ve koşu kaydında `sources_error` olarak görünür.
+  # `scripts/inventory.py` bu listenin dışında kalan her ses dosyasını
+  # raporlar — liste eksik kalırsa bir sonraki envanterde görünür.
+  extensions: [".m4a", ".m4aa", ".m4b", ".mp3", ".mp2", ".wav", ".flac", ".opus",
+               ".ogg", ".oga", ".webm", ".weba", ".aac", ".wma", ".aiff", ".aif",
+               ".alac", ".ape", ".wv", ".caf", ".au", ".amr", ".mka", ".mp4",
+               ".m4v", ".mkv", ".mov", ".avi", ".ts", ".3gp"]
   exclude_patterns: []
 
 prepare:
@@ -261,6 +272,13 @@ recommended_subset:
 export:
   sample_rate: 24000
   shard_rows: 2000
-  # Kanal başına saat tavanı: v1'de iki kanal temiz saatlerin %79'unu
-  # tutuyordu. Tavan yalnızca önerilen alt kümeye uygulanır.
-  max_hours_per_channel: 120
+  # Kanal başına saat tavanı YOK (kullanıcı kararı, 30 Ağu 2026). Anahtar
+  # buradan çıkarıldı, çünkü hiçbir kod onu okumuyordu ve konfig uygulanmayan
+  # bir kural ilan ediyordu. Tavan uygulansaydı korpus 3.440 saatten 1.849
+  # saate inecekti; karar veri azaltmamak yönünde.
+  #
+  # Kanal dengesizliği yok sayılmıyor, yayımlanıyor: her klip `channel` ve
+  # `duration` sütunlarını taşıdığı için kullanıcı istediği tavanı kendisi
+  # kesebilir. Ölçülen dağılım (30 Ağu 2026): seslikitaplarmavi %19,5,
+  # BirDinle %15,5, ilk iki kanal %35,2, dokuz kanal 120 saatin üstünde.
+  # Bu sayılar veri kartında ve makalenin §Sınırlar bölümünde anlatılır.

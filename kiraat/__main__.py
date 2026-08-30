@@ -84,8 +84,17 @@ def dry_run(cfg: Config) -> int:
 
     cap = float(cfg.get("prepare.max_minutes", 0) or 0) * 60.0
     durations: dict[str, float] = {}
+    unreadable: list[str] = []
     def duration_of(path: str) -> float:
-        durations[path] = ffprobe(path)["duration"]
+        # Okunamayan dosya kuru koşuyu düşürmez: ham kökte bozuk ya da sıfır
+        # baytlık indirme olabiliyor (30 Ağu 2026'da bir tane vardı) ve
+        # uzantı listesi genişledikçe olasılığı artıyor. Koşuda da böyle:
+        # `prepare` kaydı `error` ile işaretler, hat devam eder.
+        try:
+            durations[path] = ffprobe(path)["duration"]
+        except Exception:
+            unreadable.append(path)
+            durations[path] = 0.0
         return durations[path]
     picked = discover_sources(cfg, duration_of=duration_of)
     per = collections.defaultdict(lambda: [0, 0.0, 0.0])
@@ -102,6 +111,10 @@ def dry_run(cfg: Config) -> int:
     print(f"toplam: {len(picked)} kaynak, {len(per)} kanal, ham {tot_raw/3600:.2f} saat, "
           f"sayılan {tot_eff/3600:.2f} saat (tavan {cap/60:.0f} dk)" if cap else
           f"toplam: {len(picked)} kaynak, {len(per)} kanal, {tot_raw/3600:.2f} saat")
+    if unreadable:
+        print(f"okunamayan {len(unreadable)} dosya (koşuda `error` işaretiyle kayda düşer):")
+        for path in unreadable:
+            print(f"  {path}")
     return 0
 
 

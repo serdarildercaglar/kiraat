@@ -479,3 +479,27 @@ def test_bolutleme_kaydin_tamamini_bellege_almaz(tmp_path):
     assert rows and all(r["duration"] > 0 for r in rows)
     ses_mb = wave.nbytes / 1e6
     assert zirve < 64 << 20, f"{dakika} dakikalık kayıtta zirve {zirve/1e6:.0f} MB (ses {ses_mb:.0f} MB)"
+
+
+def test_kuru_kosu_okunamayan_dosyada_dusmez(tmp_path, capsys):
+    """Ham kökte sıfır baytlık ya da bozuk indirme olabiliyor (30 Ağu 2026'da
+    bir tane vardı) ve uzantı listesi genişledikçe olasılığı artıyor. Kuru
+    koşu bunda çökmemeli, dosyayı adıyla bildirmeli."""
+    import numpy as np
+    import soundfile as sf
+
+    from kiraat.__main__ import dry_run
+    from kiraat.config import Config
+
+    (tmp_path / "kanal").mkdir()
+    sf.write(str(tmp_path / "kanal" / "saglam.wav"),
+             np.zeros(16000, dtype="float32"), 16000)
+    (tmp_path / "kanal" / "bozuk.m4a").write_bytes(b"")
+
+    cfg = Config({"paths": {"raw_root": str(tmp_path)},
+                  "sources": {"extensions": [".wav", ".m4a"], "exclude_patterns": []},
+                  "runtime": {"max_sources": 0}, "prepare": {"max_minutes": 0}})
+    assert dry_run(cfg) == 0
+    out = capsys.readouterr().out
+    assert "bozuk.m4a" in out and "okunamayan 1 dosya" in out
+    assert "toplam: 2 kaynak" in out
