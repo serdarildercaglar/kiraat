@@ -30,7 +30,10 @@ parser.add_argument("--prefer-small-gap", type=float, default=None,
 parser.add_argument("--seed", type=int, default=11)
 parser.add_argument("--score", default=None, help="cevap JSON'u; sayfa üretmek yerine skorla")
 parser.add_argument("--audit-name", default="boundary-v2")
-parser.add_argument("--questions", choices=["boundary", "music"], default="boundary")
+parser.add_argument("--questions", choices=["boundary", "music", "clipping"], default="boundary")
+parser.add_argument("--ids-file", default=None,
+                    help="klipleri örneklemek yerine bu dosyadaki kimlikleri kullan "
+                         "(work/<koşu>/listen-*.txt biçimi: boşlukla ayrılmış kimlikler)")
 args = parser.parse_args()
 
 QUESTION_SETS = {
@@ -50,6 +53,25 @@ QUESTION_SETS = {
             "<li><strong>Bitiş:</strong> klip cümle bitince mi bitiyor?</li>"
             "<li><strong>Kesik kelime:</strong> ilk ya da son kelimenin bir parçası kesilmiş mi?</li></ol>"
             "<p>Bittiğinde en alttaki <strong>Sonuçları kopyala</strong> düğmesine bas ve çıkan metni sohbete yapıştır.</p>"
+        ),
+    },
+    "clipping": {
+        "q": [
+            {"k": "clip", "label": "Kırpılma", "hint": "tepe noktalarında sertlik/çatırtı duyuluyor mu?",
+             "opts": [["yok", "Yok"], ["hafif", "Hafif, fark edilir"], ["belirgin", "Belirgin", "neg"],
+                      ["baskin", "Baskın, rahatsız edici", "neg"]]},
+            {"k": "train", "label": "Eğitime girsin mi?", "hint": "bu klip bir TTS modelinin öğrenmesini ister misin?",
+             "opts": [["evet", "Evet"], ["hayir", "Hayır", "neg"]]},
+        ],
+        "intro": (
+            "<div class=\"eyebrow\">Ne yapmalı</div>"
+            "<p>Aşağıda __COUNT__ klip var; kanal ve ölçülen kırpılma değeri gizli. Soru <strong>dijital kırpılma</strong>: "
+            "sesin en yüksek noktalarında sertlik, çatırtı, boğuklaşma ya da &quot;bozuk hoparlör&quot; hissi var mı?</p>"
+            "<p><strong>Gür ses kırpılma değildir.</strong> Bir kanal sadece yüksek seviyede kaydedilmiş olabilir; "
+            "bu tek başına kusur sayılmaz. Aranan şey, dalga biçiminin tavana dayanmasından doğan bozulma.</p>"
+            "<p>Kulaklıkla dinle. &quot;Hafif&quot; dikkat edince fark edilir ama rahatsız etmez; &quot;belirgin&quot; açıkça duyulur; "
+            "&quot;baskın&quot; dinlemeyi rahatsız eder.</p>"
+            "<p>Bittiğinde <strong>Sonuçları kopyala</strong> düğmesine bas ve çıkan metni sohbete yapıştır.</p>"
         ),
     },
     "music": {
@@ -75,6 +97,38 @@ if args.score:
     key = json.load((out / "key.json").open(encoding="utf-8"))
     ans = json.load(open(args.score, encoding="utf-8"))["answers"]
     man = {r["id"]: r for r in map(json.loads, open(args.manifest, encoding="utf-8"))}
+
+    if args.questions == "clipping":
+        # Müzik eşiği kararındaki yöntemin aynısı: cevapları ölçüme göre
+        # sırala, her aday eşikte hata say (duyulan ama geçen + duyulmayan
+        # ama elenen), en az hatalıyı bildir.
+        satir = []
+        for n in sorted(ans, key=int):
+            k, a = key[n], ans[n]
+            satir.append((float(k["clip_ratio"]), a.get("clip", "-"), a.get("train", "-"),
+                          k["channel"], n, a.get("note", "")))
+        satir.sort()
+        print(f"{'clip_ratio':>11s} {'kırpılma':>10s} {'eğitim':>7s}  kanal")
+        for cr, cl, tr, ch, n, note in satir:
+            print(f"{cr:11.5f} {cl:>10s} {tr:>7s}  {ch}" + (f"   — {note[:50]}" if note else ""))
+        duyulan = {"belirgin", "baskin"}
+        adaylar = sorted({round(cr, 5) for cr, *_ in satir} | {0.002})
+        print(f"\n{'eşik':>9s} {'kaçan':>6s} {'boşuna':>7s} {'hata':>5s}   (kaçan: duyuluyor ama geçiyor)")
+        en_iyi = None
+        for e in adaylar:
+            kacan = sum(1 for cr, cl, *_ in satir if cl in duyulan and cr <= e)
+            bosuna = sum(1 for cr, cl, *_ in satir if cl not in duyulan and cr > e)
+            h = kacan + bosuna
+            print(f"{e:9.5f} {kacan:6d} {bosuna:7d} {h:5d}" + ("   ← mevcut kural" if abs(e - 0.002) < 1e-9 else ""))
+            if en_iyi is None or h < en_iyi[1]:
+                en_iyi = (e, h)
+        print(f"\nen az hatalı eşik: {en_iyi[0]:.5f} ({en_iyi[1]} hata / {len(satir)} klip)")
+        egitim_hayir = [s for s in satir if s[2] == "hayir"]
+        print(f"eğitime girmesin denen: {len(egitim_hayir)}/{len(satir)}"
+              + (f", clip_ratio aralığı {min(s[0] for s in egitim_hayir):.5f}–{max(s[0] for s in egitim_hayir):.5f}"
+                 if egitim_hayir else ""))
+        raise SystemExit
+
     tot: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
     for n in sorted(ans, key=int):
         a, k = ans[n], key[n]
@@ -101,6 +155,16 @@ for r in rows:
     r.setdefault("lead_gap", r.get("lead_gap_sec"))
     r.setdefault("trail_gap", r.get("trail_gap_sec"))
 rng = random.Random(args.seed)
+if args.ids_file:
+    # Hazır liste: bantlara göre dengelenmiş bir seçim dışarıda kurulmuş olur
+    # (bkz. defter). Sıra yine karıştırılır ki bant sırası ele vermesin.
+    want = Path(args.ids_file).read_text(encoding="utf-8").split()
+    by_id = {r["id"]: r for r in rows}
+    eksik = [i for i in want if i not in by_id]
+    if eksik:
+        raise SystemExit(f"manifestoda olmayan kimlik: {eksik[:5]}")
+    rows = [by_id[i] for i in want]
+    args.n_kiraat, args.n_v1 = len(rows), 0
 kiraat = [r for r in rows if r["system"] == "kiraat" and r.get("audio")]
 v1 = [r for r in rows if r["system"] == "v1" and r.get("audio")]
 if args.prefer_small_gap is not None:
@@ -125,7 +189,9 @@ for i, r in enumerate(sample, 1):
     items.append({"n": i, "dur": round(r["end"] - r["start"], 1), "text": r["text"],
                   "data": "data:audio/ogg;base64," + b64})
     key[str(i)] = {"id": r["id"], "system": r["system"], "channel": r["channel"], "flags": r["flags"],
-                   "music_to_speech_db": r.get("music_to_speech_db"), "music_score_audioset": r.get("music_score_audioset")}
+                   "music_to_speech_db": r.get("music_to_speech_db"), "music_score_audioset": r.get("music_score_audioset"),
+                   "clip_ratio": r.get("clip_ratio"), "peak_dbfs": r.get("peak_dbfs"), "rms_dbfs": r.get("rms_dbfs"),
+                   "recommended": r.get("recommended")}
 json.dump(key, (out / "key.json").open("w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
 template = Path(__file__).with_name("listen_template.html").read_text(encoding="utf-8")

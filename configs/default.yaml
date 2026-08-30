@@ -220,17 +220,26 @@ recommended_subset:
   # v3 (29 Ağu 2026): müzik kuralı dB sütunundan `background_music` işaretine
   # taşındı (dB VE AudioSet ≥ 0,3); dB tek başına bir kanalda müziksiz
   # klipleri eliyordu. Eşikler dinleme denetimiyle kesinleşene kadar geçici.
+  # v5 (30 Ağu 2026): `clip_ratio` kuralı kör dinlemeyle kaldırıldı (aşağıda).
   # v4 (29 Ağu 2026): `dnsmos_ovrl` kuralı kaldırıldı — DNSMOS aşaması
   # bağlanmadığı için sütun hiç üretilmiyordu ve kural `allow_missing: true`
   # ile 12.958 klibin hepsinde sessizce geçiyordu; politika "DNSMOS ≥ 3,0
   # uygulandı" gibi okunuyor ama hiçbir klibi etkilemiyordu. Hiçbir klibin
   # `recommended` değeri değişmez. Aşama bağlanınca ölçülüp geri konur.
-  version: "4"
+  version: "5"
   rules:
     - metric: speech_ratio
       min: 0.60
-    - metric: clip_ratio
-      max: 0.002
+    # v5 (30 Ağu 2026): `clip_ratio` kuralı kör dinlemeden geçemedi, kaldırıldı.
+    # Sınırlayıcı kalkınca kural canlanmış ve 536 klip elemeye başlamıştı;
+    # 532'si tek kanaldaydı (sess-Seslikitap, kliplerinin %93,2'si) — yani
+    # sinyal klip değil kanal özelliğiydi, v1'i öldüren örüntünün aynısı.
+    # 25 kliplik kör dinleme (altı bant, 0–0,0227, kanal ve skor gizli):
+    # 24 "yok", 1 "hafif" ve o da en düşük bantta (0,00001); 25/25 "eğitime
+    # girsin". Eşiğin üstündeki 7 klibin hiçbirinde bozulma duyulmadı.
+    # Sütun yayımlanmaya devam ediyor, kullanıcı kendi eşiğini kesebilir.
+    # - metric: clip_ratio
+    #   max: 0.002
     - metric: internal_silence_sec
       max: 1.0
     - metric: word_confidence

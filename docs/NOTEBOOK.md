@@ -1572,6 +1572,66 @@ kişilerce okunması yüzünden yalnız kaynak düzeyinde bölmek yetmiyor — b
 hem kaynağa hem metne göre yapılmalı ve kalan örtüşme ölçülüp raporlanmalı.
 Veri hazır olmadan yapılamaz, koşudan sonraya kalıyor.
 
+## 2026-08-30 — Kör dinleme: `clip_ratio` kuralı kaldırıldı (politika v5)
+
+Tepe sınırlayıcı kalkınca `clip_ratio` kuralı canlandı: önceki koşuda tek bir
+klip elemiyordu, sample-25c'de **536 klip** elemeye başladı. Dağılıma bakınca
+örüntü tanıdık çıktı — 536'nın **532'si tek kanaldaydı** (`sess-Seslikitap`,
+kliplerinin %93,2'si), kalan 26 kanal toplam 4 klip verdi. Yani sinyal klip
+özelliği değil kanal özelliğiydi; v1'de doğrulanmamış bir sınıflandırıcının
+981 saati silmesine yol açan örüntünün aynısı.
+
+O kanal ölçüm olarak gerçekten ayrı duruyor: RMS medyanı **−12,70 dBFS**
+(korpus medyanı −21,37, yaklaşık 9 dB daha yüksek) ve **571 klibinin
+571'i tam −0,000 dBFS'te tepe yapıyor** — duvara dayanmış bir mastering.
+Yani ölçüm bir şey buluyordu. Soru, bulduğu şeyin duyulup duyulmadığıydı.
+
+**Denetim.** 25 klip, altı `clip_ratio` bandından (0 kontrol; 0–0,0005;
+0,0005–0,002; 0,002–0,006; 0,006–0,015; >0,015), kanal ve ölçüm gizli,
+karışık sırada. Üst iki bant zorunlu olarak tek kanaldan geldi, çünkü o
+değerler yalnızca orada var — bu zaten bulgunun kendisi. Sorular: kırpılma
+(yok/hafif/belirgin/baskın) ve "bu klip bir TTS modelinin öğrenmesini ister
+misin". Sayfada ayrıca "gür ses kırpılma değildir" uyarısı vardı, çünkü
+ayırt edilmesi gereken tam buydu.
+
+**Sonuç: 24 "yok", 1 "hafif", 0 "belirgin", 0 "baskın"; 25/25 "eğitime
+girsin".** Tek "hafif" cevabı en düşük bantta, `clip_ratio` 0,00001'de —
+yani aralığın tabanında, tepesinde değil. Eşiğin üstündeki yedi klibin
+(0,0025–0,0227) hiçbirinde bozulma duyulmadı, en yüksek değer dahil.
+Korpustaki azami `clip_ratio` 0,0246 olduğu için aralığın tamamı denendi.
+
+En az hatalı eşik hesabı 0,0227 verdi ve bu bir eşik değil, "gözlenen her
+şeyin üstü" demek: mevcut kural 0,002'de 7 klibi boşuna eliyor, sıfır
+kaçırıyor. Kural kaldırıldı (**politika v5**); sütun yayımlanmaya devam
+ediyor, kullanıcı kendi eşiğini kesebilir.
+
+**Etkisi.** Önerilen alt küme %73,6 → **%77,2** (10.042 → 10.522 klip;
+16,73 → 17,49 saat). `sess-Seslikitap` %6,1 → **%90,0**. Yani doğrulanmamış
+bir eşik, bir kanalın onda dokuzunu duyulmayan bir sebeple siliyordu.
+
+**Gücün sınırı, dürüstçe.** Eşiğin üstünde yalnızca 7 klip dinlendi; 0/7
+duyulmaması, gerçek duyulur oranın %35'e kadar çıkabilme ihtimalini dışlamaz
+(%95 üst sınır). Ama karar yönü bunu gerektirmiyor: deponun değişmezi bir
+sinyalin **kapı olabilmesi için** kör dinlemeden geçmesini şart koşuyor,
+tersini değil. Kural geçemedi, dolayısıyla çıktı. Geri konmak istenirse
+pozitif bir sonuç gerekir. Ayrıca "eğitime girsin mi" sorusuna 25/25 "evet"
+gelmesi, kararın kendisi için tek başına yeterli.
+
+**Makaleye.** Bu, hattın kendi tezinin kendi üzerinde gösterilmiş hâli:
+standart, makul bir kalite ölçüsü (dijital kırpılma oranı) makul bir eşikle
+bir kanalın %93'ünü sessizce silecekti ve kör dinleme o kliplerin hepsinin
+eğitime uygun olduğunu söyledi. v1'de aynı sınıf hata yayımdan sonra
+görülmüştü; burada yayımdan önce yakalandı. Kanıt dosyaları
+`work/archive/sample-25c/` altında (`clipping-key.json`,
+`clipping-answers-1.json`, `listen-clipping.txt`).
+
+**Araç.** `scripts/listen_ui.py`'ye `clipping` soru kümesi ve `--ids-file`
+seçeneği eklendi (bantlara göre dengelenmiş bir liste dışarıda kurulup
+verilebiliyor; `listen-*.txt` biçimi `browse_ui`'nin hazır liste
+seçicisiyle ortak). Skorlayıcı, müzik eşiği kararındaki yöntemin aynısını
+uyguluyor: her aday eşikte kaçan ve boşuna elenen sayılıp en az hatalı olan
+bildiriliyor.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -1607,7 +1667,11 @@ tamamlandığında yukarıya tarihli bir kayıt olarak taşınır.
     başlayan klip oluyor (sample-25'te 3); Whisper kaydın ilk kelimesini
     büyük harfe çevirmiyor (1). İlkine işaret, ikincisine `to_spoken`
     öncesi ilk harf düzeltmesi; test.
-12. **`clip_ratio` eşiği ölçülen büyüklüğe göre gevşek** — `clip_ratio max:
+12. ~~**`clip_ratio` eşiği ölçülen büyüklüğe göre gevşek**~~ — *kapandı
+    (30 Ağu 2026): sınırlayıcı kalkınca kural canlandı, kör dinlemeden
+    geçemedi ve politika v5'te kaldırıldı. Yukarıdaki kayda bakınız.*
+
+    Eski madde: **`clip_ratio` eşiği ölçülen büyüklüğe göre gevşek** — `clip_ratio max:
     0.002` kuralı hiçbir yapılandırmada tek bir klip elemedi (sample-25b
     0/12.958; limitleyicisiz koşu 0/102), çünkü gözlenen azami değer 7×10⁻⁵.
     Tepe sınırlayıcı kalktıktan sonra bile ölü. Kırpık kliplerin gerçekten
