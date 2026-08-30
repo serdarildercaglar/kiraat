@@ -1504,6 +1504,74 @@ klip / 25 saat) limitleyici açıkken ve eski kare adımıyla üretildi; içinde
 `peak_dbfs`, `clip_ratio` ve damga sütunları makaleye taşınmaz. Örnek koşu
 düzeltmelerden sonra yeniden yapılacak.
 
+## 2026-08-30 — Köken zinciri: bağımlılıklar, ağırlık revizyonları ve koşu kaydı
+
+Çalışma bir yayına dönüşecek ve hattın kendisi artefakt olacak. Bu gözle
+bakınca üç boşluk çıktı; üçü de tam koşudan önce kapatıldı, çünkü bir koşunun
+kökeni koşudan sonra yeniden kurulamıyor.
+
+**1. Bağımlılıklar beyan edilmemişti.** `requirements.txt` tek satırdı
+(`pyyaml>=6.0`). Hattı çalıştıran her şey — torch, torchaudio, faster-whisper,
+ctranslate2, transformers, soundfile, silero-vad, ctc-forced-aligner, numpy —
+listede yoktu. Ortamdaki gerçek sürümler okunup tam sürümle sabitlendi
+(aralık kullanılmadı: yukarı akıştaki bir yükseltme çıktıyı sessizce
+değiştirir ve hata vermez). torch/torchaudio 2.5.1+cu124, faster-whisper
+1.2.1, ctranslate2 4.8.1, transformers 4.49.0, silero-vad 6.2.1,
+ctc-forced-aligner 1.0.2, soundfile 0.13.1, numpy 2.2.6, pyyaml 6.0.3.
+
+**2. Model ağırlıkları sabitlenmemişti.** `WhisperModel("large-v3")`,
+`from_pretrained("MIT/ast-...")` ve `load_silero_vad()` hepsi "o an güncel
+olan" demekti. Depolardan biri ağırlıkları yeniden yüklerse bütün transcript'ler
+ya da müzik skorları sessizce değişir. HF'den çekilen ikisi commit'e bağlandı:
+ASR `edaa852ec7e145841d8ffdb056a99866b5f0a478`
+(`Systran/faster-whisper-large-v3`), AudioSet
+`f826b80d28226b62986cc218e5cec390b1096902`. `WhisperModel` `revision`
+alıyor, `from_pretrained` da. torchaudio paketleri (MMS_FA, HDemucs) ve
+silero-vad ağırlığı paket sürümüne bağlı olduğu için ayrı revizyon almıyor;
+onları `requirements.txt` sabitliyor. `MusicStage` ayrıca AudioSet modelini
+artık konfigden okuyor, dataclass varsayılanından değil (`music` v3).
+
+**3. Manifest kökenini taşımıyordu.** İçinde `policy_version` vardı ama git
+commit'i, aşama sürümleri, konfig ve ağırlık kimlikleri yoktu; yani
+yayımlanan bir manifest onu üreten koda bağlanamıyordu — oysa makalenin
+merkezî iddiası ölçümün karardan ayrılığı ve politikanın yeniden
+koşulabilirliği. `kiraat/provenance.py` eklendi ve `export` artık
+manifestonun yanına `manifests/run.json` yazıyor: oluşturma zamanı, git
+commit'i/dalı/**kirli olup olmadığı**, yedi aşamanın sürüm dizgesi, politika
+sürümü, model kimlikleri (revizyon ya da onu sabitleyen paket), paket
+sürümleri, sayımlar ve konfigin tamamı. Paket sürümleri `importlib.metadata`
+ile okunuyor, modüller içe aktarılmıyor — yalnız `--stages export` koşan bir
+çağrı torch yüklemek zorunda kalmasın.
+
+Çalışma ağacı kirliyken üretilmiş manifest commit'ten yeniden üretilemez;
+`export` bunu uyarı basıyor ve kayda `git.dirty` olarak yazıyor.
+Doğrulayıcıya dört denetim eklendi: kayıt var mı, klip sayısı manifestle
+aynı mı, aşama sürümleri depodaki 'bitti' kayıtlarıyla uyuşuyor mu, her
+paket ve her ağırlık sabit mi. Uçtan uca sınandı — 33 kliplik koşuda yedi
+aşamanın sürümü de depodakiyle birebir uyuştu.
+
+**Düzeltme.** 30 Ağu sabahki kayıtta tepe sınırlayıcısı için "sütun yapısal
+olarak sıfırdan başka değer alamaz" denmişti; bu yanlıştı ve üstelik
+`docs/FEATURES.md` §1 aynı olguyu zaten daha doğru anlatıyordu — sınırlayıcı
+kaynak hızında uygulanıp ses sonra 24 kHz'e indirildiği için örnekler-arası
+taşma oluyor (19 kayıtlık örnekte tepe medyanı tavanı 0,06 dB, p90'ı 0,15 dB
+aşıyor). O bölüm okunmadan sentetik bir 24 kHz sinyalle sınanmıştı ve
+sinyalde yeniden örnekleme hiç koşmadığı için tavan temiz göründü. Ölçümün
+doğru hâli: sınırlayıcı kırpılma sinyalini **bastırıyor** (aynı kaynaklarda
+`clip_ratio > 0`: 6 → 0), yok etmiyor. Karar değişmiyor, gerekçe düzeldi;
+§1 kodla uyumlandı.
+
+**Ölü sütun muhafızı ölçeğe bağlandı.** Politikada adı geçen bir ölçümün
+korpusta tek değere çakılı olması küçük örneklemde beklenen bir şey (33
+kliplik koşuda `clip_ratio` sabit sıfır çıktı, kusur değil). Denetim artık
+500 klipten sonra bağlayıcı, altında bilgi olarak raporlanıyor.
+
+**Açık kalan.** Bölme (train/dev/test) mantığı ve sızıntı denetimi hâlâ yok;
+`export` tek bir `clips.jsonl` yazıyor. Aynı kitabın farklı kanallarda farklı
+kişilerce okunması yüzünden yalnız kaynak düzeyinde bölmek yetmiyor — bölme
+hem kaynağa hem metne göre yapılmalı ve kalan örtüşme ölçülüp raporlanmalı.
+Veri hazır olmadan yapılamaz, koşudan sonraya kalıyor.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri

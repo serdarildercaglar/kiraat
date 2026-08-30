@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Callable, Any, Sequence
 
-from . import base
+from . import base, provenance
 from .boilerplate import mine
 from .config import Config
 from .dedupe import mark_duplicates
@@ -288,8 +288,28 @@ class Pipeline:
                     "policy_version": c["policy_version"],
                 }
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-        log.info("export: %d klip → %s", len(clips), path)
+        # Koşu kaydı manifestonun yanına: hangi commit, hangi aşama sürümleri,
+        # hangi konfig, hangi ağırlıklar. Koşudan sonra yeniden kurulamaz.
+        rec = provenance.run_record(self.cfg, self.stage_versions(), {
+            "sources": len(sources),
+            "sources_error": sum(1 for s in sources.values() if s.get("error")),
+            "channels": len({c["channel"] for c in clips}),
+            "clips": len(clips),
+            "recommended": sum(1 for c in clips if c["recommended"]),
+            "hours": round(sum(c["duration"] for c in clips) / 3600, 3),
+            "recommended_hours": round(sum(c["duration"] for c in clips if c["recommended"]) / 3600, 3),
+        })
+        (out / "run.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+        if rec["git"]["dirty"]:
+            log.warning("koşu kaydı: çalışma ağacı kirli (%s) — bu manifest commit'ten yeniden üretilemez",
+                        rec["git"]["describe"])
+        log.info("export: %d klip → %s (koşu kaydı: %s)", len(clips), path, out / "run.json")
         return path
+
+    def stage_versions(self) -> dict[str, str]:
+        """Bütün aşamaların sürüm dizgeleri; koşu kaydına ve kayda yazılır."""
+        names = [*SOURCE_STAGES, "boilerplate", *CLIP_STAGES]
+        return {n: stage_version(self.cfg, base.get_stage(n)) for n in names}
 
     # ------------------------------------------------------------------- koşu
     def run(self, stages: Sequence[str] | None = None) -> Path | None:

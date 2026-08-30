@@ -1,1 +1,30 @@
-pyyaml>=6.0
+# Sabitlenmiş sürümler: makaledeki her sayı bu ortamda üretildi. Aralık
+# ("' >=") kullanılmıyor — hattın çıktısı yukarı akıştaki bir sürüm
+# yükseltmesiyle sessizce değişebilir ve hata vermez.
+#
+# torch/torchaudio CUDA 12.4 yapısıyla kuruldu:
+#   pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+# torchaudio sürümü aynı zamanda iki model ağırlığını da sabitler: zorlamalı
+# hizalayıcı (pipelines.MMS_FA) ve kaynak ayrıştırıcı
+# (pipelines.HDEMUCS_HIGH_MUSDB_PLUS) o sürümün paketleridir.
+torch==2.5.1
+torchaudio==2.5.1
+
+# ASR: faster-whisper (CTranslate2 arka ucu). Ağırlık HF'den çekilir ve
+# konfigdeki `asr.revision` ile sabitlenir.
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+
+# AudioSet olay sınıflandırıcısı (müzik skoru); ağırlık `music.audioset_revision`.
+transformers==4.49.0
+
+# VAD. Ağırlık (silero_vad.jit) paketin içinde geldiği için sürüm sabitlemek
+# ağırlığı da sabitler; ayrı bir revizyon alanı gerekmiyor.
+silero-vad==6.2.1
+
+# Hizalama öncesi romanizasyon (uroman) ve metin normalizasyonu.
+ctc-forced-aligner==1.0.2
+
+soundfile==0.13.1
+numpy==2.2.6
+pyyaml==6.0.3

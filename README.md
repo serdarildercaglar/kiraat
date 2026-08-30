@@ -51,6 +51,16 @@ sıralı yolu koşturur; ikisi aynı manifestoyu üretir
 `runtime.source_workers` / `runtime.gpu_stage_concurrency` (CLI:
 `--cpu-workers`, `--gpu-workers`).
 
+Her koşu, manifestonun yanına bir **koşu kaydı** yazar
+(`work/<koşu>/manifests/run.json`): git commit'i ve çalışma ağacının temiz
+olup olmadığı, bütün aşamaların sürüm dizgeleri, politika sürümü, konfigin
+tamamı, model ağırlıklarının kimlikleri (HF revizyonu ya da onu sabitleyen
+paket) ve paket sürümleri. Koşudan sonra yeniden kurulamayan tek şey budur;
+`scripts/verify_columns.py` kaydın depodaki 'bitti' sürümleriyle
+uyuştuğunu ayrıca sınar. Bağımlılıklar `requirements.txt` içinde tam
+sürümle sabitlenmiştir — aralık kullanılmaz, çünkü yukarı akıştaki bir
+yükseltme çıktıyı sessizce değiştirir.
+
 ## Yapı
 
 ```
@@ -65,6 +75,7 @@ kiraat/
   dedupe.py         (metin, konuşmacı) çiftinde yineleme işaretleme
   config.py         tek YAML'dan doğrulanmış konfig
   base.py           SourceStage / ClipStage sözleşmeleri
+  provenance.py     koşu kaydı: commit, aşama sürümleri, konfig, ağırlıklar, paketler
   stages/           prepare, asr, segmentation, clip_qc, music
   text/             turkish (I/ı), sentences, normalize
 scripts/            probe_segment, probe_boilerplate, probe_music, listen_ui, report, compare_manifests, exp_parallel

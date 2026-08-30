@@ -26,21 +26,32 @@ yineleme işaretleme → politika ve dışa aktarma.
 Her kaynak kayıt (`.m4a`, `.mp3`, `.wav`, `.flac`, `.opus`, `.webm`) ffmpeg
 ile tek kanala indirilir, 24 kHz'e yeniden örneklenir ve 16 bit kayıpsız
 FLAC olarak çözülür (`-sample_fmt s16`; örnekler PCM 16 bit WAV yolundakiyle
-bit bazında aynıdır, dosya onun yarısı kadardır — 2.100 saatlik tam koşuda
-ara sesin 366 GB yerine ~160 GB tutmasının şartı).
+bit bazında aynıdır, dosya onun yarısı kadardır — 3.428 saatlik tam koşuda
+ara sesin ~530 GB yerine ~265 GB tutmasının şartı).
 Kaynağın kendi hızı 24 kHz'in altındaysa yükseltme yapılmaz;
 bu durumda çıktı kaynağın gerçek hızındadır ve o hız `source_sample_rate`
 sütununda yayımlanır ki kullanıcı üst-örneklenmiş kaynakları ayırt edebilsin.
-Filtre zinciri iki adımdır: 40 Hz yüksek geçiren süzgeç (uğultu ve DC
-bileşeni için) ve −1 dBFS tepe sınırlayıcı (`alimiter`, otomatik seviye
-`level=false`; varsayılan açık olsaydı sınırlayıcı çıkışı tam ölçeğe
-yükseltir ve tavanı boşa çıkarırdı). Sınırlayıcı kaynak hızında
+Filtre zinciri tek adımdır: 40 Hz yüksek geçiren süzgeç (uğultu ve DC
+bileşeni için). Tepe sınırlayıcı (`alimiter`) 30 Ağu 2026'da varsayılan
+olarak kapatıldı (`prepare.peak_ceiling_db: null`), çünkü ölçtüğü şeyi
+bozuyordu: `clip_qc` tepeyi ve kırpılmayı sınırlanmış sesten kesilen klipte
+ölçüyor, dolayısıyla `peak_dbfs`/`clip_ratio` kaynağın kırpılmasını değil
+hattın kendi tavanını gösteriyordu. Aynı üç kaynak üzerinde ölçüldü:
+sınırlayıcı açıkken `clip_ratio > 0` olan klip sayısı 6'dan 0'a düşüyor,
+tepe azamisi −0,000 dBFS yerine −0,890 dBFS çıkıyor, RMS medyanı ise
+değişmiyor (−22,17'ye karşı −22,19 dBFS). Sınırlama, veriyi değiştiren tek
+aşamaydı ve "aşamalar karar vermez, ölçer" değişmezine de aykırıydı.
+
+Sınırlayıcının etkisi zaten temiz bir tavan da değildi: kaynak hızında
 uygulanıp ses sonra 24 kHz'e indirildiği için örnekler-arası taşma
-olabilir; 19 kayıtlık örnekte tepe medyanı tavanı 0,06 dB, p90'ı 0,15 dB
-aşıyor, kırpılma tek örnek düzeyinde — `peak_dbfs`/`clip_ratio` sütunları
-bunu olduğu gibi raporlar. Klip başına ses
-seviyesi normalizasyonu **yapılmaz**; kaydın doğal seviyesi korunur ve
-seviye, `rms_dbfs`/`peak_dbfs` sütunlarıyla kullanıcıya bırakılır.
+oluşuyordu — 19 kayıtlık örnekte tepe medyanı tavanı 0,06 dB, p90'ı 0,15 dB
+aşıyordu; 81 kayıtlık sample-25b koşusunda 12.958 klibin 2.058'i −1 dBFS'in
+üstündeydi. Yani sütun ne kaynağı ne de tavanı temiz ölçüyordu.
+`peak_ceiling_db` verilirse sınırlayıcı geri gelir; o durumda `level=false`
+şarttır, varsayılan `level=true` çıkışı tam ölçeğe yükseltip tavanı boşa
+çıkarır. Klip başına ses seviyesi normalizasyonu **yapılmaz**; kaydın doğal
+seviyesi korunur ve seviye, `rms_dbfs`/`peak_dbfs` sütunlarıyla kullanıcıya
+bırakılır.
 
 Kaydın süresi kapsayıcının bildirdiği değerden değil, çözülen sesten
 ölçülür. İkisi arasındaki uyumsuzluk kesik indirmeyi ele verir: çözülen süre
@@ -317,6 +328,26 @@ kliplerde ortalama kelime olasılığı 0,94, hizalayıcı asgari skoru
 tutulanlarla aynı (0,37'ye 0,41), düşük değeri üreten kelime çoğunlukla bir
 karakter adı, ünlem ya da işlev kelimesi. Kararın dinleme denetimine
 bağlandığı deney `docs/NOTEBOOK.md`'de kayıtlıdır.
+
+
+## Köken zinciri (`manifests/run.json`)
+
+Yayımlanan her manifestonun yanında, onu üreten şeyi kimlikleyen bir koşu
+kaydı durur: git commit'i ve çalışma ağacının kirli olup olmadığı, bütün
+aşamaların sürüm dizgeleri (kod sürümü + tüketilen konfig bölümleri +
+bağımlılıkların sürümleri), politika sürümü, konfigin tamamı, model ağırlık
+kimlikleri ve paket sürümleri. Eşiklerin hiçbiri koda gömülü olmadığı için
+koşu yalnızca bu kayıtla yeniden kurulabilir.
+
+Ağırlıklar iki yoldan sabitlenir. HF'den çekilenler kendi commit'leriyle:
+ASR (`asr.revision`) ve AudioSet sınıflandırıcısı
+(`music.audioset_revision`). torchaudio paketleri (zorlamalı hizalayıcı
+`MMS_FA`, ayrıştırıcı `HDEMUCS_HIGH_MUSDB_PLUS`) ve silero-vad ağırlığı ise
+paket sürümüne bağlıdır; onları `requirements.txt` sabitler. Kayıttaki her
+model ya bir `revision` ya da bir `pinned_by` taşır, doğrulayıcı bunu sınar.
+
+Çalışma ağacı kirliyken üretilmiş bir manifest commit'ten yeniden
+üretilemez; `export` bunu uyarı olarak basar ve kayda `git.dirty` yazar.
 
 ## 12. Üretilen ama henüz yayımlanmayan özellikler
 

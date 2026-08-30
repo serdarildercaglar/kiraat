@@ -264,6 +264,7 @@ check(f"recommended/exclusion_reasons = politika v{policy.version} ile yeniden h
 # çakılıysa o kural hiçbir klibi elemez ve politika uygulanmayan bir eşiği
 # uygulanıyormuş gibi gösterir. `dnsmos_ovrl` (sütun hiç üretilmiyordu) ve
 # `clip_ratio` (tepe sınırlayıcının arkasında kalıyordu) tam olarak buydu.
+_DEAD_MIN_CLIPS = 500   # küçük örneklemde sabit sütun beklenen bir şey, kusur değil
 _dead = []
 for _rule in cfg.policy().rules:
     if not _rule.metric:
@@ -271,8 +272,13 @@ for _rule in cfg.policy().rules:
     _vals = {r.get(_rule.metric) for r in manifest}
     if len(_vals) <= 1:
         _dead.append((_rule.metric, _vals.pop() if _vals else None))
-check("politikadaki her ölçüm korpusta değişkenlik gösteriyor (ölü kural yok)", _dead, len(manifest),
-      note="tek değere çakılı ölçüme konan kural hiçbir klibi elemez")
+if len(manifest) >= _DEAD_MIN_CLIPS:
+    check("politikadaki her ölçüm korpusta değişkenlik gösteriyor (ölü kural yok)", _dead, len(manifest),
+          note="tek değere çakılı ölçüme konan kural hiçbir klibi elemez")
+else:
+    results.append(("bilgi: politikada tek değere çakılı ölçüm", True,
+                    f"{len(_dead)} ({[d[0] for d in _dead] or '-'}) — örneklem {len(manifest)} klip, "
+                    f"denetim {_DEAD_MIN_CLIPS} klipten sonra bağlayıcı"))
 
 check("recommended → exclusion_reasons boş", [(r["id"],) for r in manifest if r["recommended"] and r["exclusion_reasons"]], len(manifest))
 
@@ -291,6 +297,30 @@ for sid, s in sources.items():
 check("truncated_source ⇔ çözülen süre < 0,95·min(kapsayıcı, tavan); klip kaynak alanları", bad, len(sources))
 
 # ---------------------------------------------------------------- J. DB ↔ manifest
+# ------------------------------------------------- koşu kaydı (köken zinciri)
+# Yayımlanan manifest kendisini üreten şeye bağlanabilmeli: commit, aşama
+# sürümleri, konfig, ağırlıklar. Kayıt yoksa ya da depodaki 'bitti'
+# sürümleriyle uyuşmuyorsa makaledeki sayının kökeni gösterilemez.
+_rec_path = WORK / "manifests" / "run.json"
+if not _rec_path.exists():
+    check("koşu kaydı (manifests/run.json) var", [("yok",)], 1)
+else:
+    rec = json.loads(_rec_path.read_text(encoding="utf-8"))
+    check("koşu kaydı: klip sayısı manifestle aynı",
+          [] if rec["counts"]["clips"] == len(manifest) else [(rec["counts"]["clips"], len(manifest))], 1)
+    db_ver = {r["stage"]: r["version"] for r in con.execute("select distinct stage, version from done")}
+    check("koşu kaydı: aşama sürümleri depodaki 'bitti' kayıtlarıyla aynı",
+          [(s, v, db_ver.get(s)) for s, v in rec["stage_versions"].items() if s in db_ver and db_ver[s] != v],
+          len(db_ver))
+    eksik = [k for k, v in rec["packages"].items() if v is None]
+    check("koşu kaydı: paket sürümleri çözüldü", [(k,) for k in eksik], len(rec["packages"]))
+    sabitsiz = [ad for ad, m in rec["models"].items() if not m.get("revision") and not m.get("pinned_by")]
+    check("koşu kaydı: her ağırlık ya revizyonla ya paket sürümüyle sabit",
+          [(ad,) for ad in sabitsiz], len(rec["models"]))
+    results.append(("bilgi: koşu kaydı git durumu", True,
+                    f"{rec['git']['describe']}" + (" — ÇALIŞMA AĞACI KİRLİ, commit'ten yeniden üretilemez"
+                                                   if rec["git"]["dirty"] else "")))
+
 check("DB klip sayısı = manifest", [] if set(db_clips) == set(by_id) else [(len(db_clips), len(by_id))], 1)
 bad = []
 for cid, d in db_clips.items():

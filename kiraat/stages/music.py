@@ -101,6 +101,10 @@ class MusicMeasurer:
 
     device: str = "cuda:0"
     audioset_model: str = "MIT/ast-finetuned-audioset-10-10-0.4593"
+    #: Ağırlık commit'i; sabitlenmezse depo güncellendiğinde müzik skorları
+    #: sessizce değişir. torchaudio paketlerinin (MMS_FA, HDemucs) karşılığı
+    #: yok — onları requirements.txt'teki torchaudio sürümü sabitliyor.
+    audioset_revision: str | None = None
     external_model: str | None = None
     separator_screen: float = SEPARATOR_SCREEN
     window_sec: float = 10.24
@@ -123,8 +127,8 @@ class MusicMeasurer:
         import torchaudio
         from transformers import AutoFeatureExtractor, AutoModelForAudioClassification
 
-        self._ast_fx = AutoFeatureExtractor.from_pretrained(self.audioset_model)
-        self._ast = AutoModelForAudioClassification.from_pretrained(self.audioset_model)
+        self._ast_fx = AutoFeatureExtractor.from_pretrained(self.audioset_model, revision=self.audioset_revision)
+        self._ast = AutoModelForAudioClassification.from_pretrained(self.audioset_model, revision=self.audioset_revision)
         self._ast.to(self.device).eval()
         wanted = {label.casefold() for label in AUDIOSET_MUSIC_LABELS}
         self._music_idx = [
@@ -264,7 +268,7 @@ class MusicStage(ClipStage):
 
     name = "music"
     depends_on = ("segment",)
-    version = "2"   # v2: sahipli anahtarlar bildirildi (yeniden koşuda hayalet sütun kalmaz)
+    version = "3"   # v3: AudioSet modeli ve ağırlık revizyonu konfigden; v2: sahipli anahtarlar
     gpu = True
     produces_metrics = ("music_score_audioset", "music_to_speech_db", "music_db_separated",
                         "music_stem_db", "music_prob_external")
@@ -275,6 +279,8 @@ class MusicStage(ClipStage):
 
         self.measurer = MusicMeasurer(
             device=self.cfg.get("runtime.device", "cuda:0"),
+            audioset_model=self.opts.get("audioset_model", MusicMeasurer.audioset_model),
+            audioset_revision=self.opts.get("audioset_revision"),
             external_model=self.opts.get("external_model"),
             separator_screen=float(self.opts.get("separator_screen", SEPARATOR_SCREEN)),
         )

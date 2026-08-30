@@ -32,7 +32,11 @@ class AsrStage(SourceStage):
         from faster_whisper import BatchedInferencePipeline, WhisperModel
 
         device = str(self.cfg.get("runtime.device", "cuda:0"))
+        # `revision` sabitlenmezse HF deposu ağırlıkları yeniden yüklediğinde
+        # bütün transcript'ler sessizce değişir; yayımlanan sayı yeniden
+        # üretilemez olur ve hiçbir hata alınmaz.
         self.model = WhisperModel(whisper_name(self.opts.get("model", "large-v3")),
+                                  revision=self.opts.get("revision"),
                                   device=device.split(":")[0],
                                   device_index=int(device.split(":")[1]) if ":" in device else 0,
                                   compute_type="float16" if device.startswith("cuda") else "int8")

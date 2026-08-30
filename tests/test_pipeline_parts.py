@@ -364,3 +364,42 @@ def test_surum_dongusu_hata_verir():
     finally:
         _REGISTRY.clear()
         _REGISTRY.update(saved)
+
+
+# ------------------------------------------------------------------ köken
+def test_kosu_kaydi_kodu_konfigi_ve_agirliklari_kimliklendiriyor():
+    """Yayımlanan manifest kendisini üreten şeye bağlanabilmeli.
+
+    Aksi hâlde 'ölçüm karardan ayrı, politika sürümlü ve yeniden koşulabilir'
+    iddiası gösterilemez: manifest hangi commit, hangi eşikler ve hangi model
+    ağırlıklarıyla üretildiğini taşımaz ve koşudan sonra bu yeniden kurulamaz.
+    """
+    from kiraat.config import Config
+    from kiraat.provenance import run_record
+
+    cfg = Config.load(Path(__file__).resolve().parents[1] / "configs/default.yaml")
+    rec = run_record(cfg, {"prepare": "6+abc"}, {"clips": 3})
+    assert set(rec) >= {"created", "git", "stage_versions", "policy_version",
+                        "models", "packages", "counts", "config"}
+    # Konfigin tamamı kayıtta: eşikler koda gömülü olmadığı için koşu ancak
+    # bununla yeniden kurulabilir.
+    assert rec["config"] == cfg.data
+    assert rec["policy_version"] == str(cfg.get("recommended_subset.version"))
+    # Hattın çıktısını belirleyen her paket çözülmüş olmalı.
+    assert all(v for v in rec["packages"].values()), rec["packages"]
+    # Her ağırlık ya kendi revizyonuyla ya da bir paket sürümüyle sabit.
+    for ad, m in rec["models"].items():
+        assert m.get("revision") or m.get("pinned_by"), ad
+    assert rec["models"]["asr"]["revision"] == cfg.get("asr.revision")
+    assert rec["models"]["audioset"]["revision"] == cfg.get("music.audioset_revision")
+
+
+def test_konfigde_hf_agirliklari_sabitlenmis():
+    """HF'den çekilen iki ağırlık commit'e sabitli olmalı; olmazsa depo
+    güncellendiğinde bütün sayılar sessizce değişir."""
+    from kiraat.config import Config
+
+    cfg = Config.load(Path(__file__).resolve().parents[1] / "configs/default.yaml")
+    for anahtar in ("asr.revision", "music.audioset_revision"):
+        v = cfg.get(anahtar)
+        assert isinstance(v, str) and len(v) == 40 and all(c in "0123456789abcdef" for c in v), (anahtar, v)

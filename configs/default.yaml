@@ -79,6 +79,10 @@ vad:
 
 asr:
   model: openai/whisper-large-v3
+  # Ağırlık revizyonu (HF `Systran/faster-whisper-large-v3` commit'i). Sabit
+  # olmazsa depo ağırlıkları yeniden yüklediğinde bütün transcript'ler sessizce
+  # değişir ve hiçbir hata alınmaz; yayımlanan sayı yeniden üretilemez olur.
+  revision: edaa852ec7e145841d8ffdb056a99866b5f0a478
   language: tr
   word_timestamps: true
   condition_on_previous_text: false   # halüsinasyon zincirini kırar
@@ -148,11 +152,15 @@ events:
 # sütunundan türetilir, dolayısıyla kullanıcı kendi eşiğini kesebilir.
 music:
   # Ucuz, çok etiketli sinyal — konuşmayla birlikte var olabilir.
+  audioset_model: MIT/ast-finetuned-audioset-10-10-0.4593
+  audioset_revision: f826b80d28226b62986cc218e5cec390b1096902
   audioset_labels:
     ["Music", "Background music", "Soundtrack music", "Theme music",
      "Musical instrument", "Singing", "Song", "Jingle (music)"]
   # Fiziksel ölçü: kaynak ayrıştırması (torchaudio HDEMUCS_HIGH_MUSDB_PLUS),
   # eşlik (davul+bas+diğer) enerjisinin konuşma (vokal) enerjisine oranı.
+  # Bu paketin ve hizalayıcının (MMS_FA) ağırlıkları torchaudio sürümüne
+  # bağlıdır; ayrı revizyon alanı yok, requirements.txt sabitliyor.
   separator: hdemucs_high_musdb_plus
   # Ayrıştırma pahalı; AudioSet skoru bu eşiğin altındaki kliplerde hiç
   # koşmaz ve sütuna taban değer (-80 dB) yazılır. Hangi kliplerde gerçekten
