@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import itertools
 import json
 import random
 import re
@@ -185,6 +186,7 @@ results.append(("bilgi: music_to_speech_db ile stem güç toplamı farkı (faz)"
 
 # ---------------------------------------------------------------- F. kelime dosyalarından yeniden hesap
 bad_conf, bad_align, bad_gap, bad_span_text, bad_cover, tot = [], [], [], [], [], 0
+suspect_cover, n_unaligned, n_words = [], 0, 0
 for sid, rows in per_src.items():
     src = sources[sid]
     raw = [json.loads(l) for l in resolve(src["meta"]["words"]).open(encoding="utf-8")]
@@ -192,6 +194,23 @@ for sid, rows in per_src.items():
     aligned = [json.loads(l) for l in resolve(aligned_path).open(encoding="utf-8")] if aligned_path else None
     words = attach_clitics([Word(w["text"], w["start"], w["end"], w.get("prob")) for w in raw])
     ascore = attach_clitics([Word(w["text"], 0.0, 0.0, w.get("align_score")) for w in aligned]) if aligned else None
+    if aligned:
+        n_words += len(aligned)
+        n_unaligned += sum(1 for w in aligned if w.get("align_start") is None)
+    tw_src = attach_clitics([Word(w["text"], w.get("align_start", w["start"]), w.get("align_end", w["end"]), None)
+                             for w in (aligned or raw)])
+    # Damga hizalayıcıdan mı geliyor yoksa Whisper yedeğinden mi: ikisi
+    # karışınca komşu kelimelerin sırası bozulabiliyor, o kelimeler
+    # kapsama denetiminden çıkarılır.
+    # Güvenilir = hizalanmış VE skoru anlamlı. Rakamlar hiç hizalanmıyor
+    # (sözlük romanize harflerden oluşur) ve damgaları Whisper yedeğine
+    # düşüyor; skoru sıfıra yakın kelimelerin damgası da anlamsız (hizalayıcı
+    # cümle başındaki kısa sözcüğü önceki cümlenin ardına sıkıştırıyor).
+    guvenilir = ([w.prob == 1.0 for w in attach_clitics(
+        [Word(w["text"], 0.0, 0.0,
+              1.0 if (w.get("align_start") is not None and (w.get("align_score") or 0) >= 0.01) else 0.0)
+         for w in aligned])]
+        if aligned else [True] * len(tw_src))
     for r in rows:
         tot += 1
         a, b = json.loads(db_clips[r["id"]]["meta_json"])["word_span"]
@@ -205,16 +224,43 @@ for sid, rows in per_src.items():
         if " ".join(w.text for w in words[a:b]) != r["text_raw"]:
             bad_span_text.append((r["id"], r["text_raw"][:40]))
         # komşu boşlukları: bölütleme hizalayıcı damgalarını kullanıyorsa onlardan
-        tw = attach_clitics([Word(w["text"], w.get("align_start", w["start"]), w.get("align_end", w["end"]), None) for w in (aligned or raw)])
+        tw = tw_src
+        # Sınır iyileştirme, damganın ötesindeki gerçek sessizliğe yaslanabilir;
+        # o zaman klip başı hizalayıcı damgasını geçer ama hiçbir şey kesilmez.
+        # Ölçüt bu yüzden damgada değil seste: aradaki aralık sessizse sorun yok.
+        # (30 Ağu 2026 kör dinleme, 20 şüpheli + 10 kontrol: 0 kesik kelime.)
         if r["start"] > tw[a].start + 0.05 or r["end"] < tw[b - 1].end - 0.05:
-            bad_cover.append((r["id"], round(r["start"] - tw[a].start, 2), round(tw[b - 1].end - r["end"], 2)))
+            suspect_cover.append(r["id"])
+        # Yapısal değişmez: kelime aralığındaki hiçbir kelime tamamen dışarıda
+        # kalamaz — kalırsa metin sesle uyuşmaz. Ama ölçüt yalnızca GÜVENİLİR
+        # damgalara uygulanabilir: hizalanamayan kelime (rakamlar; sözlük
+        # romanize harfler üzerinde) Whisper damgasına düşüyor ve iki saat
+        # karışınca sıra bozulabiliyor. O kelimeler denetimden çıkarılır,
+        # sayıları ayrıca raporlanır.
+        if b - a > 1 and guvenilir[a] and guvenilir[a + 1] and r["start"] > tw[a + 1].start:
+            bad_cover.append((r["id"], "baş", tw[a].text, tw[a + 1].text))
+        if b - a > 1 and guvenilir[b - 1] and guvenilir[b - 2] and r["end"] < tw[b - 2].end:
+            bad_cover.append((r["id"], "son", tw[b - 1].text, tw[b - 2].text))
         lead = round(tw[a].start - tw[a - 1].end, 3) if a > 0 else None
         trail = round(tw[b].start - tw[b - 1].end, 3) if b < len(tw) else None
         if (lead is None) != (r["lead_gap_sec"] is None) or (trail is None) != (r["trail_gap_sec"] is None) \
                 or (lead is not None and abs(lead - r["lead_gap_sec"]) > 0.002) or (trail is not None and abs(trail - r["trail_gap_sec"]) > 0.002):
             bad_gap.append((r["id"], r["lead_gap_sec"], lead, r["trail_gap_sec"], trail))
+# Kör dinleme (30 Ağu 2026, 20 şüpheli + 10 kontrol) bu 161 klipte sıfır kesik
+# kelime buldu: sınır iyileştirme damganın ötesindeki gerçek sessizliğe
+# yaslanıyor ve doğru yapıyor — kusurlu olan damgaydı. Dolayısıyla "sınır
+# damgayı geçmesin" bir doğruluk ölçütü değil; bilgi olarak raporlanır.
+# Denetim, damgadan bağımsız ve yapısal olanına taşındı: klibin kendi kelime
+# aralığındaki bir kelime tamamen sınırların dışında kalıyorsa metin sesle
+# uyuşmuyor demektir. sample-25c'de bir klip böyleydi ("4 Nisan 1984…" yazıp
+# "Nisan"dan başlıyordu) ve 161 yanlış alarmın içinde görünmüyordu.
+results.append(("bilgi: hizalanamayan kelime (damga Whisper yedeğine düşüyor)", True,
+                f"{n_unaligned}/{n_words} — neredeyse tamamı rakam; hizalayıcı sözlüğü romanize harflerden oluşur"))
+results.append(("bilgi: sınırı kelime damgasını aşan klip", True,
+                f"{len(suspect_cover)} klip — sınır iyileştirme sessizliğe yasladı; kör dinlemede 20/20 temiz"))
+
 check("word_confidence(min/mean) = ASR kelime olasılıklarından yeniden hesap", bad_conf, tot)
-check("klip kendi kelimelerini kapsıyor (start ≤ ilk kelime +50 ms, end ≥ son kelime −50 ms)", bad_cover, tot)
+check("klibin hiçbir kelimesi tamamen sınırların dışında değil (metin–ses uyuşması)", bad_cover, tot)
 check("align_score(min/mean) = hizalama dosyasından yeniden hesap", bad_align, tot)
 check("text_raw = kelime aralığının birleşimi", bad_span_text, tot)
 check("lead/trail_gap = komşu kelime boşluğu (None ↔ kaydın ilk/son kelimesi)", bad_gap, tot)

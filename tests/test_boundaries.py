@@ -118,3 +118,4 @@ def test_cakisan_damgalarda_sinir_ortaya_konur():
     clips = [Clip(0.4, 1.25, "Bir.", (0, 1)), Clip(1.25, 2.0, "İki.", (1, 2))]
     out = refine_boundaries(clips, words, envelope(wave, sr), SegmentConfig())
     assert abs(out[0].end - 1.25) < 0.02 and abs(out[1].start - 1.25) < 0.02, out
+

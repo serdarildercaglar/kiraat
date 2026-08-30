@@ -1696,6 +1696,87 @@ elenen kliplerin neredeyse tamamını eğitime uygun buldu. İkisi de v1'de
 yayımdan sonra fark edilen hatanın aynı sınıfı; burada yayımdan önce
 yakalandı. Kanıt dosyaları `work/archive/sample-25c/` altında.
 
+## 2026-08-30 — Kör dinleme: sınır kesimi temiz; denetim ölçütü damgadan sese taşındı
+
+Doğrulayıcının en uzun süredir açık duran FAIL'i: 161 klipte klip başı,
+hizalayıcının ilk kelime damgasını 0,13–0,47 s geçiyordu ve bunların 16'sı
+önerilen alt kümedeydi. İki açıklama vardı — ya ilk hece gerçekten kesiliyor,
+ya damga yanlış. Karar kulağındı.
+
+**Denetim.** 30 klip: 20 şüpheli (gecikme bantlarına yayılmış, 7'si en uç
+değerlerden) + 10 kontrol (denetimi geçen klipler), karışık sırada, hangisinin
+hangisi olduğu gizli. Sorular: klip cümle başında mı başlıyor, cümle bitince
+mi bitiyor, başta/sonda kelime kesik mi.
+
+**Sonuç: 20/20 şüphelide ve 10/10 kontrolde sıfır kesik kelime, sıfır kırık
+başlangıç, sıfır kırık bitiş.** En uç yedi klipte de kesik yok. Yani sınır
+iyileştirme damganın ötesindeki gerçek sessizliğe yaslanıyor ve **doğru
+yapıyor**; kusurlu olan damgaydı. "Sınır damgayı geçmesin" bir doğruluk
+ölçütü değilmiş.
+
+Denetim buna göre değiştirildi: 161 klip artık bilgi olarak raporlanıyor,
+FAIL ölçütü damgadan bağımsız ve yapısal olana taşındı — *klibin kendi kelime
+aralığındaki bir kelime tamamen sınırların dışında kalıyor mu*, yani metin
+sesle uyuşmuyor mu.
+
+**Yanlış teşhis ve geri alınması.** Yeni ölçüt bir klip yakaladı
+(`src00017-00127`: metin "4 Nisan 1984…", ses "Nisan"dan başlıyor gibi
+görünüyordu, üstelik önerilen alt kümedeydi). Sebebin kısa ilk kelimeden
+sonraki duraklamada sınırın ikinci kelimeyi yutması olduğu varsayıldı,
+`boundaries.py`'ye bir muhafız ve bir test yazıldı. **Test, düzeltme öncesi
+kodda da geçti** — yani senaryoyu üretmiyordu. Kovalayınca gerçek sebep başka
+çıktı ve muhafız geri alındı. Buradaki ders yönteme ait: düzeltmenin testi,
+düzeltme geri alındığında düşmüyorsa o düzeltme kanıtlanmamıştır.
+
+**Gerçek sebep: rakamlar hizalanamıyor.**
+
+```
+'4'      asr=825.150–825.450   align=None            skor=None
+'Nisan'  asr=825.450–825.870   align=824.45–826.09   skor=0.0004
+'1984,'  asr=825.870–826.250   align=None            skor=None
+```
+
+Hizalayıcı romanize **harfler** üzerinde çalışıyor; rakamın sözlük karşılığı
+yok, hiç hizalanmıyor ve damgası Whisper yedeğine düşüyor. Komşusu "Nisan" da
+hedefsiz kalan akustik bölgeyi yutup 0,0004 skorlu çöp bir hizalama alıyor.
+Sonuçta bir kelimede hizalayıcı saati, yanındakinde Whisper saati kullanılıyor
+ve sıra bozulabiliyor. Klip aslında doğru — "4" 825,150'de, klip 825,000'de
+başlıyor, ses yerinde.
+
+**Ölçüldü (166.614 kelime):**
+
+- Hizalanamayan kelime: **734 (%0,44)**, 733'ü rakam, 1'i noktalama.
+- Skoru <0,01 olan çöp hizalama: **245 (%0,147)**; yalnız 5'i hizalanamayan
+  bir kelimenin komşusu, yani rakamlar bunun küçük bir kısmını açıklıyor.
+- `align_score_min < 0,01` olan klip: **289 (%2,12)**, 221'i önerilen alt
+  kümede. `align_score` kapı olmadığı için veri elenmiyor, ama yayımlanan bir
+  sütunun %2'si anlamsız.
+
+Çöp hizalamaların örüntüsü 28 Ağustos'ta not edilenin aynısı ve artık ölçekli:
+hepsi cümle başındaki kısa sözcükler ("Çünkü", "Ey", "Bu", "Bir", "Biz"),
+hizalayıcı onları önceki cümlenin hemen ardındaki 20–220 ms'ye sıkıştırmış.
+Sebebin hizalama parçalarının cümle boşluklarında kesilmesi olduğu tahmin
+edildi ve **sınandı: tutmadı** — çöp hizalamaların yalnızca %4'ü parça başında
+(korpus tabanı %1,6, yani 2 kat zenginleşme, açıklayıcı değil). Sebep açık
+kalıyor.
+
+**Doğrulayıcı.** Kapsama denetimi artık yalnızca güvenilir damgalara
+uygulanıyor: kelime hem hizalanmış hem skoru ≥0,01 olmalı. Bu ölçütle
+`src00017-00127` doğru şekilde düşüyor (damgası güvenilir değil, klip değil).
+İki bilgi satırı eklendi: hizalanamayan kelime sayısı ve sınırı damgayı aşan
+klip sayısı. Kalan tek FAIL, küçük harfle başlayan 4 klip (açık madde 11).
+
+**Açık madde 13 — rakamlar için hizalama.** Hizalama `text` belirteçleri
+üzerinde yapılıyor; oysa `text_spoken` rakamları okunuşa çeviriyor ("4" →
+"dört"). Hizalamayı okunuş metni üzerinden kurmak 733 kelimeyi kurtarır,
+komşularının çöp hizalamasını önler ve iki saatin karışmasını bitirir.
+Bölütlemeyi etkilediği için tam koşu öncesi ölçülmeli.
+
+**Açık madde 14 — cümle başı kısa sözcüklerde çöp hizalama.** 245 kelime,
+289 klip, sebep bilinmiyor; parça sınırı hipotezi elendi. `align_score`
+makalede yayımlanacağı için bunun ya açıklanması ya da sütunun sınırının
+belgelenmesi gerekiyor.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
