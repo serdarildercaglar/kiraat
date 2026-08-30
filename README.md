@@ -78,7 +78,7 @@ kiraat/
   provenance.py     koşu kaydı: commit, aşama sürümleri, konfig, ağırlıklar, paketler
   stages/           prepare, asr, segmentation, clip_qc, music
   text/             turkish (I/ı), sentences, normalize
-scripts/            probe_segment, probe_boilerplate, probe_music, listen_ui, report, compare_manifests, exp_parallel
+scripts/            inventory, probe_segment, probe_boilerplate, probe_music, listen_ui, report, compare_manifests, exp_parallel
 configs/default.yaml
 docs/NOTEBOOK.md    araştırma defteri — makale bundan yazılacak
 docs/DESIGN.md      iç belge: mühendislik gerekçeleri
@@ -87,8 +87,25 @@ tests/
 
 ## Durum
 
-Hat uçtan uca çalışıyor ve beş kaynaklık örnekte doğrulandı (2.649 klip,
-üç kör dinleme turu). Henüz bağlanmayanlar: zorlamalı hizalama
-(`word_confidence` şimdilik ASR olasılığı), konuşmacı kümeleme, DNSMOS,
-kaynak düzeyi ses seviyesi, kanal başına saat tavanı ve yayın paketi.
-Tam korpus koşusu açık onay ister.
+Hat uçtan uca çalışıyor: 27 kanalı kapsayan 25 saatlik denetim örneğinde
+13.637 klip (`work/sample-25c`), üç kör dinleme turu, sütun doğrulaması
+hatasız. Zorlamalı hizalama bağlı ve kendi skorunu yayımlıyor
+(`word_confidence`ın kaynağı konfigden seçilir, şimdilik ASR olasılığı).
+
+Ham korpus dosya dosya ölçüldü (`scripts/inventory.py` →
+`work/inventory.jsonl`): 3.440,2 saat, 2.698 kayıt, 27 kanal, tamamına
+yakını 44,1 kHz 128 kb/s AAC. Kayıtların **%30,7'si dört saatten uzun**,
+en uzunu 14,92 saat; bu yüzden bölütleme ve hizalama kaydı belleğe almaz,
+zarfı bloklar hâlinde ölçüp parçaları diskten okur (korpusun en uzun
+kaydı uçtan uca koşturulmuştur).
+
+**Hiçbir kayıt kapsam dışı bırakılmaz.** `sources.extensions` ffmpeg'in
+ses çıkarabildiği bütün kapsayıcıları içerir ve kanal başına saat tavanı
+yoktur; kuru koşu 2.699 kaynak / 3.440,16 saat seçiyor. Kanal
+dengesizliği (`seslikitaplarmavi` %19,5, ilk iki kanal %35,2) tavanla
+değil, `channel` + `duration` sütunlarıyla yayımlanır — tavanı kesmek
+kullanıcının tercihidir.
+
+Henüz bağlanmayanlar: konuşmacı kümeleme, DNSMOS, kaynak düzeyi ses
+seviyesi, bölme (train/dev/test) ve yayın paketi. Tam korpus koşusu açık
+onay ister.

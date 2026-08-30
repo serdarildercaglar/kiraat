@@ -1779,6 +1779,344 @@ bağlanır. Sütunun sınırı makalede böyle anlatılır.
 makalede yayımlanacağı için bunun ya açıklanması ya da sütunun sınırının
 belgelenmesi gerekiyor.
 
+## 2026-08-30 — Tam koşu hazırlık denetimi: korpus envanteri ve uzun kayıtta bellek duvarı
+
+Tam koşu öncesi son denetim. Üç şey ölçüldü: ham korpusun gerçek büyüklüğü,
+tam koşunun disk ve süre maliyeti, ve hattın örnekte hiç görmediği bir
+şeye — saatlerce süren tek bir kayda — verdiği tepki.
+
+**Envanter (ffprobe, 2.695 dosya).** Ham malzeme **3.427,8 saat**, 27 kanal,
+2.695 kayıt; biri (`seslimakalem/NEDRET ERSANEL…m4a`) ffprobe ile
+okunamıyor, kalan 2.694 okunuyor. Kayıt süresi medyanı **41,4 dakika**,
+p90 **184,7 dakika**, azami **14,92 saat**; 4 saatten uzun **165**, 8 saatten
+uzun **34** kayıt var. Uzantı listesi dışında kalan 4 `.m4aa` dosyası sessizce
+atlanıyor.
+
+Bu sayı defterin ilk kaydındaki "2.370 kayıt, 2.942 saat" ile uyuşmuyor;
+makaleye giren §Korpus sayısı buradaki ölçüm olmalı. Kanal dağılımı da
+buradan çıktı: `seslikitaplarmavi` %19,6 (671 saat), `BirDinle` %15,6 (534
+saat), ilk iki kanalın payı **%35,2**. Konfigdeki `export.max_hours_per_channel:
+120` tavanı uygulansaydı 3.427,8 saat **1.849 saate** inerdi; tavanı okuyan
+kod yok, yani konfig şu an uygulanmayan bir kural ilan ediyor.
+
+**Bellek duvarı — asıl bulgu.** Bugüne kadarki bütün örnek koşularda
+`prepare.max_minutes` 20 idi; hattın gördüğü en uzun kayıt 20 dakikalık.
+Tam koşuda tavan kalkıyor ve `segment` ile `align` kaydın tamamını belleğe
+alıyor (`sf.read` + `mean` iki kopya). Üstüne `boundaries.envelope`,
+kare dizinini `idx = arange(n)[:,None]*hop + arange(frame)[None,:]` ile
+maddileştiriyor: 24 kHz'de kare 480, adım 240 örnek, yani örnek başına
+16 bayt int64 dizin + 8 bayt toplanmış kare. Ölçüldü (10/30/60 dk, doğrusal):
+**saat başına 2,73 GB zirve RSS**. `align`'daki 24→16 kHz yeniden örnekleme
+tek çağrıda yapılıyor, o da **saat başına 2,19 GB**.
+
+Kayıt uzunluğuna göre tek işçinin zirvesi:
+
+| kayıt | segment (env+kopya) | align (resample+kopya) | korpusta |
+|---|---|---|---|
+| 20 dk (örnek) | ~1,0 GB | ~0,8 GB | denendi |
+| 4 saat | ~12 GB | ~10 GB | 165 kayıt |
+| 8 saat | ~24 GB | ~20 GB | 34 kayıt |
+| 14,9 saat | ~45 GB | ~37 GB | 1 kayıt |
+
+Makinede 62 GB RAM (~50 GB boş) var ve dağıtıcı 6 CPU işçisi çalıştırıyor;
+dört saatlik iki kaydın aynı anda bölütlenmesi bile 24 GB demek, en uzun
+kayıt tek başına RAM'i bitiriyor. Bir işçi OOM ile öldürülürse
+`ProcessPoolExecutor` kırılır: kaynak işlerinde hata yakalanıp kayıt
+"hatalı" işaretlendiği için koşu **sessizce** kalan bütün kayıtları
+düşürerek devam edebilir. Üç günlük bir koşuda en kötü kusur budur.
+
+Düzeltme yönü belli: zarf hesabı bloklara bölünecek (sonuç bit bazında aynı
+kalmalı), yeniden örnekleme parça parça yapılacak, `always_2d` okumadaki
+ikinci kopya kaldırılacak. **Tam koşu bu düzeltme ve en uzun kayıtla
+yapılacak tek kayıtlık bir duman testi olmadan başlatılmaz.**
+
+**Maliyet.** sample-25c'de 27 saat ham ses 39 dakikada işlendi, yani
+**41,5× gerçek zaman**; 3.427,8 saat bu hızda **~83 saat (3,5 gün)** sürekli
+koşu demek. Disk: ara ses 83 MB/saat, klipler 92 MB/saat ölçüldü →
+**~555 GB** (283 GB ara ses + 272 GB klip), diskte 702 GB boş. Sığıyor ama
+yayın paketi için ikinci bir kopyaya (önerilen alt küme ~270 GB) yer
+kalmıyor; ara sesin koşu sonunda silinip silinmeyeceği ayrı bir karar.
+Beklenen çıktı ölçeği: ~2.940 saat klip, ~1,73 milyon klip.
+
+**Değişmeyenler.** Test takımı 122 geçiyor (1 atlanıyor: varsayılan yolda
+manifest yok), `verify_columns.py` sample-25c'de sıfır hatayla geçiyor,
+şema ile manifest birebir. İzlenen dosyalarda değişiklik yok, yani tam
+koşunun kaydı temiz commit gösterecek.
+
+**Makaleye:** §Korpus (envanter sayıları, kanal dağılımı), §Uygulama
+(maliyet ve ölçek), §Sınırlar (kanal payı ve tavan kararı).
+
+~~**Açık madde 14 — uzun kayıtta bellek.**~~ — *kapandı (30 Ağu 2026):
+zarf bloklu, bölütleme ve hizalama diskten pencere okuyor; çıktı birebir
+aynı, 14,92 saatlik kayıt uçtan uca koştu. Aşağıdaki kayda bakınız.*
+
+## 2026-08-30 — Envanter: ham korpusun sınırları dosya dosya ölçüldü
+
+Yukarıdaki hazırlık denetimi korpusu kabaca saymıştı; bu kayıt onun yerine
+geçer. `scripts/inventory.py` ham kökteki **her** dosyayı ffprobe'dan
+geçirir (uzantı listesinin dışındakileri de) ve künyesini
+`work/inventory.jsonl`'e yazar: süre, kodek, örnekleme hızı, kanal sayısı,
+bit hızı, boyut. Rapor bu dosyadan üretilir, yani ölçüm bir kez yapılır.
+
+**Bulunan.** 2.700 dosya, **2.698 okunabilir ses**, **3.440,2 saat**,
+200,1 GB, 27 kanal. Biri ffprobe ile açılamıyor
+(`seslimakalem/NEDRET ERSANEL…m4a`), biri `README.md`. Konfigdeki uzantı
+listesi dört `.m4aa` dosyasını dışarıda bırakıyor: **12,41 saat** sessizce
+atlanıyor, yani hattın alacağı 2.694 dosya ve 3.427,8 saat.
+
+**Kayıt uzunluğu — hattın bugüne kadar görmediği şey.** Medyan 41,4 dakika,
+p75 90,9 dakika, p90 185,0, p95 257,5, **p99 517,7 dakika**, azami
+**14,92 saat**. Dağılım saatlik bantlarda:
+
+| kayıt uzunluğu | kayıt | saat | korpus payı |
+|---|---|---|---|
+| < 10 dk | 168 | 20,4 | %0,6 |
+| 10–30 dk | 911 | 274,0 | %8,0 |
+| 30–60 dk | 635 | 462,8 | %13,5 |
+| 1–2 saat | 467 | 654,7 | %19,0 |
+| 2–4 saat | 351 | 973,4 | %28,3 |
+| **4–8 saat** | **131** | **700,5** | **%20,4** |
+| **8 saat+** | **35** | **354,4** | **%10,3** |
+
+Yani korpusun **%30,7'si dört saatten uzun tek parça kayıtlarda**; bütün
+örnek koşular kayıt başına 20 dakikayla sınırlıydı ve bu kütleyi hiç
+görmedi. Örnekten genelleme burada kırılıyor: 20 dakikalık kayıtta bedava
+olan "kaydı belleğe al" adımı 14,9 saatlik kayıtta duvara çarpıyor
+(aşağıdaki bellek kaydına bakınız).
+
+**Biçim tekdüze.** 2.618 dosya AAC (3.379,7 saat), 80 dosya MP3 (60,5 saat);
+**2.693 dosya 44,1 kHz**, beşi 48 kHz; 2.694 dosya iki kanallı, dördü mono.
+Dosya boyutundan hesaplanan bit hızı p5 128 / medyan 129 / p95 130 kb/s —
+korpus fiilen tek bir kodlama profilinde. (ffprobe'un akış düzeyi `bit_rate`
+alanı bu m4a'larda anlamsız değerler veriyor; ölçü kapsayıcıdan ve dosya
+boyutundan alınmalı.)
+
+**Kaynağın gerçek bant genişliği.** 128 kb/s AAC bir alçak geçiren getirir;
+hedef 24 kHz'in (Nyquist 12 kHz) kaynağı kesip kesmediği ölçülmeli. Kanal
+başına bir kayıt, ortadan 60 saniye, 32k FFT: kesim frekansı **medyan
+15,7 kHz**, en düşük 13,0 (`seskitap`), en yüksek 15,8. 12 kHz üstünde kalan
+enerji payı medyan **%0,05**, azami %0,62 (`kitapdinle`). Yani 24 kHz hedef
+kodeğin tavanının epey altında; yükseltmenin karşılığı yok, düşürmenin
+gerekçesi de yok. İki kanal (13,0 ve 13,7 kHz) kaynağında zaten dar bantlı.
+
+**Kanal dağılımı.** `seslikitaplarmavi` %19,5 (671,0 saat), `BirDinle`
+%15,5 (534,4), `sess-Seslikitap` %7,4, `dinleyiniz` %7,4, `Peri_Mia` %7,0;
+ilk iki kanalın payı **%35,2**, dokuz kanal 120 saatin üstünde. Konfigdeki
+`export.max_hours_per_channel: 120` uygulansa korpus 3.440 → **1.849 saate**
+inerdi. O tavanı okuyan kod yok; ya bağlanmalı ya konfigden çıkmalı, çünkü
+şu hâliyle uygulanmayan bir kural ilan ediyor.
+
+**Makaleye:** §Korpus (bütün bu sayılar), §Yöntem (24 kHz kararının kaynak
+bant genişliğiyle gerekçesi), §Sınırlar (kanal payı, tek kodlama profili).
+
+## 2026-08-30 — Alanın yerleşik yöntemi: kiraat neyi paylaşıyor, nerede ayrılıyor
+
+Hattın kararları bugüne kadar kendi ölçümlerimizden çıktı. Bu kayıt, aynı
+işi yapan yayımlanmış hatları okuyup kiraat'in her kararını onların yanına
+koyar: hangisi yerleşik uygulamayla aynı, hangisi bilinçli bir ayrılık.
+Makalede "farklı yapıyoruz" demenin bedeli, farkın nereden geçtiğini
+göstermektir.
+
+**Okunanlar.** Emilia / Emilia-Pipe (arXiv 2407.05361 ve 2501.15907),
+LibriTTS (arXiv 1904.02882), Libriheavy (arXiv 2309.08105), GigaSpeech 2
+(ACL 2025, arXiv 2406.11546), ManaTTS (NAACL 2025, arXiv 2409.07259) ve
+hizalama araçlarının 2026 durum değerlendirmesi (arXiv 2606.18466).
+
+**Ortaklaştığımız yerler.** LibriTTS kesimi sessizlikte değil **cümle
+sınırında** yapar ve gerekçesi bizimkiyle aynıdır: cümle düzeyi bürün ancak
+cümle bütünken öğrenilir; Libriheavy de kesimi cümle sınırına koyar ve
+30 saniyeye kadar parça üretir. LibriTTS 16 kHz'i "yüksek kaliteli TTS için
+çok düşük" bulup **24 kHz**'e geçer; Emilia da 24 kHz'de yayımlar — bizim
+hedefimiz de 24 kHz ve yukarıdaki envanter bunu kaynağın bant genişliğiyle
+ayrıca doğruluyor. LibriTTS hem ham hem normalize metni yayımlar ve büyük
+harf/noktalama bilgisini korur; bizde bu üç alan olarak var (`text_raw`,
+`text`, `text_spoken`). GigaSpeech 2, düşük kaynaklı diller için tam bizim
+sıramızı kurar: Whisper ile yazıya çevir, **MMS ile zorlamalı hizala**,
+sonra çok boyutlu süz.
+
+**Ayrıldığımız yer — eşik.** Yerleşik hatların hepsi kalite ölçüsünü kapı
+olarak kullanır: Emilia **DNSMOS OVRL ≥ 3,0** altındaki her klibi atar
+(Emilia-Large'da eşik 2,4'e indirilmiş), LibriTTS "clean" altkümesinde
+**SNR ≥ 20 dB** ister, ikisi de dil kimliği ve süre aykırılığıyla eler.
+LibriTTS'in daha sıkı hattı LibriSpeech'in 982 saatini **585 saate** (%60)
+indirir. kiraat hiçbir eşikle klip elemez; ölçümü sütun olarak yayımlar ve
+kararı sürümlü `recommended_subset` politikasına bırakır. Bu ayrılığın
+gerekçesi artık ölçülü: 30 Ağustos'ta iki standart kalite ölçüsü
+(`clip_ratio`, `word_confidence`) makul eşiklerle kör dinlemede tutunamadı
+ve elenen kliplerin neredeyse tamamı dinleyiciye göre eğitime uygundu.
+Yerleşik yöntem yayımdan önce dinlenmediğinde ne kaybettirdiğini
+göstermiyor; bizim katkımız tam olarak burası.
+
+**Ayrıldığımız yer — sesin kendisine dokunmamak.** Emilia yayımladığı sesi
+önce kaynak ayrıştırmasından geçirir (UVR-MDX-Net) ve **−20 dBFS**'e
+normalize eder; yani yayımlanan dalga biçimi işlenmiş sestir. kiraat
+ayrıştırmayı yalnızca **ölçmek** için koşturur (müzik/konuşma oranı) ve sesi
+olduğu gibi bırakır, seviyeyi de sütun olarak verir. Gerekçe aynı değişmez:
+aşama ölçer, karar vermez — normalizasyon ve müzik bastırma kullanıcının
+tercihidir, korpusun dayatması değil.
+
+**Süre bandı.** Emilia 3–30 s, LibriTTS/Libriheavy 30 s'ye kadar, alandaki
+pratik kılavuzlar 2–12 s aralığını öneriyor. Bizde `min_sec 1,5` /
+`target 7` / `max 15`; üretilen dağılım medyan 5,9 s, p95 11,1 s. Alt sınır
+alandan düşük, üst sınır yüksek değil — kısa kliplerin `short` işaretiyle
+yayımlanıp politikada dışlanması bu farkı zaten karşılıyor.
+
+**Uzun kayıt konusunda literatür bize yol göstermiyor.** Emilia'nın
+girdilerinin süresi **20,09–3.596,27 saniye** aralığında, yani en uzun
+kaydı bir saat; YouTube videolarıyla çalışıyor. Libriheavy uzun formu kitap
+metnine hizalayarak çözüyor, bizde referans metin yok. Bizim korpusumuzda
+kayıtların %30,7'si dört saatin üstünde ve en uzunu 14,9 saat. Dolayısıyla
+"çok saatlik tek parça kaydı sabit bellekle işlemek" bu hattın kendi
+sorunu ve makalede yöntem olarak anlatılacak bir katkı — aşağıdaki bellek
+kaydı bunun ölçülmüş hâli.
+
+**Hizalama güveni.** 2026 değerlendirmesi hizalayıcı skorlarının "modelin
+kendine güveni" olduğunu, doğrulukla karıştırılmaması ve örneklem alınıp
+elle denetlenmesi gerektiğini söylüyor. Bu bizim `align_score` konusundaki
+duruşumuzu destekliyor: sütun yayımlanır, kapı olmaz, sınırı (rakamlar
+hizalanmaz; cümle başı kısa sözcüklerde çöp hizalama) belgelenir.
+
+**Buradan çıkan yapılacaklar.** (1) LibriTTS'in ses–metin uyuşmazlığını
+yakalamak için kullandığı "ortalama kelime süresi aykırı" ölçüsü bizde
+zaten türetilebilir durumda: `duration / n_words` iki yayımlanan sütundan
+çıkıyor. Yeni bir ölçüm gerekmiyor; yapılacak iş, bu oranın dağılımını
+korpusta çıkarıp aykırıların gerçekten uyuşmazlık olup olmadığını kör
+dinlemeyle sınamak — sonuç olumluysa sütun olarak açıkça yayımlanır,
+yine kapı yapılmaz.
+(2) Klip başına **dil kimliği** skoru (Emilia ≥0,8 eşiğiyle kapı yapıyor;
+biz sütun olarak) Türkçe olmayan klipleri görünür kılar. (3) DNSMOS
+konfigde `enabled: true` görünüyor ama aşama yok — ya bağlanmalı ya
+konfigden çıkmalı. (4) Konuşmacı kümeleme (Emilia pyannote 3.1 kullanıyor)
+hâlâ bağlı değil ve `dedupe` bu yüzden kanala düşüyor.
+
+**Makaleye:** §İlgili çalışmalar (yukarıdaki karşılaştırma), §Yöntem (cümle
+sınırı ve 24 kHz kararlarının alandaki karşılığı), §Katkı (eşiksiz yayım ve
+çok saatlik kayıt işleme), §Sınırlar (süre bandı farkı).
+
+## 2026-08-30 — Uzun kayıt: bellek duvarı kaldırıldı, 14,9 saatlik kayıt uçtan uca koştu
+
+Envanter korpusun %30,7'sinin dört saatten uzun kayıtlarda olduğunu
+gösterdi; hattın gördüğü en uzun kayıt ise 20 dakikalıktı. Bu kayıt o
+boşluğun kapatılmasıdır: önce kaydın uzunluğuyla büyüyen üç allokasyon
+kaldırıldı, sonra korpusun **en uzun kaydı** (14,92 saat, BirDinle,
+"Cennette İki Yıl") uçtan uca koşturuldu.
+
+**Kaldırılan üç allokasyon.**
+
+1. `boundaries.envelope` kare dizinini tek seferde maddileştiriyordu
+   (`arange(n)[:,None]*hop + arange(frame)`): örnek başına 16 baytlık int64
+   dizin + 8 baytlık toplanmış kare, ölçülen **saat başına 2,73 GB**. Artık
+   kareler 32 MB'lık bloklar hâlinde, bitişik kopyayla hesaplanıyor —
+   `np.mean`'in toplama sırası korunsun diye kopya bilinçli.
+2. `segment` kaydın tamamını belleğe alıp (`always_2d` ile iki kopya)
+   dilimliyordu. Artık zarf diskten akıtılıyor (`envelope_of_file`) ve her
+   klip yalnızca kendi aralığı okunarak yazılıyor.
+3. `align` kaydın tamamını okuyup tek çağrıda 24→16 kHz yeniden
+   örnekliyordu (**saat başına 2,19 GB**). Artık her parça için diskten
+   pencere okunuyor, iki yanına 0,5 s pay verilip pay atılıyor.
+
+**Çıktının değişmediği kanıtlandı.** Zarf, eski uygulamayla **birebir aynı**
+diziyi veriyor (iki örnekleme hızı × yedi uzunluk). Pencere okuyucunun
+verdiği örnekler tam dosyayı yeniden örnekleyip dilimlemekle **azami fark
+0,000e+00**; aynı modelle hizalanınca iki yoldan 745 kelimenin damgası ve
+skoru aynı. Bölütlemede eski ve yeni aşama üç kaynakta yan yana koşturuldu:
+**532 klibin manifest satırları aynı ve FLAC dosyaları SHA-256 düzeyinde
+aynı**. Yani bu bir yeniden yazım değil, aynı hesabın sabit bellekli hâli.
+
+**Ölçülen bellek.** 10 dakikalık sentetik kayıtta bölütleme zirvesi
+**520 MB → 64 MB altı**; zarf 30 dakikada **1.210 MB → 35 MB**. Dört yeni
+test bu sınırları bekçiye bağladı ve **eski koda dönülünce dördü de
+düşüyor** (denendi).
+
+**Duman testi — 14,92 saat, tek kayıt, `work/long-smoke`.**
+
+| aşama | süre | gerçek zamana oran |
+|---|---|---|
+| prepare (ffmpeg → 24 kHz mono FLAC) | 151 s | 355× |
+| asr (faster-whisper large-v3, toplu) | 733 s | 73× |
+| align (MMS_FA, 30 s parçalar) | 261 s | 206× |
+| segment (7.170 klip) | 209 s | 257× |
+| clip_qc + music (7.170 klip) | ~200 s | — |
+| **toplam** | **25 dk 58 s** | **34,5×** |
+
+Zirve bellek: süreç ağacında **12,0 GB**, `time -v`'nin gördüğü tek süreç
+azamisi 14,1 GB — ikisi de **ASR işçisi**. Bölütleme ve hizalama artık
+kayıt uzunluğundan bağımsız; **kalan tek uzunluğa bağlı tüketici ASR**,
+çünkü faster-whisper kaydı bütün olarak çözüyor (kabaca ses saati başına
+0,8 GB). 62 GB'lık makinede bir ya da iki GPU işçisiyle bu sorun değil,
+ama üçe çıkarmanın sınırı budur.
+
+Çıktı: **7.170 klip, 13,46 saat** (kaynağın %90,2'si), önerilen **6.393
+(%89,2), 11,52 saat**; süre medyanı 6,2 s, p95 13,0 s. İşaretler:
+`forced_split` %7,0, `oversize` %1,0, `short` %0,9, `gap_split` %0,6,
+`background_music` %0,3. 93.784 kelimenin 198'i (%0,21) hizalanamadı
+(rakamlar). Disk: 2,2 GB, yani kaynak saati başına 147 MB — tam koşu
+tahminiyle (156 MB/saat) uyumlu.
+
+**Denetim bir FAIL verdi ve gerçek bir şeydi — ama ölçümde değil, yuvarlamada.**
+`src00001-06029`: üç kelimenin üçü de 0,9995 olasılıklı; `word_confidence`
+(min) doğrudan yuvarlanıp **1,0**, `word_confidence_mean` kayan nokta
+toplamında 0,9994999…'e düşüp **0,999** oldu ve "min ≤ mean" denetimi
+düştü. Ölçüm doğru, iki sütun da üç ondalığa yuvarlandığı için son
+basamakta ters görünüyor. Denetime bir yuvarlama birimi tolerans kondu ve
+gerekçesi oraya yazıldı. 7.170 klipte bir kez; 13.637 kliplik örnek koşuda
+hiç görülmemişti — uzun kayıt yalnızca belleği değil, seyrek sayısal
+durumları da açığa çıkarıyor.
+
+**Açık madde 14 kapandı.** Doğrulayıcı `work/long-smoke` üzerinde
+`HATA YOK` diyor; `work/sample-25c` de yeni kodla temiz kalıyor.
+
+**Makaleye:** §Uygulama (çok saatlik kaydı sabit bellekle işleme; alanda
+karşılığı yok — Emilia'nın en uzun girdisi bir saat), §Ölçek (aşama
+süreleri ve bellek).
+
+## 2026-08-30 — Karar: ham veri azaltılmaz; uzantı listesi genişledi, kanal tavanı kalktı
+
+İki açık soruyu kullanıcı aynı ilkeyle kapattı: **kalite ve doğruluktan
+ödün verilmez, ama veri miktarı azaltılmaz; mevcut bütün ham kayıtlardan
+yararlanılır.** İkisi de konfige işlendi.
+
+**Uzantı listesi.** `sources.extensions` altı uzantıdan ibaretti ve dört
+`.m4aa` dosyasını (12,41 saat) sessizce dışarıda bırakıyordu. Liste artık
+ffmpeg'in ses akışı çıkarabildiği bütün kapsayıcıları içeriyor; video
+kapsayıcıları da listede, çünkü `prepare` zaten yalnızca ses akışını çözer.
+Kuru koşuyla doğrulandı: hat artık **2.699 kaynak / 3.440,16 saat**
+alıyor, envanterde uzantı yüzünden dışarıda kalan dosya **sıfır**.
+
+Bu bir daha sessizce olmasın diye denetim `scripts/inventory.py`'de:
+envanter konfigin listesinden geniş tarar ve "uzantı listesi dışında kalan
+N dosya, X saat" satırını her koşuda basar.
+
+**Kanal başına saat tavanı kaldırıldı.** `export.max_hours_per_channel: 120`
+konfigde duruyordu ama onu okuyan kod yoktu — yani konfig uygulanmayan bir
+kural ilan ediyordu. Uygulansaydı korpus 3.440 saatten **1.849 saate**
+inecekti. Karar: tavan yok, anahtar konfigden çıkarıldı ve yerine ölçülen
+dağılım yazıldı. Kanal dengesizliği gizlenmiyor, **yayımlanıyor**: her klip
+`channel` ve `duration` taşıdığı için kullanıcı istediği tavanı kendisi
+kesebilir. Bu, deponun "aşama ölçer, karar vermez" değişmezinin dışa
+aktarımdaki karşılığı; dengelemeyi korpus dayatmaz, veri kartı anlatır.
+Ölçülen dağılım: `seslikitaplarmavi` %19,5, `BirDinle` %15,5, ilk iki
+kanal %35,2, dokuz kanal 120 saatin üstünde.
+
+**Kaybedilen tek dosya kurtarılamıyor.** Ham kökte ffprobe'un açamadığı
+dosya (`seslimakalem/NEDRET ERSANEL…m4a`) **0 bayt** — başarısız bir
+indirme, içinde ses yok. Yani hattın dışında kalan hiçbir ses yok:
+2.698 okunabilir kayıt, 3.440,2 saat, tamamı alınıyor.
+
+**Bulunan kusur — kuru koşu bozuk dosyada çöküyordu.** Uzantı listesi
+genişleyince ilk `--dry-run` `CalledProcessError` ile düştü: `dry_run`
+kendi `duration_of`'unu veriyor ve o ffprobe hatasını yakalamıyordu
+(`discover_sources`'ın kendi sarmalayıcısı yakalıyor). Düzeltildi: okunamayan
+dosya süre 0 sayılır, koşu sürer ve dosya adıyla raporlanır — koşudaki
+davranışın aynısı (`prepare` kaydı `error` ile işaretler). Testi var ve
+düzeltme geri alınınca düşüyor.
+
+**Etkisi.** Tam koşu beklentisi 3.427,8 → **3.440,2 saat**; süre ve disk
+tahminleri pratik olarak değişmiyor (~83 saat, ~557 GB).
+
+**Makaleye:** §Korpus (kapsam kararı: hiçbir kayıt kapsam dışı bırakılmadı),
+§Sınırlar (kanal dengesizliği tavanla değil, sütunla ele alınıyor).
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
