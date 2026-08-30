@@ -20,6 +20,51 @@ diye işaretlenmiş kayıtlar tam olarak bu durumdadır.
 Mühendislik gerekçelerinin tutulduğu `DESIGN.md` **iç belgedir** ve makale
 malzemesi değildir; oradaki karşılaştırmalar makaleye taşınmaz.
 
+## Hangi sayı geçerli (31 Ağu 2026)
+
+Defter bir günlüktür: eski kayıtlar, o gün ölçüleni olduğu gibi tutar ve
+silinmez. Ama makaleye yalnızca **bugün geçerli olan** sayı girer. Aşağıdaki
+liste, hangi kaydın hâlâ geçerli olduğunu söyler; eskimiş yerlerde ayrıca
+satır içi `Düzeltme` / `Geçersiz` notu vardır.
+
+**Geçerli ölçümler.**
+
+| ne | değer | kaynak |
+|---|---|---|
+| ham korpus | 3.440,2 saat, 2.698 okunabilir kayıt, 27 kanal | envanter, 30 Ağu (`work/inventory.jsonl`) |
+| kayıt uzunluğu | medyan 41,4 dk, p99 517,7 dk, azami 14,92 saat; %30,7'si 4 saatten uzun | aynı |
+| kaynak biçimi | 44,1 kHz stereo AAC ~129 kb/s; bant kesimi medyan 15,7 kHz | aynı |
+| denetim örneklemi | `sample-25c`: 81 kaynak, 27 kanal, 13.637 klip / 23,17 saat | 30 Ağu koşusu |
+| önerilen alt küme | 11.291 klip (%82,8) / 18,98 saat, **politika v6** | aynı |
+| uzun kayıt sınavı | `long-smoke`: 14,92 saatlik tek kayıt, 7.170 klip / 13,46 saat | 30 Ağu |
+| hız | 41,5× (dağıtıcılı, sample-25c); tek kaynak zincirinde 34,5× | aynı |
+| tam koşu beklentisi | ~83 saat, ~557 GB, ~1,73 milyon klip | yukarıdakilerden |
+
+**Geçersiz sayılar — makaleye girmez.**
+
+- **Bu depoda üretilmemiş her sayı.** Korpus büyüklüğü bir dönem dışarıdan
+  alınmış bir rakamla ("2.370 kayıt, 2.942 saat") anılıyordu; o rakam
+  çıkarıldı, yerine ölçülen envanter geçti. Defterin kuralı gereği makale
+  önceki bir yayına ya da veri kümesine ne taban ne atıf olarak değinir.
+- **Eskimiş örnek koşular.** `sample-5*`, `sample-15`, `sample-24`,
+  `sample-25`, `sample-25b` koşularının klip sayıları ve önerilen oranları
+  yalnızca o günün hattını anlatır; hepsi silindi ve düzeltilmiş hatla
+  `sample-25c` olarak yeniden koşuldu. Korpus sayısı olarak yalnızca
+  `sample-25c` ve `long-smoke` kullanılır. (Kör dinleme sonuçları
+  koşudan bağımsızdır ve geçerliliğini korur.)
+- **Politikadan düşmüş kurallar.** `dnsmos_ovrl ≥ 3,0` (v4'te kaldırıldı,
+  hiç ölçülmüyordu), `clip_ratio ≤ 0,002` (v5, kör dinleme),
+  `word_confidence ≥ 0,60` (v6, kör dinleme). Politika **v6**'dır ve üç
+  kuralı vardır; bu üç eşik makalede yürürlükteymiş gibi anlatılamaz.
+- **Uygulanmamış ayarlar.** `export.max_hours_per_channel: 120` hiçbir
+  zaman kod tarafından okunmadı ve kaldırıldı; kanal başına saat tavanı
+  **yoktur**. Aynı şekilde müzik eşiğinin ilk tahmini −30 dB kör dinlemeyle
+  çürütüldü, geçerli eşik **−40 dB**'dir.
+- **Dağıtıcı öncesi hız tahminleri** (10,9×, 27×, 31×, 38×) hattın o günkü
+  hâlini anlatır; geçerli hız 41,5×'tir.
+
+---
+
 ---
 
 ## 2026-08-28 — Korpusun adı ve kapsamı
@@ -30,11 +75,18 @@ planlandı. Ayırt edici adın makalede, tarif edici kimliğin arama
 görünürlüğünde işe yaraması amaçlandı.
 
 Ham malzeme, Türkçe sesli kitap, sesli edebiyat ve sesli makale yayınlayan
-herkese açık YouTube kanallarından derlenmiş 2.370 kayıt, toplam 2.942 saat.
-Kaynakların telif durumu temizlenmemiştir; yayın politikası ve kaldırma
-yolu, veri kümesi kartında ayrıca ele alınacak.
+herkese açık YouTube kanallarından derlenmiş kayıtlardır. Kaynakların telif
+durumu temizlenmemiştir; yayın politikası ve kaldırma yolu, veri kümesi
+kartında ayrıca ele alınacak.
 
-**Makaleye:** §Korpus, §Etik ve lisans.
+> **Düzeltme (31 Ağu 2026).** Bu kayıtta önce "2.370 kayıt, 2.942 saat"
+> yazıyordu; o sayı bu depoda ölçülmemişti, dolayısıyla defterin kuralına
+> göre makaleye giremez ve buradan çıkarıldı. Ölçülen kapsam **2.698
+> okunabilir kayıt, 3.440,2 saat, 27 kanal** (30 Ağu 2026,
+> `scripts/inventory.py`); §Korpus'a giren sayı odur.
+
+**Makaleye:** §Korpus (kapsam ve etik çerçevesi; sayılar envanter
+kaydından), §Etik ve lisans.
 
 ## 2026-08-28 — Cümle hizalı bölütleme
 
@@ -434,7 +486,9 @@ hizalayıcı bağlanmadan bu kural klip kaybettiriyor. Öncelik: `align`.
 
 **Ölçek.** Ses saati başına: prepare 0,27 dk, ASR 3,41 dk, bölütleme
 0,66 dk (18 bin ffmpeg çağrısı), clip_qc 0,77 dk (silero, sıralı), music
-0,40 dk; toplam 5,5 dk → **10,9× gerçek zaman**, 2.942 saat için ≈ 11 gün.
+0,40 dk; toplam 5,5 dk → **10,9× gerçek zaman**. (Bu satırda korpus
+büyüklüğü olarak dışarıdan alınmış bir sayı kullanılıyordu; çıkarıldı —
+ölçülen büyüklük 3.440,2 saattir ve hattın bugünkü hızı 41,5×'tir.)
 Tam koşu bu hızla yapılmaz. ASR bu koşuda GPU'yu iki Whisper konteyneriyle
 paylaştı (ilk koşuda 34× idi); yine de üç iyileştirme gerekli: toplu ASR
 (faster-whisper `BatchedInferencePipeline`), klip kesimini tek geçişte
@@ -465,7 +519,7 @@ olduğu için önceki metne koşullanma zaten yok), klip kesimi kayıt başına
 tek çözümle bellekten (soundfile; 18 bin ffmpeg süreci yerine), clip_qc
 CPU işçi havuzunda. Ses saati başına dakika: ASR 3,41 → 0,77; bölütleme
 0,66 → 0,25; clip_qc 0,77 → 0,15; music 0,40 → 0,27; yeni hizalama 0,31.
-Toplam 5,5 → 1,95 dk/saat. **Tam korpus 2.942 saat ≈ 4 gün** (önce 11).
+Toplam 5,5 → 1,95 dk/saat, yani **31× gerçek zaman** (önce 10,9×).
 Not: GPU bu ölçümde iki boşta Whisper konteyneriyle paylaşılıyordu.
 
 **2. Zorlamalı hizalama bağlandı** (`stages/align.py`, torchaudio MMS_FA,
@@ -853,7 +907,8 @@ null'a döndü, `music_prob_external` şemadan ve sayfadan çıktı.
 Arka plan gürültüsü için adaylar (müzikten ayrı soru): torchaudio SQUIM
 (referanssız STOI/PESQ/SI-SDR; 41 müziksiz klipte SI-SDR medyan 24,0 dB,
 rastgele temizde 25,9, diğer kanalların işaretlilerinde 20,9), DNSMOS
-P.835 (BAK; tasarımda zaten `dnsmos_ovrl` planlı), pyannote/brouhaha (SNR +
+P.835 (BAK; `dnsmos_ovrl` sütunu planlanıyor — aşama yazılana kadar konfigde
+yeri yok, 30 Ağu 2026), pyannote/brouhaha (SNR +
 C50; kapılı model). Karar bekliyor: `quality` aşaması olarak sütun, kapı
 değil.
 
@@ -948,6 +1003,11 @@ için örnekler-arası taşma ≤ ~0,2 dB — kabul edilebilir, belgelendi.
 `max_hours_per_channel: 120` tavanı tam koşuda bunu dengeler, örnek
 koşuda dengelemez.
 
+> **Geçersiz (30 Ağu 2026):** o tavan hiçbir zaman uygulanmadı — anahtarı
+> okuyan kod yoktu — ve kullanıcı kararıyla konfigden çıkarıldı (veri
+> azaltılmaz). Kanal dengesizliği tavanla değil, `channel` + `duration`
+> sütunlarıyla yayımlanıyor.
+
 Sınır sayımı (v8): başlangıcı ilk kelimeden sonra 78 (%0,9), bitişi son
 kelimeden önce 5 — v7 ile aynı düzeyde; kalanlar dinlemede.
 
@@ -981,7 +1041,9 @@ tavanı; prepare yalnızca ilk bu kadar dakikayı çözer, `ffmpeg -t`; saat
 bütçesi kesilmiş süreyle sayılır, kesik-indirme işareti tavana göre değil
 tavanla kapsayıcının küçüğüne göre verilir; prepare v4, `cap_sec` meta).
 Tavan gerekliydi çünkü kanalların medyan kaydı 0,2 ile 2,2 saat arasında
-değişiyor (v1 tabanından okundu): tam kayıt alınsaydı "kanal başına 3
+değişiyor (o gün dışarıdan okunmuştu; 30 Ağu 2026'da bu depoda ölçüldü —
+kayıt süresi medyanı 41,4 dk, kanal medyanları envanter raporunda): tam
+kayıt alınsaydı "kanal başına 3
 kayıt" 121 saat ederdi, kanal başına saat bütçesiyle kısa kayıtlar
 seçilseydi örneklem kısa kayıtlara doğru eğilirdi. Tavan bu eğilimi
 kaldırır: kayıt seçimi rastgele kalır, yalnızca uzun kayıtların ilk 20
@@ -1026,11 +1088,20 @@ hangi sinyallerin kör dinlemeye alınacağını belirlemektir.
 
 ## 2026-08-29 — sample-25 sonuçları: 27 kanal, 12.958 klip, 22,4 saat; hız 27×
 
+> **Eskidi (31 Ağu 2026):** bu koşu silindi ve düzeltilmiş hatla yeniden
+> koşuldu; buradaki klip sayıları ile önerilen oranı yalnızca o günün
+> hattını anlatır. Geçerli örnek koşu `sample-25c`'dir (13.637 klip,
+> önerilen %82,8, politika v6).
+
+
 Koşu 13:31–14:26, **54 dakikada 24,7 saat ses ≈ 27× gerçek zaman**
 (sample-5b'de 31× ölçülmüştü; fark müzik aşamasının payı — bu örneklemde
 müzikli klip oranı yüksek). Aşama süreleri: prepare 5 dk (~290×), ASR
 21 dk (~71×), hizalama 7 dk, bölütleme 6 dk, clip_qc 5 dk, müzik 11 dk.
-Tam korpus (2.942 saat, v1 tabanı) bu hızla ≈ 110 saat ≈ 4,5 gün.
+> **Düzeltme (31 Ağu 2026):** bu satırda tam korpus süresi olarak
+> dışarıdan alınmış bir sayı kullanılmıştı. Ölçülen korpus **3.440,2
+> saat** (30 Ağu 2026 envanteri) ve ölçülen hız 41,5× — beklenen tam koşu
+> **~83 saat**.
 
 **Klipler:** 12.958 klip / 22,42 saat (ses saatinin %91'i klip oldu),
 medyan 5,9 s, p5 2,6 / p95 11,6 s. Önerilen alt küme (politika v3)
@@ -1309,7 +1380,9 @@ okunuyor ama hiçbir klibi etkilemiyordu. Kural yoruma alındı; hiçbir klibin
 `recommended` değeri değişmez. `tests/test_config.py` artık politikadaki her
 ölçüm kuralının şemada karşılığı olmasını şart koşuyor — bu sınıf hata bir
 daha sessizce giremez. Konfigdeki `dnsmos`, `speaker` ve `events`
-bölümlerinin başına "bağlanmadı" notu düşüldü; `speaker` yokluğunda dışa
+bölümlerinin başına "bağlanmadı" notu düşüldü (30 Ağu 2026'da bu bölümler
+konfigden büsbütün çıkarıldı: not düşmek yetmiyordu, `dnsmos.enabled: true`
+hâlâ "açık" görünüyordu); `speaker` yokluğunda dışa
 aktarımın kanala düşmesi, yani "aynı metin + farklı ses korunur" kuralının
 fiilen "farklı kanal korunur" olarak çalıştığı da oraya yazıldı
 (sample-25'te 28 yinelemenin hepsi kanal içiydi, zarar yok).
@@ -1332,6 +1405,12 @@ raporlanıyor ve pay aşılırsa FAIL veriyor.
 
 
 ## 2026-08-30 — sample-25 silindi; aynı örneklem düzeltilmiş hatla yeniden: `sample-25b`
+
+> **Eskidi (31 Ağu 2026):** `sample-25b` de silindi. Bu kayıttaki 12.958
+> klip / önerilen %78,1 sayıları tepe sınırlayıcı kalkmadan ve politika
+> v5–v6 düzeltmeleri yapılmadan önceki hattındır. Geçerli sayılar aşağıdaki
+> `sample-25c` kaydındadır.
+
 
 Dün akşamki düzeltmelerden (dağıtıcı, hizalayıcı skoru — align v2, ara
 ses FLAC — prepare v5, politika v4, yeni denetim sayfası) sonra bütün
@@ -1572,14 +1651,56 @@ kişilerce okunması yüzünden yalnız kaynak düzeyinde bölmek yetmiyor — b
 hem kaynağa hem metne göre yapılmalı ve kalan örtüşme ölçülüp raporlanmalı.
 Veri hazır olmadan yapılamaz, koşudan sonraya kalıyor.
 
+## 2026-08-30 — `sample-25c`: geçerli denetim örnekleminin toplu sayıları
+
+Örneklem sayıları bugüne kadar üç ayrı kayda dağılmıştı (iki kör dinleme
+turu ve düzeltmeler); makalenin §Örneklem bölümü tek bir yerden okunabilsin
+diye burada toplanıyor. Koşu `work/sample-25c`, politika **v6**,
+doğrulayıcı `HATA YOK`.
+
+**Örneklem.** 27 kanalın hepsinden 3'er kayıt = **81 kaynak**, kayıt başına
+en çok 20 dakika (`prepare.max_minutes: 20`), toplam 27 saat ham ses; koşu
+39 dakika, yani **41,5× gerçek zaman** (CPU/GPU dağıtıcısıyla).
+
+**Çıktı.** **13.637 klip / 23,17 saat** (ham sesin %86'sı klip oldu).
+Süre: medyan 5,9 s, p5 2,7, p95 11,1; 15 saniyeyi aşan 63 klip (`oversize`
+payla birlikte). Önerilen alt küme **11.291 klip (%82,8) / 18,98 saat**.
+
+**İşaretler.** `background_music` 1.775 (%13,0), `forced_split` 360 (%2,6),
+`short` 165 (%1,2), `oversize` 48 (%0,4), `boilerplate` 35 (%0,3),
+`gap_split` 25 (%0,2), `duplicate` 21 (%0,2). Dışlamanın büyük çoğunluğu
+tek başına müzik işaretinden geliyor (1.691 klip).
+
+**Kanal dağılımı.** Önerilen oranı kanaldan kanala çok değişiyor: 20
+kanalda %88'in üstünde, buna karşılık `Peri_Mia` %6,6, `SESLİKİTAPEVİ`
+%30,7, `sesli-kitaplar` %37,0 — üçünde de sebep `background_music`
+(Peri_Mia'nın kliplerinin %92,7'si işaretli). Yani müzik işareti korpusta
+tek tek kliplere değil, **kanallara** yığılıyor. Hiçbir klip silinmediği ve
+politika yeniden hesaplanabildiği için bu bir veri kaybı değil; ama
+`recommended` alt kümesi fiilen bazı kanalları dışarıda bırakıyor ve bu,
+`clip_ratio` ile `word_confidence` turlarında düşen örüntünün aynısı.
+Müzik eşiği kör dinlemeden geçmiş tek sinyaldir (28 Ağu, 34 klip), ama o
+dinleme bu kanalları içermiyordu.
+
+**Açık madde 15 — müzik işaretinin kanal yığılması.** `Peri_Mia`,
+`SESLİKİTAPEVİ` ve `sesli-kitaplar` kliplerinden bantlara dengelenmiş
+30–40 kliplik bir kör dinleme turu; soru: bu kliplerde gerçekten duyulur
+müzik var mı, yoksa eşik o kanalların tınısını mı yakalıyor? Sonuç, tam
+koşudan sonra da politika yeniden hesaplanarak uygulanabilir — koşuyu
+bekletmez.
+
+**Makaleye:** §Örneklem (bütün bu sayılar), §Sınırlar (müzik işaretinin
+kanal yığılması).
+
 ## 2026-08-30 — Kör dinleme: `clip_ratio` kuralı kaldırıldı (politika v5)
 
 Tepe sınırlayıcı kalkınca `clip_ratio` kuralı canlandı: önceki koşuda tek bir
 klip elemiyordu, sample-25c'de **536 klip** elemeye başladı. Dağılıma bakınca
 örüntü tanıdık çıktı — 536'nın **532'si tek kanaldaydı** (`sess-Seslikitap`,
 kliplerinin %93,2'si), kalan 26 kanal toplam 4 klip verdi. Yani sinyal klip
-özelliği değil kanal özelliğiydi; v1'de doğrulanmamış bir sınıflandırıcının
-981 saati silmesine yol açan örüntünün aynısı.
+özelliği değil kanal özelliğiydi. Bu örüntü hattın en tehlikeli hata sınıfı:
+doğrulanmamış bir ölçü kapı yapıldığında elediği şey "kötü klip" değil,
+"o kanal" oluyor.
 
 O kanal ölçüm olarak gerçekten ayrı duruyor: RMS medyanı **−12,70 dBFS**
 (korpus medyanı −21,37, yaklaşık 9 dB daha yüksek) ve **571 klibinin
@@ -1620,8 +1741,8 @@ gelmesi, kararın kendisi için tek başına yeterli.
 **Makaleye.** Bu, hattın kendi tezinin kendi üzerinde gösterilmiş hâli:
 standart, makul bir kalite ölçüsü (dijital kırpılma oranı) makul bir eşikle
 bir kanalın %93'ünü sessizce silecekti ve kör dinleme o kliplerin hepsinin
-eğitime uygun olduğunu söyledi. v1'de aynı sınıf hata yayımdan sonra
-görülmüştü; burada yayımdan önce yakalandı. Kanıt dosyaları
+eğitime uygun olduğunu söyledi. Kusur yayımdan **önce** yakalandı, çünkü
+kapı olacak her sinyal dinleme sınavından geçiriliyor. Kanıt dosyaları
 `work/archive/sample-25c/` altında (`clipping-key.json`,
 `clipping-answers-1.json`, `listen-clipping.txt`).
 
@@ -1692,9 +1813,9 @@ tur gerekir.
 **İki turun ortak dersi — makaleye.** Bir günde iki ayrı standart kalite
 ölçüsü, makul eşiklerle, kör dinlemede tutunamadı: dijital kırpılma oranı bir
 kanalın %93'ünü, ASR kelime güveni korpusun %7,2'sini siliyordu ve dinleyici
-elenen kliplerin neredeyse tamamını eğitime uygun buldu. İkisi de v1'de
-yayımdan sonra fark edilen hatanın aynı sınıfı; burada yayımdan önce
-yakalandı. Kanıt dosyaları `work/archive/sample-25c/` altında.
+elenen kliplerin neredeyse tamamını eğitime uygun buldu. İkisi de yayımdan
+önce, kendi verimiz üzerinde yakalandı; makalede iddia bu iki turun
+ölçümüne dayanır. Kanıt dosyaları `work/archive/sample-25c/` altında.
 
 ## 2026-08-30 — Kör dinleme: sınır kesimi temiz; denetim ölçütü damgadan sese taşındı
 
@@ -1780,6 +1901,13 @@ makalede yayımlanacağı için bunun ya açıklanması ya da sütunun sınırı
 belgelenmesi gerekiyor.
 
 ## 2026-08-30 — Tam koşu hazırlık denetimi: korpus envanteri ve uzun kayıtta bellek duvarı
+
+> **Kısmen eskidi (31 Ağu 2026):** buradaki envanter sayıları kabaydı
+> (3.427,8 saat, "165 kayıt 4 saatten uzun") ve aynı gün dosya dosya
+> yapılan ölçümle değiştirildi — geçerli sayılar "Envanter" kaydındadır
+> (3.440,2 saat; 4–8 saat bandında 131, 8 saat üstünde 35 kayıt). Bellek
+> ölçümleri ve teşhis geçerliliğini koruyor; açık madde 14 kapandı.
+
 
 Tam koşu öncesi son denetim. Üç şey ölçüldü: ham korpusun gerçek büyüklüğü,
 tam koşunun disk ve süre maliyeti, ve hattın örnekte hiç görmediği bir
@@ -2193,65 +2321,119 @@ sınanmalı — sabitlemenin koruduğu şey tam da bu.
 "konfig uygulananın tamamını ve yalnızca onu ilan eder" ifadesinin
 dayanağı.
 
+## 2026-08-31 — Defter temizliği: geçersiz sayılar damgalandı, geçerlilik dizini eklendi
+
+Defter makalenin tek kaynağı olduğu için içindeki her sayının ya güncel ya
+da açıkça "geçersiz" damgalı olması gerekiyor. Bugün baştan sona tarandı.
+Kayıtlar silinmedi — bir günlük, o gün ölçüleni olduğu gibi tutar — ama
+eskimiş ya da bu depoda üretilmemiş her sayının yanına ne olduğu yazıldı.
+
+**Dışarıdan gelmiş sayılar çıkarıldı.** Korpus büyüklüğü ilk kayıttan beri
+bu depoda ölçülmemiş bir rakamla anılıyordu ("2.370 kayıt, 2.942 saat") ve
+üç ayrı yerde hız/maliyet tahmininin tabanı olmuştu. Defterin kendi kuralı
+bunu yasaklıyor: makaleye giren her sayı burada üretilmiş olmalı. Rakam
+çıkarıldı, yerine ölçülen envanter kondu (2.698 kayıt, 3.440,2 saat);
+tahminler de bugünkü ölçülmüş hızla (41,5×) yeniden yazıldı. Aynı şekilde
+"kanalların medyan kaydı 0,2–2,2 saat" dışarıdan okunmuştu; artık burada
+ölçülü (medyan 41,4 dk).
+
+**Önceki veri kümesine göndermeler kaldırıldı.** Üç yerde bir ders "önceki
+hatta da böyle olmuştu" diye anlatılıyordu. Dersin kendisi bu deponun kendi
+kanıtıyla ayakta duruyor — doğrulanmamış bir ölçü kapı yapılınca elediği
+şey "kötü klip" değil "o kanal" oluyor; iki kör dinleme turu bunu burada
+gösterdi. Gönderme cümleleri, kanıtı zayıflatmadan çıkarıldı.
+
+**Eskimiş koşular damgalandı.** `sample-25` ve `sample-25b` kayıtlarının
+başına, o sayıların hangi hattı anlattığı ve geçerli koşunun `sample-25c`
+olduğu yazıldı. Bu önemliydi, çünkü en görünür yerde duran klip sayıları
+(12.958 klip, önerilen %78,1) tepe sınırlayıcı kalkmadan ve politika v5–v6
+düzeltmeleri yapılmadan önceki hattındı.
+
+**Geçerli örnek koşunun toplu kaydı yokmuş.** `sample-25c`'nin sayıları üç
+ayrı kayda dağılmıştı; makalenin §Örneklem bölümü tek yerden okunabilsin
+diye toplandı (yukarıdaki kayıt). Toplarken bir şey görüldü ve **açık madde
+15** olarak yazıldı: müzik işareti kanallara yığılıyor — `Peri_Mia`
+kliplerinin %92,7'si işaretli ve önerilen alt kümesi %6,6'ya düşüyor. Bu,
+`clip_ratio` ve `word_confidence` turlarında düşen örüntünün aynısı; müzik
+eşiği kör dinlemeden geçmiş tek sinyal olsa da o dinleme bu kanalları
+içermiyordu.
+
+**Deney listesi sadeleştirildi.** Kapanmış üç madde tam metinleriyle
+duruyordu ve açık işmiş gibi okunuyordu; tek satırlık kapanış notuna
+indirildi. Numaralandırma bozuktu (1–9, sonra 11, 12, sonra 10) ve
+entrylerin içinde kalmış üç madde (13, 14, 15) listede yoktu. Liste
+yeniden yazıldı: on bir açık madde, yerleşmiş bir yöntem (kör dinleme
+protokolü, beş tur), dört kapanmış madde.
+
+**Üstte bir geçerlilik dizini var artık.** "Hangi sayı geçerli" başlığı,
+makaleye girecek her ölçümü kaynağıyla listeliyor ve geçersizleri ayrıca
+sayıyor: bu depoda üretilmemiş sayılar, eskimiş koşular, politikadan düşmüş
+üç kural, hiç uygulanmamış ayarlar, dağıtıcı öncesi hız tahminleri.
+
+**Makaleye:** doğrudan malzeme değil; makaleyi yazarken ilk okunacak yer
+bu dizindir.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
-tamamlandığında yukarıya tarihli bir kayıt olarak taşınır.
+tamamlandığında yukarıya tarihli bir kayıt olarak taşınır ve buradan düşer.
+Kapanmış maddelerin gerekçesi kendi tarihli kaydındadır; burada yalnızca
+tek satırlık kapanış notu durur.
+
+**Açık.**
 
 1. **Bölütleme ablasyonu** — aynı ham kayıtlar üzerinde VAD tabanlı kesim ile
    cümle hizalı kesim; cümle bütünlüğü, süre dağılımı, hizalama güveni.
    Makalenin ana sonucu.
-2. **Müzik ölçümü** — yukarıdaki deneyin bu depodaki klipler üzerinde
-   tekrarı, daha büyük örneklemle.
+2. **Müzik ölçümünün ölçekli tekrarı** — 28 Ağustos'ta küçük örneklemde
+   yapılan müzik ölçümü, bu depoda üretilmiş kliplerle ve daha büyük
+   örneklemle yeniden koşulmalı.
 3. **Hizalama güveni geçerlemesi** — kelime başına hizalama olasılığının
    transcript doğruluğuyla ilişkisi; insan referanslı küçük bir örneklemde
    CER ile karşılaştırma.
-4. **Konuşmacı kümeleme geçerlemesi** — küme sayısının veriden çıkması,
-   kayıt-içi tutarlılık ve küme kenar payının raporlanması.
-5. **Kör dinleme protokolü** — politikaya girecek her sınıflandırıcı için,
-   kanalı ve skoru gizleyen dinleme sınaması. Hiçbir sinyal bu sınamadan
-   geçmeden kural olamaz.
-6. **Değerlendirme bölümü** — kayıtları eğitimle paylaşmayan, metin örtüşmesi
+4. **Konuşmacı kümeleme** — aşama yazılacak; küme sayısının veriden çıkması,
+   kayıt-içi tutarlılık ve küme kenar payının raporlanması. `dedupe` bunu
+   bekliyor (şimdilik kanal anahtarına düşüyor).
+5. **Değerlendirme bölümü** — kayıtları eğitimle paylaşmayan, metin örtüşmesi
    sıfırlanmış, kanal dengeli ve elle doğrulanmış bir test kümesinin
-   kurulması ve betimlenmesi.
+   kurulması ve betimlenmesi. Bölme (train/dev/test) ve sızıntı denetimi
+   henüz hiç yok.
+6. **Kelime düzeyi damga ve kaynak tablosunun yayımı** — `words` sütunu
+   (asr + align damgaları) ve kaynak düzeyi ölçümler; yayın paketiyle.
+7. **Metin normalizasyonu: harf+rakam belirteçleri** — "MI6", "M5", "3G"
+   okunuşa çevrilmiyor (`to_spoken`); tek başına sıra sayısı ("… 1. Naip …")
+   ayrı cümle sayılıp çok kısa klip oluyor. İkisi için kural ve test.
+8. **Şablon künye madenciliği** — kelimesi kelimesine n-gram, "<yazar>'ın
+   <kitap> adlı kitabından" gibi değişken yuvalı kalıpları bulamıyor. Sabit
+   iskelet + yuva madenciliği ya da künye sözlüğüyle cümle düzeyinde işaret;
+   kör dinlemeyle doğrulama.
+9. **Açık madde 13 — cümle başı kısa sözcüklerde çöp hizalama.** 245 kelime,
+   289 klip (%2,12); sebep bilinmiyor, parça sınırı hipotezi elendi.
+   `align_score` yayımlanacağı için ya açıklanmalı ya sınırı belgelenmeli.
+10. **Açık madde 15 — müzik işaretinin kanal yığılması.** `Peri_Mia`,
+    `SESLİKİTAPEVİ`, `sesli-kitaplar` kliplerinden bantlara dengelenmiş
+    30–40 kliplik kör dinleme turu: eşik gerçekten duyulur müziği mi
+    yakalıyor, yoksa o kanalların tınısını mı? Politika yeniden
+    hesaplanabildiği için tam koşuyu bekletmez.
+11. **Literatürden gelen üç sütun** — DNSMOS (`dnsmos_ovrl`), klip başına
+    dil kimliği ve `duration / n_words` aykırılığının dinleme sınaması.
+    Üçü de klip aşaması; tam koşudan sonra ASR tekrarlanmadan eklenebilir.
 
-7. ~~**`word_confidence` kuralı için dinleme denetimi**~~ — *kapandı
-   (30 Ağu 2026): 30 kliplik kör dinlemede 29/30 metin doğru çıktı, kural
-   politika v6'da kaldırıldı. Yukarıdaki kayda bakınız.*
+**Yöntem olarak yerleşmiş.**
 
-   Eski madde: **`word_confidence` kuralı için dinleme denetimi** — `browse_ui.py` ile
-   `word_confidence<0.35` süzgeci, en düşük 30 klip; transcript gerçekten
-   yanlış mı? Sonuca göre kural kaldırılır ya da eşik indirilir (politika v3).
-8. **Kelime düzeyi damga ve kaynak tablosunun yayımı** — `words` sütunu
-   (asr + align damgaları) ve kaynak düzeyi ölçümler; HF export aşamasıyla.
-9. **Metin normalizasyonu: harf+rakam belirteçleri** — "MI6", "M5", "3G"
-   okunuşa çevrilmiyor (`to_spoken`); ve tek başına sıra sayısı ("… 1.
-   Naip …") ayrı cümle sayılıp 0,1 s'lik klip oluyor. İkisi için kural ve test.
-11. ~~**Künye kesiminin cümle artığı ve kayıt başı büyük harf**~~ — *kapandı
-    (30 Ağu 2026, kullanıcı kararı): küçük harfle başlamak kesim kusuru değil,
-    Whisper'ın büyük harfe çevirmemesi. Kalan örnekler ("bir padişah varmış.",
-    "ülkenin birinde…") tam cümleler ve kesim cümle sınırında. Bütün sesleri
-    ideal uzunlukta bölmek zaten mümkün değil; doğrulayıcıda FAIL olmaktan
-    çıkıp bilgi satırına indi. Bölütleyicinin kendi sözleşmesi
-    `tests/test_segment.py`'de denetim altında kalır.*
+- **Kör dinleme protokolü** — kanalı ve skoru gizleyen dinleme sınaması
+  kuruldu ve beş tur koşuldu (müzik eşiği, sınır kesimi ×2, `clip_ratio`,
+  `word_confidence`). Politikaya girecek her yeni sinyal için tekrarlanır;
+  kanıt yükü kapıdadır, veride değil.
 
-    Eski madde: **Künye kesiminin cümle artığı ve kayıt başı büyük harf** — künye
-    ifadesi cümle ortasında bitince kalan parça ("sizlerle …") küçük harfle
-    başlayan klip oluyor (sample-25'te 3); Whisper kaydın ilk kelimesini
-    büyük harfe çevirmiyor (1). İlkine işaret, ikincisine `to_spoken`
-    öncesi ilk harf düzeltmesi; test.
-12. ~~**`clip_ratio` eşiği ölçülen büyüklüğe göre gevşek**~~ — *kapandı
-    (30 Ağu 2026): sınırlayıcı kalkınca kural canlandı, kör dinlemeden
-    geçemedi ve politika v5'te kaldırıldı. Yukarıdaki kayda bakınız.*
+**Kapandı.**
 
-    Eski madde: **`clip_ratio` eşiği ölçülen büyüklüğe göre gevşek** — `clip_ratio max:
-    0.002` kuralı hiçbir yapılandırmada tek bir klip elemedi (sample-25b
-    0/12.958; limitleyicisiz koşu 0/102), çünkü gözlenen azami değer 7×10⁻⁵.
-    Tepe sınırlayıcı kalktıktan sonra bile ölü. Kırpık kliplerin gerçekten
-    hangi `clip_ratio` bandında olduğu dinlemeyle saptanıp eşik oraya
-    konmalı, ya da kural kaldırılmalı.
-
-10. **Şablon künye madenciliği** — kelimesi kelimesine n-gram, "<yazar>'ın
-    <kitap> adlı kitabından" gibi değişken yuvalı kalıpları bulamıyor
-    (sample-15'te 5 kanalda 0 ifade). Sabit iskelet + yuva madenciliği ya da
-    künye sözcük sözlüğüyle cümle düzeyinde işaret; kör dinlemeyle doğrulama.
+- ~~`word_confidence` kuralı için dinleme denetimi~~ — 30 Ağu 2026, politika
+  v6; 30 klipte 29 metin birebir doğru, kural kaldırıldı.
+- ~~`clip_ratio` eşiği~~ — 30 Ağu 2026, politika v5; kör dinlemede 25/25
+  "eğitime girsin", kural kaldırıldı.
+- ~~Künye kesiminin cümle artığı ve kayıt başı büyük harf~~ — 30 Ağu 2026,
+  kullanıcı kararı; küçük harfle başlamak kesim kusuru değil, doğrulayıcıda
+  bilgi satırı.
+- ~~Açık madde 14, uzun kayıtta bellek~~ — 30 Ağu 2026; zarf bloklu,
+  bölütleme ve hizalama diskten okuyor, 14,92 saatlik kayıt uçtan uca koştu.
