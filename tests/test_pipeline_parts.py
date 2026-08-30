@@ -403,3 +403,79 @@ def test_konfigde_hf_agirliklari_sabitlenmis():
     for anahtar in ("asr.revision", "music.audioset_revision"):
         v = cfg.get(anahtar)
         assert isinstance(v, str) and len(v) == 40 and all(c in "0123456789abcdef" for c in v), (anahtar, v)
+
+
+def test_hizalama_penceresi_tam_dosyayi_yeniden_orneklemekle_ayni(tmp_path):
+    """`WindowReader` parçayı diskten okuyup yeniden örnekliyor; sonuç, kaydın
+    tamamını yeniden örnekleyip dilimlemekle aynı örnekleri vermeli. Aynı
+    olmasaydı hizalama damgaları kayıt uzunluğuna göre değişirdi."""
+    import numpy as np
+    import soundfile as sf
+    import torch
+    import torchaudio
+
+    from kiraat.stages.align import WindowReader
+
+    sr, hedef = 24000, 16000
+    wave = (np.random.default_rng(5).standard_normal(sr * 90) * 0.2).astype(np.float32)
+    path = tmp_path / "kayit.flac"
+    sf.write(str(path), wave, sr, format="FLAC", subtype="PCM_16")
+    okunan, _ = sf.read(str(path), dtype="float32")
+    tam = torchaudio.functional.resample(torch.from_numpy(okunan), sr, hedef).numpy()
+
+    rd = WindowReader(str(path), hedef)
+    for a0, a1 in [(0, 5 * hedef), (7 * hedef, 37 * hedef), (61 * hedef + 13, 89 * hedef),
+                   (88 * hedef, 95 * hedef)]:
+        pencere = rd.window(a0, a1)
+        beklenen = tam[a0:a1]
+        assert len(pencere) == len(beklenen), (a0, a1, len(pencere), len(beklenen))
+        assert np.array_equal(pencere, beklenen), (a0, a1, float(np.abs(pencere - beklenen).max()))
+
+
+def test_bolutleme_kaydin_tamamini_bellege_almaz(tmp_path):
+    """Korpusun %31'i dört saatten uzun tek parça kayıtlarda; bölütleme o
+    kayıtta da kaydın boyutundan bağımsız bellekle çalışmalı."""
+    import json
+    import tracemalloc
+
+    import numpy as np
+    import soundfile as sf
+
+    from kiraat.config import Config
+    from kiraat.stages.segmentation import SegmentStage
+
+    sr, dakika = 24000, 10
+    rng = np.random.default_rng(11)
+    wave = (rng.standard_normal(sr * 60 * dakika) * 0.002).astype(np.float32)
+    words, t = [], 0.4
+    while t < 60 * dakika - 2:
+        text = f"kelime{len(words)}" + ("." if len(words) % 12 == 11 else "")
+        i, j = int(t * sr), int((t + 0.45) * sr)
+        wave[i:j] = rng.standard_normal(j - i) * 0.25
+        words.append({"text": text.capitalize() if not words or words[-1]["text"].endswith(".") else text,
+                      "start": round(t, 3), "end": round(t + 0.45, 3), "prob": 0.9})
+        t += 0.45 + (0.35 if text.endswith(".") else 0.05)
+
+    (tmp_path / "audio").mkdir()
+    (tmp_path / "asr").mkdir()
+    audio = tmp_path / "audio" / "src00001.flac"
+    sf.write(str(audio), wave, sr, format="FLAC", subtype="PCM_16")
+    asr = tmp_path / "asr" / "src00001.jsonl"
+    asr.write_text("\n".join(json.dumps(w, ensure_ascii=False) for w in words), encoding="utf-8")
+
+    cfg = Config({"paths": {"work_root": str(tmp_path)},
+                  "segment": {"min_sec": 1.5, "target_sec": 7.0, "max_sec": 15.0,
+                              "max_join_gap_sec": 1.2, "lead_pad_sec": 0.15, "trail_pad_sec": 0.25},
+                  "align": {"enabled": False}, "text": {"emit_raw": True, "emit_spoken": True}})
+    stage = SegmentStage(cfg)
+    kaynak = {"id": 1, "channel": "kanal", "audio": str(audio), "words": str(asr)}
+    tracemalloc.start()
+    try:
+        tracemalloc.reset_peak()
+        rows = stage.process_source(kaynak)
+        zirve = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert rows and all(r["duration"] > 0 for r in rows)
+    ses_mb = wave.nbytes / 1e6
+    assert zirve < 64 << 20, f"{dakika} dakikalık kayıtta zirve {zirve/1e6:.0f} MB (ses {ses_mb:.0f} MB)"

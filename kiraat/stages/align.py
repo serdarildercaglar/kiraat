@@ -16,6 +16,7 @@ alanlar `align_start`, `align_end`, `align_score`.
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -67,6 +68,57 @@ def make_chunks(words: Sequence[Mapping[str, Any]], *, target_sec: float = 30.0,
         chunks.append(Chunk(a, b, start, end))
         a = b
     return chunks
+
+
+class WindowReader:
+    """Kaydın bir aralığını hizalayıcının örnekleme hızında döndürür.
+
+    Kaydın tamamını okuyup tek seferde yeniden örneklemek 24→16 kHz'de saat
+    başına ~2,2 GB tutuyordu ve korpusta 14,9 saatlik kayıtlar var. Burada
+    yalnızca parçanın aralığı okunur, iki yanına `margin_sec` pay eklenir ve
+    pay atılır: süzgeç çekirdeği (birkaç on örnek) payın çok içinde kaldığı
+    için iç bölge, tam dosyayı yeniden örneklemekle aynı çıkar.
+
+    Pencerenin başı kaynak tarafında `su` katına yaslanır (`su/tu`, hızların
+    sadeleşmiş oranı); böylece pencerenin ilk örneği hedef eksende tam bir
+    örneğe denk gelir ve faz kaymaz.
+    """
+
+    def __init__(self, path: str, target_sr: int, margin_sec: float = 0.5) -> None:
+        import soundfile as sf
+
+        info = sf.info(path)
+        if info.channels != 1:
+            raise ValueError(f"tek kanal bekleniyordu, {info.channels} kanal: {path}")
+        self.path = path
+        self.src_sr = info.samplerate
+        self.frames = info.frames
+        self.target_sr = target_sr
+        g = math.gcd(self.src_sr, target_sr)
+        self.su, self.tu = self.src_sr // g, target_sr // g
+        self.margin = int(math.ceil(margin_sec * self.src_sr / self.su)) * self.su
+
+    def window(self, a0: int, a1: int) -> np.ndarray:
+        import soundfile as sf
+
+        a0, a1 = max(a0, 0), max(a1, 0)
+        if self.src_sr == self.target_sr:
+            data, _ = sf.read(self.path, start=a0, stop=min(a1, self.frames),
+                              dtype="float32", always_2d=False)
+            return data
+        import torchaudio
+
+        p0 = max((a0 * self.su // self.tu - self.margin) // self.su * self.su, 0)
+        p1 = min(-(-a1 * self.su // self.tu) + self.margin, self.frames)
+        if p1 <= p0:
+            return np.zeros(0, dtype=np.float32)
+        block, _ = sf.read(self.path, start=p0, stop=p1, dtype="float32", always_2d=False)
+        import torch
+
+        out = torchaudio.functional.resample(torch.from_numpy(block), self.src_sr,
+                                             self.target_sr).numpy()
+        o0 = p0 * self.tu // self.su
+        return out[a0 - o0:a1 - o0]
 
 
 def romanize(tokens: Sequence[str], language: str = "tur") -> list[str | None]:
@@ -130,14 +182,12 @@ class AlignStage(SourceStage):
         self.model = None
 
     # ------------------------------------------------------------------
-    def _align_chunk(self, wave16: np.ndarray, words: Sequence[Mapping[str, Any]],
+    def _align_chunk(self, audio: np.ndarray, words: Sequence[Mapping[str, Any]],
                      roman: Sequence[str | None], chunk: Chunk) -> list[dict[str, Any] | None]:
         """Parça için kelime başına (start, end, score) ya da None."""
         import torchaudio.functional as F
 
         torch = self.torch
-        a0, a1 = int(chunk.start * self.sr), int(chunk.end * self.sr)
-        audio = wave16[a0:a1]
         if len(audio) < self.sr // 2:
             return [None] * (chunk.b - chunk.a)
         ids: list[int] = []
@@ -185,7 +235,6 @@ class AlignStage(SourceStage):
 
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
         import soundfile as sf
-        import torchaudio
 
         words = load_words(source["words"])
         out_path = Path(self.cfg.get("paths.work_root")) / "align" / f"src{source['id']:05d}.jsonl"
@@ -194,11 +243,9 @@ class AlignStage(SourceStage):
             out_path.write_text("", encoding="utf-8")
             return [{"aligned": str(out_path), "n_aligned": 0}]
 
-        data, sr = sf.read(source["audio"], dtype="float32", always_2d=True)
-        mono = data.mean(axis=1)
-        if sr != self.sr:
-            mono = torchaudio.functional.resample(self.torch.from_numpy(mono), sr, self.sr).numpy()
-        total = len(mono) / self.sr
+        info = sf.info(source["audio"])
+        total = info.frames / info.samplerate
+        reader = WindowReader(source["audio"], self.sr)
 
         roman = romanize([w["text"] for w in words], self.opts.get("language", "tur"))
         chunks = make_chunks(words, target_sec=float(self.opts.get("chunk_sec", 30.0)),
@@ -207,7 +254,8 @@ class AlignStage(SourceStage):
                              pad_sec=float(self.opts.get("pad_sec", 0.5)), total_sec=total)
         results: list[dict[str, Any] | None] = []
         for ch in chunks:
-            results.extend(self._align_chunk(mono, words, roman, ch))
+            audio = reader.window(int(ch.start * self.sr), int(ch.end * self.sr))
+            results.extend(self._align_chunk(audio, words, roman, ch))
         assert len(results) == len(words)
 
         n_ok = 0

@@ -119,3 +119,71 @@ def test_cakisan_damgalarda_sinir_ortaya_konur():
     out = refine_boundaries(clips, words, envelope(wave, sr), SegmentConfig())
     assert abs(out[0].end - 1.25) < 0.02 and abs(out[1].start - 1.25) < 0.02, out
 
+
+
+def _zarf_referans(wave: np.ndarray, sr: int, cfg: RefineConfig = RefineConfig()) -> np.ndarray:
+    """Zarfın apaçık ama belleği kaydın uzunluğuyla büyüyen hâli.
+
+    Ölçüt burada: bloklu uygulama bununla birebir aynı sayıyı vermeli.
+    """
+    wave = np.asarray(wave, dtype=np.float32).ravel()
+    frame = max(int(sr * cfg.frame_ms / 1000), 1)
+    hop = max(int(sr * cfg.hop_ms / 1000), 1)
+    n = max((len(wave) - frame) // hop + 1, 1)
+    padded = np.pad(wave, (0, max(frame + (n - 1) * hop - len(wave), 0)))
+    idx = np.arange(n)[:, None] * hop + np.arange(frame)[None, :]
+    rms = np.sqrt(np.mean(padded[idx] ** 2, axis=1))
+    return 20.0 * np.log10(np.maximum(rms, 1e-6))
+
+
+def test_zarf_bloklu_hesapla_ayni_sayiyi_verir():
+    rng = np.random.default_rng(0)
+    for sr in (16000, 24000):
+        for saniye in (0.005, 0.02, 0.5, 3.7, 61.3):
+            wave = (rng.standard_normal(max(int(sr * saniye), 1)) * 0.1).astype(np.float32)
+            assert np.array_equal(_zarf_referans(wave, sr), envelope(wave, sr).db), (sr, saniye)
+
+
+def test_zarf_bellegi_kayit_uzunlugundan_bagimsiz():
+    """Korpusta 14,9 saatlik kayıtlar var; zarf o kayıtta da sabit bellekle
+    ölçülmeli. Kare dizinini tek seferde kuran hâli saat başına 2,7 GB
+    harcıyordu — bu testin düşmesi o hâle dönüldüğünün işaretidir."""
+    import tracemalloc
+
+    wave = (np.random.default_rng(0).standard_normal(SR * 300) * 0.1).astype(np.float32)
+    tracemalloc.start()
+    try:
+        tracemalloc.reset_peak()
+        envelope(wave, SR)
+        yeni = tracemalloc.get_traced_memory()[1]
+        tracemalloc.reset_peak()
+        _zarf_referans(wave, SR)
+        eski = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert yeni < 64 << 20, f"zarf 5 dakikada {yeni/1e6:.0f} MB harcadı"
+    assert eski > 4 * yeni, f"referans {eski/1e6:.0f} MB, bloklu {yeni/1e6:.0f} MB — ölçüt anlamını yitirmiş"
+
+
+def test_zarf_dosyadan_akitilinca_da_ayni(tmp_path):
+    """`envelope_of_file` sesi belleğe almadan aynı zarfı üretmeli."""
+    import tracemalloc
+
+    import soundfile as sf
+
+    from kiraat.boundaries import envelope_of_file
+
+    wave = (np.random.default_rng(3).standard_normal(SR * 137) * 0.1).astype(np.float32)
+    path = tmp_path / "kayit.flac"
+    sf.write(str(path), wave, SR, format="FLAC", subtype="PCM_16")
+    okunan, _ = sf.read(str(path), dtype="float32")
+    tracemalloc.start()
+    try:
+        tracemalloc.reset_peak()
+        env, sr, n = envelope_of_file(str(path))
+        zirve = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert (sr, n) == (SR, len(wave))
+    assert np.array_equal(env.db, envelope(okunan, SR).db)
+    assert zirve < 64 << 20, f"dosyadan zarf {zirve/1e6:.0f} MB harcadı (ses {len(wave)*4/1e6:.0f} MB)"

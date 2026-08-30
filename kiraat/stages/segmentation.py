@@ -15,19 +15,24 @@ import numpy as np
 
 from ..base import SourceStage, register
 from ..boilerplate import find_spans
-from ..boundaries import envelope, refine_boundaries
+from ..boundaries import envelope_of_file, refine_boundaries
 from ..segment import Word, attach_clitics, segment, clamp_to_audio
 from ..text.normalize import light_clean, to_spoken
 from .asr import load_words
 
 
-def cut(mono: np.ndarray, sr: int, dst: Path, start: float, end: float) -> None:
-    """Bellekteki tek kanallı sesten klip yaz. Kayıt başına bir ffmpeg çözümü
-    yeter; klip başına süreç açmak 18 bin klipte dakikalar tutuyordu."""
+def cut(src: str, sr: int, dst: Path, start: float, end: float) -> None:
+    """Çözülmüş kayıttan klibi kesip yaz; yalnızca klibin aralığı okunur.
+
+    Kaydın tamamını belleğe alıp dilimlemek 20 dakikalık örneklerde ucuzdu
+    ama korpusta 14,9 saatlik kayıtlar var: tek kopya bile 5 GB tutuyor ve
+    altı işçi aynı anda koşuyor. Klip başına ffmpeg süreci açmak da pahalı
+    (18 bin klipte dakikalar); aradaki yol, dosyadan aralık okumak."""
     import soundfile as sf
 
     a, b = int(round(start * sr)), int(round(end * sr))
-    sf.write(str(dst), mono[a:b], sr, format="FLAC", subtype="PCM_16")
+    data, _ = sf.read(src, start=a, stop=b, dtype="float32", always_2d=False)
+    sf.write(str(dst), data, sr, format="FLAC", subtype="PCM_16")
 
 
 @register
@@ -38,8 +43,6 @@ class SegmentStage(SourceStage):
     depends_on = ("asr", "align", "boilerplate")
 
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
-        import soundfile as sf
-
         seg_cfg = self.cfg.segment_config()
         work = Path(self.cfg.get("paths.work_root"))
         raw = load_words(source["words"])
@@ -67,10 +70,9 @@ class SegmentStage(SourceStage):
         spans = find_spans([w.text for w in words], phrases)
         clips = segment(words, seg_cfg, boilerplate=spans)
 
-        audio, sr = sf.read(source["audio"], dtype="float32", always_2d=True)
-        mono = audio.mean(axis=1)
-        clips = refine_boundaries(clips, words, envelope(mono, sr), seg_cfg)
-        clips = clamp_to_audio(clips, len(mono) / sr)
+        env, sr, n_samples = envelope_of_file(source["audio"])
+        clips = refine_boundaries(clips, words, env, seg_cfg)
+        clips = clamp_to_audio(clips, n_samples / sr)
 
         out_dir = work / "clips" / source["channel"] / f"src{source['id']:05d}"
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +87,7 @@ class SegmentStage(SourceStage):
             probs = [w.prob for w in words[a:b] if w.prob is not None]
             text = light_clean(c.text)
             dst = out_dir / f"{i:05d}.flac"
-            cut(mono, sr, dst, c.start, c.end)
+            cut(source["audio"], sr, dst, c.start, c.end)
             flags = [f for f in c.flags if not f.startswith("snapped")]
             rows.append({
                 "id": f"src{source['id']:05d}-{i:05d}", "idx": i, "channel": source["channel"],

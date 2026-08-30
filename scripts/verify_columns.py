@@ -152,10 +152,17 @@ results.append(("bilgi: harf+rakam belirteçli klip (MI6, M5 — okunuşa çevri
 def rng_bad(key, lo, hi):
     return [(r["id"], r[key]) for r in manifest if r.get(key) is not None and not (lo <= r[key] <= hi)]
 check("speech_ratio ∈ [0,1]", rng_bad("speech_ratio", 0, 1), len(manifest))
-check("word_confidence ∈ [0,1], min ≤ mean",
-      rng_bad("word_confidence", 0, 1) + [(r["id"],) for r in manifest if r["word_confidence"] is not None and r["word_confidence"] > r["word_confidence_mean"] + 1e-6], len(manifest))
-check("align_score ∈ [0,1], min ≤ mean",
-      rng_bad("align_score_min", 0, 1) + [(r["id"],) for r in manifest if r.get("align_score_min") is not None and r["align_score_min"] > r["align_score_mean"] + 1e-6], len(manifest))
+# `min ≤ mean` tam aritmetikte her zaman doğrudur, ama iki sütun da üç
+# ondalığa yuvarlanarak yayımlanıyor: bütün kelimeler aynı olasılığı
+# taşıyorsa (ör. üç kelime de 0,9995) min doğrudan yuvarlanıp 1,0 olurken,
+# ortalama kayan nokta toplamında 0,9994999…'e düşüp 0,999'a yuvarlanabilir.
+# Bu bir ölçüm hatası değil, son basamak farkı; tolerans bir yuvarlama
+# birimidir. (30 Ağu 2026, 14,9 saatlik kayıtta 7.170 klipte bir kez.)
+_yuvarlama = 1e-3 + 1e-6
+check("word_confidence ∈ [0,1], min ≤ mean (yuvarlama payıyla)",
+      rng_bad("word_confidence", 0, 1) + [(r["id"],) for r in manifest if r["word_confidence"] is not None and r["word_confidence"] > r["word_confidence_mean"] + _yuvarlama], len(manifest))
+check("align_score ∈ [0,1], min ≤ mean (yuvarlama payıyla)",
+      rng_bad("align_score_min", 0, 1) + [(r["id"],) for r in manifest if r.get("align_score_min") is not None and r["align_score_min"] > r["align_score_mean"] + _yuvarlama], len(manifest))
 # Tavan denetimi: emisyona fazladan bir `log_softmax` uygulanırsa (star sütunu
 # olasılığın yarısını alır) bütün skorlar yarıya iner ve korpus tavanı tam 0,5
 # olur — sample-25'in ilk koşusunda olan buydu, hiçbir aralık denetimine

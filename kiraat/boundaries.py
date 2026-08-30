@@ -54,16 +54,77 @@ class Envelope:
         return i * self.hop + self.frame / 2
 
 
-def envelope(wave: np.ndarray, sr: int, cfg: RefineConfig = RefineConfig()) -> Envelope:
-    wave = np.asarray(wave, dtype=np.float32).ravel()
+#: Kare bloğu başına ayrılan geçici bellek tavanı (bayt). Zarf, kayıt ne
+#: kadar uzun olursa olsun bu tavanın üstüne çıkmaz.
+_BLOCK_BYTES = 32 << 20
+
+
+def _geometry(n_samples: int, sr: int, cfg: RefineConfig) -> tuple[int, int, int]:
     frame = max(int(sr * cfg.frame_ms / 1000), 1)
     hop = max(int(sr * cfg.hop_ms / 1000), 1)
-    n = max((len(wave) - frame) // hop + 1, 1)
-    padded = np.pad(wave, (0, max(frame + (n - 1) * hop - len(wave), 0)))
-    idx = np.arange(n)[:, None] * hop + np.arange(frame)[None, :]
-    rms = np.sqrt(np.mean(padded[idx] ** 2, axis=1))
-    db = 20.0 * np.log10(np.maximum(rms, 1e-6))
-    return Envelope(db=db, hop=hop / sr, frame=frame / sr)
+    n = max((n_samples - frame) // hop + 1, 1)
+    return frame, hop, n
+
+
+def _block_db(block: np.ndarray, frame: int, hop: int, rows: int) -> np.ndarray:
+    """`rows` kareyi bitişik bir (rows, frame) dizisinde ölçüp dB döndür.
+
+    Kareler bitişik kopyalanır, çünkü `np.mean` toplama sırasını dizinin
+    yerleşimine göre seçiyor; görünüm üzerinden ortalama almak son bitlerde
+    farklı sonuç verebilirdi ve bu aşamanın çıktısı yayımlanıyor.
+    """
+    win = np.lib.stride_tricks.sliding_window_view(block, frame)[::hop][:rows]
+    rms = np.sqrt(np.mean(np.ascontiguousarray(win) ** 2, axis=1))
+    return 20.0 * np.log10(np.maximum(rms, 1e-6))
+
+
+def envelope(wave: np.ndarray, sr: int, cfg: RefineConfig = RefineConfig()) -> Envelope:
+    """Bellekteki sesin kısa zamanlı enerjisi, blok blok.
+
+    Kare dizinini tek seferde maddileştiren eski uygulama örnek başına 24
+    bayt harcıyordu (saatte 2,7 GB); korpusta 4 saatten uzun 131, 8 saatten
+    uzun 35 kayıt var, yani ölçüm kaydın uzunluğuyla büyüyen bir bellek
+    duvarına çarpıyordu. Çıktı aynı, harcanan bellek artık sabit.
+    """
+    wave = np.asarray(wave, dtype=np.float32).ravel()
+    frame, hop, n = _geometry(len(wave), sr, cfg)
+    if len(wave) < frame + (n - 1) * hop:
+        wave = np.pad(wave, (0, frame + (n - 1) * hop - len(wave)))
+    rows = max(int(_BLOCK_BYTES // (frame * 4)), 1)
+    out = np.empty(n, dtype=np.float64)
+    for i in range(0, n, rows):
+        take = min(rows, n - i)
+        a = i * hop
+        out[i:i + take] = _block_db(wave[a:a + frame + (take - 1) * hop], frame, hop, take)
+    return Envelope(db=out, hop=hop / sr, frame=frame / sr)
+
+
+def envelope_of_file(path: str, cfg: RefineConfig = RefineConfig()) -> tuple[Envelope, int, int]:
+    """Zarfı dosyadan akıtarak ölç; ses hiçbir zaman tümüyle belleğe alınmaz.
+
+    `(zarf, örnekleme hızı, örnek sayısı)` döner. Tek kanallı kayıt bekler —
+    hattın `prepare` aşaması her kaydı monoya indirir; çok kanallı bir dosya
+    verilirse çağıran tarafın kendisi karıştırmalıdır.
+    """
+    import soundfile as sf
+
+    info = sf.info(str(path))
+    if info.channels != 1:
+        raise ValueError(f"tek kanal bekleniyordu, {info.channels} kanal: {path}")
+    sr, total = info.samplerate, info.frames
+    frame, hop, n = _geometry(total, sr, cfg)
+    rows = max(int(_BLOCK_BYTES // (frame * 4)), 1)
+    out = np.empty(n, dtype=np.float64)
+    with sf.SoundFile(str(path)) as fh:
+        for i in range(0, n, rows):
+            take = min(rows, n - i)
+            need = frame + (take - 1) * hop
+            fh.seek(i * hop)
+            block = fh.read(need, dtype="float32", always_2d=False)
+            if len(block) < need:      # yalnızca kaydın sonunda: son kare eksik kalırsa
+                block = np.pad(block, (0, need - len(block)))
+            out[i:i + take] = _block_db(block, frame, hop, take)
+    return Envelope(db=out, hop=hop / sr, frame=frame / sr), sr, total
 
 
 def _silence_runs(mask: np.ndarray) -> list[tuple[int, int]]:
