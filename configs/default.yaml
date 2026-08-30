@@ -220,13 +220,14 @@ recommended_subset:
   # v3 (29 Ağu 2026): müzik kuralı dB sütunundan `background_music` işaretine
   # taşındı (dB VE AudioSet ≥ 0,3); dB tek başına bir kanalda müziksiz
   # klipleri eliyordu. Eşikler dinleme denetimiyle kesinleşene kadar geçici.
+  # v6 (30 Ağu 2026): `word_confidence` kuralı kör dinlemeyle kaldırıldı.
   # v5 (30 Ağu 2026): `clip_ratio` kuralı kör dinlemeyle kaldırıldı (aşağıda).
   # v4 (29 Ağu 2026): `dnsmos_ovrl` kuralı kaldırıldı — DNSMOS aşaması
   # bağlanmadığı için sütun hiç üretilmiyordu ve kural `allow_missing: true`
   # ile 12.958 klibin hepsinde sessizce geçiyordu; politika "DNSMOS ≥ 3,0
   # uygulandı" gibi okunuyor ama hiçbir klibi etkilemiyordu. Hiçbir klibin
   # `recommended` değeri değişmez. Aşama bağlanınca ölçülüp geri konur.
-  version: "5"
+  version: "6"
   rules:
     - metric: speech_ratio
       min: 0.60
@@ -242,8 +243,16 @@ recommended_subset:
     #   max: 0.002
     - metric: internal_silence_sec
       max: 1.0
-    - metric: word_confidence
-      min: 0.60
+    # v6 (30 Ağu 2026): `word_confidence` kuralı kör dinlemeden geçemedi.
+    # 30 klip, altı bant (0,18–0,99), kanal ve ölçüm gizli: 29 "metin doğru",
+    # 1 "küçük hata" (o da en düşük klipte, 0,178); 30/30 "eğitime girsin".
+    # 0,60 eşiği bu 30'un 15'ini eliyordu, 14'ü kusursuz bulundu.
+    # Kulaktan bağımsız kontrol: hizalayıcı skoruyla sıra korelasyonu +0,262;
+    # bantlar tek yönlü ama en kötü bantta bile align_score_mean medyanı
+    # 0,938. Sinyal zayıf ama var — bu yüzden sütun yayımlanmaya devam ediyor
+    # ve şemanın dediği gibi sıralama sinyali olarak kalıyor, kapı olmuyor.
+    # - metric: word_confidence
+    #   min: 0.60
     # DNSMOS aşaması bağlanınca geri konur (v4'te kaldırıldı, yukarıya bak):
     # - metric: dnsmos_ovrl
     #   min: 3.0

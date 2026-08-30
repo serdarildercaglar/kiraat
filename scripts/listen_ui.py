@@ -30,7 +30,7 @@ parser.add_argument("--prefer-small-gap", type=float, default=None,
 parser.add_argument("--seed", type=int, default=11)
 parser.add_argument("--score", default=None, help="cevap JSON'u; sayfa üretmek yerine skorla")
 parser.add_argument("--audit-name", default="boundary-v2")
-parser.add_argument("--questions", choices=["boundary", "music", "clipping"], default="boundary")
+parser.add_argument("--questions", choices=["boundary", "music", "clipping", "transcript"], default="boundary")
 parser.add_argument("--ids-file", default=None,
                     help="klipleri örneklemek yerine bu dosyadaki kimlikleri kullan "
                          "(work/<koşu>/listen-*.txt biçimi: boşlukla ayrılmış kimlikler)")
@@ -53,6 +53,24 @@ QUESTION_SETS = {
             "<li><strong>Bitiş:</strong> klip cümle bitince mi bitiyor?</li>"
             "<li><strong>Kesik kelime:</strong> ilk ya da son kelimenin bir parçası kesilmiş mi?</li></ol>"
             "<p>Bittiğinde en alttaki <strong>Sonuçları kopyala</strong> düğmesine bas ve çıkan metni sohbete yapıştır.</p>"
+        ),
+    },
+    "transcript": {
+        "q": [
+            {"k": "text", "label": "Metin", "hint": "yazılı metin, duyduğunla birebir aynı mı?",
+             "opts": [["dogru", "Birebir doğru"], ["kucuk", "Küçük hata (ek, harf, noktalama)"],
+                      ["kelime", "Bir kelime yanlış", "neg"], ["cok", "Birden çok kelime yanlış", "neg"]]},
+            {"k": "train", "label": "Eğitime girsin mi?", "hint": "bu klip bir TTS modelinin öğrenmesini ister misin?",
+             "opts": [["evet", "Evet"], ["hayir", "Hayır", "neg"]]},
+        ],
+        "intro": (
+            "<div class=\"eyebrow\">Ne yapmalı</div>"
+            "<p>Aşağıda __COUNT__ klip var; kanal ve ölçülen güven değeri gizli. Bu turda soru ses kalitesi değil, "
+            "<strong>metnin doğruluğu</strong>: klibin altındaki yazı, duyduğun sözle birebir aynı mı?</p>"
+            "<p>Önce oku, sonra dinle. Özel isimler ve nadir sözcükler önemli — asıl sınanan şey bunlar. "
+            "&quot;Küçük hata&quot; anlamı bozmayan bir ek ya da harf farkı; &quot;bir kelime yanlış&quot; sözcüğün "
+            "yerine başka bir sözcük yazılmış demek.</p>"
+            "<p>Bittiğinde <strong>Sonuçları kopyala</strong> düğmesine bas ve çıkan metni sohbete yapıştır.</p>"
         ),
     },
     "clipping": {
@@ -97,6 +115,31 @@ if args.score:
     key = json.load((out / "key.json").open(encoding="utf-8"))
     ans = json.load(open(args.score, encoding="utf-8"))["answers"]
     man = {r["id"]: r for r in map(json.loads, open(args.manifest, encoding="utf-8"))}
+
+    if args.questions == "transcript":
+        satir = []
+        for n in sorted(ans, key=int):
+            k, a = key[n], ans[n]
+            satir.append((float(k["word_confidence"]), a.get("text", "-"), a.get("train", "-"),
+                          k["channel"], n, a.get("note", ""), k.get("text", "")))
+        satir.sort()
+        print(f"{'word_conf':>10s} {'metin':>8s} {'eğitim':>7s}  kanal")
+        for wc, tx, tr, ch, n, note, txt in satir:
+            print(f"{wc:10.3f} {tx:>8s} {tr:>7s}  {ch:22s} {txt[:60]}" + (f"  — {note[:40]}" if note else ""))
+        hatali = {"kelime", "cok"}
+        adaylar = sorted({round(wc, 3) for wc, *_ in satir} | {0.6})
+        print(f"\n{'eşik':>7s} {'kaçan':>6s} {'boşuna':>7s} {'hata':>5s}   (kaçan: metin yanlış ama geçiyor)")
+        en_iyi = None
+        for e in adaylar:
+            kacan = sum(1 for wc, tx, *_ in satir if tx in hatali and wc >= e)
+            bosuna = sum(1 for wc, tx, *_ in satir if tx not in hatali and wc < e)
+            h = kacan + bosuna
+            print(f"{e:7.3f} {kacan:6d} {bosuna:7d} {h:5d}" + ("   ← mevcut kural" if abs(e - 0.6) < 1e-9 else ""))
+            if en_iyi is None or h < en_iyi[1]:
+                en_iyi = (e, h)
+        print(f"\nen az hatalı eşik: {en_iyi[0]:.3f} ({en_iyi[1]} hata / {len(satir)} klip)")
+        print(f"eğitime girmesin denen: {sum(1 for s in satir if s[2] == 'hayir')}/{len(satir)}")
+        raise SystemExit
 
     if args.questions == "clipping":
         # Müzik eşiği kararındaki yöntemin aynısı: cevapları ölçüme göre
@@ -191,6 +234,7 @@ for i, r in enumerate(sample, 1):
     key[str(i)] = {"id": r["id"], "system": r["system"], "channel": r["channel"], "flags": r["flags"],
                    "music_to_speech_db": r.get("music_to_speech_db"), "music_score_audioset": r.get("music_score_audioset"),
                    "clip_ratio": r.get("clip_ratio"), "peak_dbfs": r.get("peak_dbfs"), "rms_dbfs": r.get("rms_dbfs"),
+                   "word_confidence": r.get("word_confidence"), "text": r.get("text"),
                    "recommended": r.get("recommended")}
 json.dump(key, (out / "key.json").open("w", encoding="utf-8"), ensure_ascii=False, indent=1)
 

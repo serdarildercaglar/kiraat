@@ -1632,6 +1632,70 @@ seçicisiyle ortak). Skorlayıcı, müzik eşiği kararındaki yöntemin aynıs�
 uyguluyor: her aday eşikte kaçan ve boşuna elenen sayılıp en az hatalı olan
 bildiriliyor.
 
+## 2026-08-30 — Kör dinleme: `word_confidence` kuralı kaldırıldı (politika v6)
+
+`clip_ratio` çıkınca politikadaki en büyük doğrulanmamış kural
+`word_confidence < 0,60` kaldı: **978 klip (%7,2)**, tam koşuda ~220 saat
+eder. Müzik kuralı zaten kör dinlemeden geçmişti, geri kalanlar yapısal
+işaretler. Ayrıca şemayla politika arasında bir çelişki duruyordu:
+`kiraat/schema.py` bu sütunu "bir kapı değil, sıralama sinyalidir" diye
+tarif ediyor ama politika onu kapı olarak kullanıyordu.
+
+**Denetim.** 30 klip, altı `word_confidence` bandından beşer tane (kontrol
+>0,90; 0,80–0,90; 0,60–0,80; eşiğin hemen altı 0,45–0,60; 0,30–0,45;
+<0,30), kanal ve ölçüm gizli, karışık sırada; yarısı kuralın elediği yarısı
+önerilen. Müzikli, bölünmüş, kısa ve işaretli klipler havuzun dışında
+bırakıldı ki tek değişken metin olsun. Soru ses kalitesi değil: yazılı metin
+duyulanla birebir aynı mı (doğru / küçük hata / bir kelime yanlış / birden
+çok kelime yanlış) ve klip eğitime girsin mi.
+
+**Sonuç: 29 "birebir doğru", 1 "küçük hata"; 0 "kelime yanlış", 0 "çok
+yanlış"; 30/30 "eğitime girsin".** Tek hata en düşük klipte, `word_confidence`
+**0,178**'de — "mebus" yerine "meybus" yazılmış. 0,60 eşiği bu 30 klibin
+15'ini eliyordu ve 14'ü kusursuz bulundu.
+
+**Kulaktan bağımsız kontrol.** Hizalayıcı skoru ses–metin uyumunu Whisper'dan
+bağımsız ölçer, dolayısıyla dinlemenin ikinci bir kanıtıdır. 11.343 işaretsiz
+klipte `word_confidence` ile `align_score_min` sıra korelasyonu **+0,262** —
+zayıf. Bantlar yine de tek yönlü:
+
+| word_confidence | n | align_score_min medyanı | align_score_mean medyanı |
+|---|---|---|---|
+| <0,30 | 37 | 0,697 | 0,938 |
+| 0,30–0,45 | 182 | 0,682 | 0,942 |
+| 0,45–0,60 | 568 | 0,728 | 0,950 |
+| 0,60–0,80 | 2.088 | 0,749 | 0,954 |
+| >0,80 | 8.468 | 0,827 | 0,966 |
+
+`align_score_min < 0,5` oranı düşük güvenli kliplerde %21,4, yüksek olanlarda
+%11,1 — iki katı. Yani sinyal boş değil, `clip_ratio`dan farklı olarak gerçek
+bir bilgi taşıyor. Ama en kötü bantta bile `align_score_mean` medyanı 0,938;
+hizalama iyi, yani metin sese oturuyor.
+
+**Karar.** Kural kaldırıldı (**politika v6**), sütun yayımlanmaya devam
+ediyor. Gerekçe iki katmanlı: (1) deponun değişmezi bir sinyalin kapı
+olabilmesi için kör dinlemeden geçmesini şart koşuyor ve 0,60'ta geçemedi;
+(2) sinyal zayıf da olsa gerçek olduğu için sütun değerli — şemanın zaten
+söylediği yere, sıralama sinyaline geri döndü ve şema–politika çelişkisi
+kapandı. Kullanıcı kendi eşiğini kesebilir.
+
+**Etkisi.** Önerilen alt küme %77,2 → **%82,8** (10.522 → 11.291 klip;
+17,49 → 18,98 saat). `sess-Seslikitap` iki turun sonunda %6,1 → **%97,4**.
+
+**Gücün sınırı.** Bant başına 5 klip az; kuralın asıl vurduğu 0,45–0,60
+bandından yalnızca 5 klip dinlendi ve 5/5 doğru çıktı — gerçek hata oranının
+%45'e kadar olabilmesini dışlamaz (%95 üst sınır). Karar yönü yine bunu
+gerektirmiyor: kapıyı kaldırmak için kanıt yükü kapıdadır, veride değil.
+Eşik geri konmak istenirse elenen popülasyona odaklanmış, 40–60 kliplik bir
+tur gerekir.
+
+**İki turun ortak dersi — makaleye.** Bir günde iki ayrı standart kalite
+ölçüsü, makul eşiklerle, kör dinlemede tutunamadı: dijital kırpılma oranı bir
+kanalın %93'ünü, ASR kelime güveni korpusun %7,2'sini siliyordu ve dinleyici
+elenen kliplerin neredeyse tamamını eğitime uygun buldu. İkisi de v1'de
+yayımdan sonra fark edilen hatanın aynı sınıfı; burada yayımdan önce
+yakalandı. Kanıt dosyaları `work/archive/sample-25c/` altında.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -1654,7 +1718,11 @@ tamamlandığında yukarıya tarihli bir kayıt olarak taşınır.
    sıfırlanmış, kanal dengeli ve elle doğrulanmış bir test kümesinin
    kurulması ve betimlenmesi.
 
-7. **`word_confidence` kuralı için dinleme denetimi** — `browse_ui.py` ile
+7. ~~**`word_confidence` kuralı için dinleme denetimi**~~ — *kapandı
+   (30 Ağu 2026): 30 kliplik kör dinlemede 29/30 metin doğru çıktı, kural
+   politika v6'da kaldırıldı. Yukarıdaki kayda bakınız.*
+
+   Eski madde: **`word_confidence` kuralı için dinleme denetimi** — `browse_ui.py` ile
    `word_confidence<0.35` süzgeci, en düşük 30 klip; transcript gerçekten
    yanlış mı? Sonuca göre kural kaldırılır ya da eşik indirilir (politika v3).
 8. **Kelime düzeyi damga ve kaynak tablosunun yayımı** — `words` sütunu
