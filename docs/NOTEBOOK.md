@@ -1766,13 +1766,15 @@ uygulanıyor: kelime hem hizalanmış hem skoru ≥0,01 olmalı. Bu ölçütle
 İki bilgi satırı eklendi: hizalanamayan kelime sayısı ve sınırı damgayı aşan
 klip sayısı. Kalan tek FAIL, küçük harfle başlayan 4 klip (açık madde 11).
 
-**Açık madde 13 — rakamlar için hizalama.** Hizalama `text` belirteçleri
-üzerinde yapılıyor; oysa `text_spoken` rakamları okunuşa çeviriyor ("4" →
-"dört"). Hizalamayı okunuş metni üzerinden kurmak 733 kelimeyi kurtarır,
-komşularının çöp hizalamasını önler ve iki saatin karışmasını bitirir.
-Bölütlemeyi etkilediği için tam koşu öncesi ölçülmeli.
+**Belgelenmiş sınır — rakamlar hizalanmaz.** Hizalayıcının sözlüğü romanize
+harflerden oluşur, dolayısıyla rakamların karşılığı yoktur ve hizalanmazlar
+(733 kelime, %0,44); damgaları Whisper yedeğine düşer. Bu hattın kabul
+edilmiş bir sınırıdır, açık madde değil: hizalamayı okunuş metni üzerinden
+kurmak akla gelir ama yapılmayacak — kelime aralığı ile `text_raw`
+arasındaki birebir karşılık bozulur ve damgalar normalizasyonun doğruluğuna
+bağlanır. Sütunun sınırı makalede böyle anlatılır.
 
-**Açık madde 14 — cümle başı kısa sözcüklerde çöp hizalama.** 245 kelime,
+**Açık madde 13 — cümle başı kısa sözcüklerde çöp hizalama.** 245 kelime,
 289 klip, sebep bilinmiyor; parça sınırı hipotezi elendi. `align_score`
 makalede yayımlanacağı için bunun ya açıklanması ya da sütunun sınırının
 belgelenmesi gerekiyor.
