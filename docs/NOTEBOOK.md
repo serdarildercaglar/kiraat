@@ -2117,6 +2117,82 @@ tahminleri pratik olarak değişmiyor (~83 saat, ~557 GB).
 **Makaleye:** §Korpus (kapsam kararı: hiçbir kayıt kapsam dışı bırakılmadı),
 §Sınırlar (kanal dengesizliği tavanla değil, sütunla ele alınıyor).
 
+## 2026-08-30 — Ölü kalıntı taraması: on üç konfig anahtarı, üç ölü işlev, eskimiş yöntem belgesi
+
+`export.max_hours_per_channel`'in "konfigde var, kodda yok" hâli tek başına
+mı, yoksa bir örüntünün örneği miydi? Depo bu soruyla taranınca örüntü
+olduğu çıktı.
+
+**Konfigde okunmayan on üç anahtar.** Hiçbir kodun okumadığı anahtarlar:
+`runtime.max_clips`, `prepare.target_lufs`, `clip_qc.enabled`,
+`dnsmos.enabled`, `speaker.model`, `speaker.cluster_cosine`,
+`events.model`, `events.gate_synthetic`, `music.audioset_labels`,
+`music.separator`, `music.external_gate`, `export.sample_rate`,
+`export.shard_rows` (ve daha önce kaldırılan `export.max_hours_per_channel`).
+
+Bu yalnızca dağınıklık değil, iki somut zarar veriyordu:
+
+1. **Konfig, kodun yaptığından başka bir şey ilan ediyordu.** En keskin
+   örnek `music.audioset_labels`: müzik sayılan AudioSet etiketleri koda
+   gömülüydü (`AUDIOSET_MUSIC_LABELS`), konfigdeki liste süstü. Deponun ilk
+   değişmezi "hiçbir eşik koda gömülmez" diyor; bu onun ihlaliydi. Aynı
+   şekilde `music.separator` yazıyordu ama ayrıştırıcı koda sabitti.
+2. **Okunmayan bir anahtarı değiştirmek korpusu yeniden koşturuyordu.**
+   Aşama sürümü kendi konfig bölümünün özetini içerdiği için
+   `audioset_labels` listesine dokunmak müzik aşamasının sürümünü
+   değiştirir, 3.440 saat yeniden ölçülür ve **hiçbir sayı değişmez**.
+
+**Yapılan.** Gerçekten parametre olması gerekenler bağlandı:
+`music.audioset_labels` ve `music.separator` artık konfigden okunuyor;
+bilinmeyen bir ayrıştırıcı adı sessizce yok sayılmak yerine hata veriyor.
+Gerisi çıkarıldı. Bağlanmamış üç bölüm (`dnsmos`, `speaker`, `events`) de
+konfigden çıkarıldı: `dnsmos.enabled: true` aşama yokken "açık" görünüyordu
+ve politikadaki ölü `dnsmos_ovrl` kuralının (v4'te kaldırıldı) zeminiydi.
+Planlar defterde durur, konfig yalnızca uygulananı ilan eder.
+
+Değişiklik ölçümü değiştirmiyor: 12 klipte (müzikli, sınırda ve müziksiz)
+`music_score_audioset`, `music_to_speech_db` ve `background_music` işareti
+eskisiyle **birebir aynı** çıktı.
+
+**Kodda çürütülmüş varsayılan.** `INAUDIBLE_DB` modül varsayılanı **−30 dB**
+kalmıştı; oysa 28 Ağustos kör dinlemesi bu değeri çürütüp konfigi −40'a
+çekmişti. Konfigde anahtar unutulsaydı hat, dinlemenin reddettiği eşiği
+sessizce kullanacaktı. Üstelik bir test bunu `assert INAUDIBLE_DB == -30.0`
+diye **sabitliyordu** — yani eskimiş değeri koruyan bir bekçi vardı. Test
+tersine çevrildi: artık koddaki varsayılanların konfigle aynı olmasını
+şart koşuyor (`inaudible_db`, `audioset_min`, `separator_screen`,
+`audioset_labels`).
+
+**Üç ölü işlev silindi.** `text.turkish.last_vowel` (ünlü uyumu; hiçbir
+normalizasyon kuralı kullanmıyor), `text.sentences.split_sentences` (düz
+metin sarmalayıcısı; bölütleyici `sentence_spans` kullanıyor),
+`base.stage_names`, ayrıca `MusicMeasurer`'ın iki kullanılmayan ince
+sarmalayıcısı. Şemada hayalet sütun yok (37 sütun, manifestle birebir).
+
+**Yöntem belgesi eskimişti.** `docs/FEATURES.md` politikayı hâlâ **v4**
+olarak anlatıyor, `clip_ratio ≤ 0,002` ve `word_confidence ≥ 0,60`
+kurallarını yürürlükteymiş gibi listeliyor ve ikincisi için "şu an inceleme
+altındadır" diyordu — oysa ikisi de 30 Ağustos'ta kör dinlemeyle
+kaldırılmıştı. Makale bu belgeden beslenmeyecek olsa da politika tarihçesi
+oradan okunuyor; v3–v6 zinciri gerekçeleriyle yazıldı. `DESIGN.md`'deki
+`events.gate_synthetic` göndermesi de düzeltildi.
+
+**Bekçi.** `tests/test_config.py::test_konfigde_okunmayan_anahtar_yok`
+konfigdeki her anahtarın `kiraat/` içinde okunduğunu sınıyor. Denendi:
+`export.max_hours_per_channel` geri konunca düşüyor.
+
+**Kütüphane tarafında eskimiş kullanım yok.** Test takımı
+`-W always::DeprecationWarning -W always::FutureWarning` ile koşturuldu,
+tek bir uyarı çıkmadı. Gerçek koşuda çıkan tek uyarı torchaudio'nun kendi
+kaynak ayrıştırıcısından geliyor (`torch.load(weights_only=False)`); bizim
+kodumuz değil, ve `requirements.txt` torch/torchaudio'yu 2.5.1'de
+sabitlediği için koşuyu etkilemiyor. Torch yükseltilirse önce bu yol
+sınanmalı — sabitlemenin koruduğu şey tam da bu.
+
+**Makaleye:** doğrudan malzeme değil; §Yeniden üretilebilirlik bölümünde
+"konfig uygulananın tamamını ve yalnızca onu ilan eder" ifadesinin
+dayanağı.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri

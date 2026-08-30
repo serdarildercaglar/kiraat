@@ -44,7 +44,22 @@ def test_ikili_yanit_esikten_turetilir():
     assert has_background_music(-40.0, threshold_db=-50.0, audioset_min=None)
     # Varsayılan: AudioSet kanıtı olmadan dB tek başına işaret üretmez.
     assert not has_background_music(-10.0)
-    assert INAUDIBLE_DB == -30.0
+
+
+def test_koddaki_varsayilanlar_konfigle_ayni():
+    """Kodun varsayılanı konfigden sapmamalı. −30 dB kör dinlemeyle çürütülüp
+    konfig −40'a çekilmişti ama modül varsayılanı −30'da kalmıştı: konfigde
+    anahtar unutulsaydı hat çürütülmüş eşiği sessizce kullanacaktı."""
+    from pathlib import Path
+
+    from kiraat.config import Config
+    from kiraat.stages.music import AUDIOSET_MIN, AUDIOSET_MUSIC_LABELS, SEPARATOR_SCREEN
+
+    music = Config.load(Path(__file__).resolve().parents[1] / "configs/default.yaml").section("music")
+    assert INAUDIBLE_DB == music["inaudible_db"]
+    assert AUDIOSET_MIN == music["audioset_min"]
+    assert SEPARATOR_SCREEN == music["separator_screen"]
+    assert list(AUDIOSET_MUSIC_LABELS) == list(music["audioset_labels"])
 
 
 def test_isaret_db_ve_audioset_birlikte_ister():

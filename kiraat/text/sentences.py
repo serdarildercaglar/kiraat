@@ -99,9 +99,3 @@ def sentence_spans(tokens: list[str]) -> list[tuple[int, int]]:
     if start < len(tokens):
         spans.append((start, len(tokens)))
     return spans
-
-
-def split_sentences(text: str) -> list[str]:
-    """Düz metin için kolaylık sarmalayıcısı; boşluğa göre belirteçler."""
-    tokens = text.split()
-    return [" ".join(tokens[a:b]) for a, b in sentence_spans(tokens)]

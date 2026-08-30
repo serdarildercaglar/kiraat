@@ -30,7 +30,10 @@ from typing import Any, Mapping, Sequence
 from ..base import ClipStage, register
 
 #: Konuşmanın altındaki müziğin duyulmaz sayıldığı sınır (dB).
-INAUDIBLE_DB = -30.0
+#: Ölçülen eşik (28 Ağu 2026, kör dinleme, 34 klip): −40 dB altında müzik
+#: duyulmuyor. İlk tahmin −30 idi ve dinleme onu çürüttü; konfig her zaman
+#: bu anahtarı verir, buradaki değer yalnızca aşamasız kullanımın varsayılanı.
+INAUDIBLE_DB = -40.0
 #: Ölçülemeyen/müziksiz durumda yazılan taban değer.
 FLOOR_DB = -80.0
 #: AudioSet müzik skoru bu eşiğin altındaysa ayrıştırıcı hiç koşmaz.
@@ -101,6 +104,13 @@ class MusicMeasurer:
 
     device: str = "cuda:0"
     audioset_model: str = "MIT/ast-finetuned-audioset-10-10-0.4593"
+    #: Müzik sayılan AudioSet etiketleri. Konfigden gelir; buradaki değer
+    #: yalnızca aşamasız kullanım için varsayılandır.
+    audioset_labels: tuple[str, ...] = AUDIOSET_MUSIC_LABELS
+    #: Kaynak ayrıştırıcı paketi. Tek bir uygulama var; konfigde başka bir ad
+    #: yazılırsa sessizce yok saymak yerine hata verilir (30 Ağu 2026: anahtar
+    #: konfigde duruyordu ama hiçbir kod okumuyordu).
+    separator: str = "hdemucs_high_musdb_plus"
     #: Ağırlık commit'i; sabitlenmezse depo güncellendiğinde müzik skorları
     #: sessizce değişir. torchaudio paketlerinin (MMS_FA, HDemucs) karşılığı
     #: yok — onları requirements.txt'teki torchaudio sürümü sabitliyor.
@@ -130,7 +140,7 @@ class MusicMeasurer:
         self._ast_fx = AutoFeatureExtractor.from_pretrained(self.audioset_model, revision=self.audioset_revision)
         self._ast = AutoModelForAudioClassification.from_pretrained(self.audioset_model, revision=self.audioset_revision)
         self._ast.to(self.device).eval()
-        wanted = {label.casefold() for label in AUDIOSET_MUSIC_LABELS}
+        wanted = {label.casefold() for label in self.audioset_labels}
         self._music_idx = [
             int(i) for i, label in self._ast.config.id2label.items()
             if label.casefold() in wanted
@@ -138,6 +148,9 @@ class MusicMeasurer:
         if not self._music_idx:
             raise RuntimeError("AudioSet muzik etiketleri bulunamadi")
 
+        if self.separator != "hdemucs_high_musdb_plus":
+            raise ValueError(f"bilinmeyen ayristirici: {self.separator!r}; "
+                             "uygulanan tek paket 'hdemucs_high_musdb_plus'")
         bundle = torchaudio.pipelines.HDEMUCS_HIGH_MUSDB_PLUS
         model = bundle.get_model()
         # Kaynak adları paketin kendisinde değil modelde duruyor
@@ -181,10 +194,6 @@ class MusicMeasurer:
         )
         return {"wave": wave, "sr": sr, "wave16": wave16, "ast_inputs": inputs}
 
-    def audioset_music_score(self, wave, sr: int) -> float:
-        """Pencereler üzerinde azami müzik skoru (çok etiketli, sigmoid)."""
-        return self._audioset_score(self.prepare(wave, sr)["ast_inputs"])
-
     def _audioset_score(self, inputs) -> float:
         import torch
 
@@ -218,9 +227,6 @@ class MusicMeasurer:
             for name in self._sep_sources
         }
         return music_to_speech_db(vocals, accompaniment), energies
-
-    def external_music_prob(self, wave, sr: int) -> float:
-        return self._external_prob(self._resample(wave, sr, 16000))
 
     def _external_prob(self, wave16) -> float:
         import torch
@@ -282,6 +288,8 @@ class MusicStage(ClipStage):
             audioset_model=self.opts.get("audioset_model", MusicMeasurer.audioset_model),
             audioset_revision=self.opts.get("audioset_revision"),
             external_model=self.opts.get("external_model"),
+            audioset_labels=tuple(self.opts.get("audioset_labels", AUDIOSET_MUSIC_LABELS)),
+            separator=str(self.opts.get("separator", MusicMeasurer.separator)),
             separator_screen=float(self.opts.get("separator_screen", SEPARATOR_SCREEN)),
         )
         self.measurer.setup()

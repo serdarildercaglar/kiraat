@@ -122,7 +122,3 @@ def get_stage(name: str) -> type[Stage]:
         return _REGISTRY[name]
     except KeyError as exc:
         raise KeyError(f"Bilinmeyen stage {name!r}; mevcut: {', '.join(_REGISTRY) or '-'}") from exc
-
-
-def stage_names() -> list[str]:
-    return list(_REGISTRY)

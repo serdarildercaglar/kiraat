@@ -306,28 +306,41 @@ grubunda en uzun süreli klip korunur (`duplicate_of` boş), diğerleri
 ## 11. Politika ve karar sütunları (`recommended_subset`)
 
 `recommended`, `exclusion_reasons` ve `policy_version` üçlüsü, konfigdeki
-sürümlü kural listesinin ürünüdür. Sürüm 4'ün kuralları: `speech_ratio`
-≥ 0,60; `clip_ratio` ≤ 0,002; `internal_silence_sec` ≤ 1,0 s;
-`word_confidence` ≥ 0,60; ve `oversize`, `forced_split`, `gap_split`,
-`short`, `duplicate`, `boilerplate`, `background_music` işaretlerinden
-hiçbirinin bulunmaması. Müzik kuralı v3'te `music_to_speech_db` sütunundan
-`background_music` işaretine taşındı (dB VE AudioSet ≥ 0,3), çünkü dB tek
-başına bir kanalda müziksiz klipleri eliyordu. `dnsmos_ovrl` ≥ 3,0 kuralı
-v4'te kaldırıldı: DNSMOS aşaması bağlı değil, sütun hiç üretilmiyor ve
-kural `allow_missing` ile her klipte sessizce geçiyordu — politika
-uygulanmayan bir eşiği uygulanıyormuş gibi gösteriyordu. Sağlanmayan her kural gerekçe olarak
+sürümlü kural listesinin ürünüdür. **Sürüm 6'nın kuralları** yalnızca üç
+tanedir: `speech_ratio` ≥ 0,60; `internal_silence_sec` ≤ 1,0 s; ve
+`oversize`, `forced_split`, `gap_split`, `short`, `duplicate`,
+`boilerplate`, `background_music` işaretlerinden hiçbirinin bulunmaması.
+
+Politikanın tarihçesi, bir sinyalin kapı olabilmesi için kör dinlemeden
+geçmesi gerektiği kuralının uygulanmasıdır — üç kural bu sınavda düştü:
+
+- **v3**: müzik kuralı `music_to_speech_db` sütunundan `background_music`
+  işaretine taşındı (dB **ve** AudioSet ≥ 0,3), çünkü dB tek başına bir
+  kanalda müziksiz klipleri eliyordu.
+- **v4**: `dnsmos_ovrl` ≥ 3,0 kaldırıldı. DNSMOS aşaması bağlı değil, sütun
+  hiç üretilmiyor ve kural `allow_missing` ile 12.958 klibin hepsinde
+  sessizce geçiyordu; politika uygulanmayan bir eşiği uygulanıyormuş gibi
+  gösteriyordu.
+- **v5**: `clip_ratio` ≤ 0,002 kaldırıldı. Tepe sınırlayıcı kapatılınca
+  kural canlanıp 536 klip elemeye başladı ve 532'si tek kanaldaydı
+  (`sess-Seslikitap`, kliplerinin %93,2'si) — sinyal klibin değil kanalın
+  özelliğiydi. 25 kliplik kör dinlemede 24 "bozulma yok", 25/25 "eğitime
+  girsin".
+- **v6**: `word_confidence` ≥ 0,60 kaldırıldı. 30 kliplik kör dinlemede
+  (altı bant, kanal ve ölçüm gizli) 29 klipte metin birebir doğru çıktı,
+  30/30 "eğitime girsin"; eşik bu 30'un 15'ini eliyordu. Sütun sıralama
+  sinyali olarak yayımlanmaya devam ediyor.
+
+Sağlanmayan her kural gerekçe olarak
 yazılır: `metrik<eşik`, `metrik>eşik`, `isaret:ad[,ad]`, ölçüm eksikse ve
 kural eksikliğe izin vermiyorsa `eksik_olcum:metrik`. Politika değişince
 veri yeniden üretilmez, yalnızca bu üç sütun yeniden hesaplanır.
 
-Kuralların her biri bir ölçüme dayanır ve bir sinyal ancak dinleme
-denetiminden geçtikten sonra kural olabilir. Müzik eşiği bu yoldan geçti
-(§8). `word_confidence ≥ 0,60` kuralı ise şu an inceleme altındadır: beş
-kayıtlık örnekte kliplerin %6,8'ini yalnızca bu kural dışlıyor; dışlanan
-kliplerde ortalama kelime olasılığı 0,94, hizalayıcı asgari skoru
-tutulanlarla aynı (0,37'ye 0,41), düşük değeri üreten kelime çoğunlukla bir
-karakter adı, ünlem ya da işlev kelimesi. Kararın dinleme denetimine
-bağlandığı deney `docs/NOTEBOOK.md`'de kayıtlıdır.
+Kuralların her biri bir ölçüme dayanır ve bir sinyal ancak kör dinleme
+denetiminden geçtikten sonra kural olabilir; kanıt yükü kapıdadır, veride
+değil. Bugüne kadar bu sınavı yalnızca müzik eşiği geçti (§8). Denetimlerin
+tamamı, örneklem büyüklükleri ve gücün sınırı `docs/NOTEBOOK.md`'de
+tarihleriyle kayıtlıdır.
 
 
 ## Köken zinciri (`manifests/run.json`)
@@ -365,9 +378,11 @@ değil makaleye malzemedir. VAD bölgeleri saklanmaz.
 
 ## 13. Tasarımda kararlaştırılmış, henüz üretilmeyen sütunlar
 
-Konuşmacı kümesi ve küme kenar payı (`speaker.model:
-pyannote/wespeaker-voxceleb-resnet34-LM`, kosinüs eşiği 0,75), kaynak
-düzeyinde LUFS ve uygulanan kazanç, DNSMOS (`dnsmos_ovrl`; politikada
-"eksikse geç" olarak duruyor) ve isteğe bağlı dış müzik sınıflandırıcısı
-olasılığı (`music_prob_external`). Bunlar üretildikçe `kiraat/schema.py`'ye
-ve bu belgeye eklenir; makaleye yalnızca bu depoda üretilmiş hâlleri girer.
+Konuşmacı kümesi ve küme kenar payı, kaynak düzeyinde LUFS, DNSMOS
+(`dnsmos_ovrl`) ve isteğe bağlı dış müzik sınıflandırıcısı olasılığı
+(`music_prob_external`). Bu aşamaların konfig bölümleri **yazılana kadar
+konfige konmaz** (30 Ağu 2026): önceden konmuş ayarlar `dnsmos.enabled:
+true` gibi görünüp olmayan bir aşamayı açık gösteriyor ve politikada ölü
+bir kurala zemin hazırlıyordu. Planlar `docs/NOTEBOOK.md`'nin "Koşulacak
+deneyler" başlığında durur; üretildikçe `kiraat/schema.py`'ye ve bu belgeye
+eklenir. Makaleye yalnızca bu depoda üretilmiş hâlleri girer.

@@ -47,10 +47,3 @@ def has_sentence_end(text: str) -> bool:
     while stripped and stripped[-1] in CLOSERS:
         stripped = stripped[:-1].rstrip()
     return bool(stripped) and stripped[-1] in SENTENCE_END
-
-
-def last_vowel(word: str) -> str | None:
-    for ch in reversed(lower(word)):
-        if ch in VOWELS:
-            return ch
-    return None

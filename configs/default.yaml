@@ -34,7 +34,6 @@ runtime:
   # Tohum verilirse kanal sırası ve kanal içi kayıt sırası rastgele
   # karıştırılır (tam koşuyu taklit eden örneklem); null = sıralı, belirli.
   sample_seed: null
-  max_clips: 0
   # Saat bütçesi: kaynak seçimi kapsayıcı sürelerinin toplamı bu değere
   # ulaşınca durur (0 = sınırsız). max_sources ile birlikte kullanılabilir;
   # hangisi önce dolarsa. Bütçeyi aşan ilk kayıt alınır (alt sınır).
@@ -70,7 +69,10 @@ prepare:
   # hiçbir klibi elemiyordu (30 Ağu 2026, sentetik kırpık sinyalle ölçüldü).
   # Seviye klip başına sütun olarak yayımlanıyor; normalizasyon kullanıcının.
   peak_ceiling_db: null
-  target_lufs: null       # klip başına normalizasyon yok, doğal seviye korunur
+  # Klip başına ses seviyesi normalizasyonu yoktur ve bir anahtarı da yoktur:
+  # seviye `rms_dbfs`/`peak_dbfs` sütunlarıyla yayımlanır, normalizasyon
+  # kullanıcının tercihidir. (Emilia yayımladığı sesi −20 dBFS'e çeker; biz
+  # sese dokunmuyoruz.)
   ffmpeg_threads: 2
   # Çözülen ses kapsayıcı süresinin bu oranından kısaysa kayıt
   # `truncated_source` işareti alır (kesik indirme); işlenmeye devam eder.
@@ -132,31 +134,22 @@ segment:
   trail_pad_sec: 0.25
 
 clip_qc:
-  enabled: true
+  # Bu aşamanın kapatma anahtarı yok: ürettiği sütunlar (speech_ratio,
+  # sessizlikler, seviye) politikanın ve şemanın çekirdeği. VAD ayarları
+  # `vad` bölümünden gelir ve aşamanın sürümüne dâhildir.
+  {}
 
-# AŞAĞIDAKİ ÜÇ BÖLÜM HENÜZ BAĞLANMADI: bunları okuyan bir aşama yok
-# (`kiraat/stages/` içinde prepare, asr, align, segment, clip_qc, music var).
-# Ayarlar planlanan aşamaların yerini tutuyor; hiçbir sütun üretmiyorlar.
-# Bağlanana kadar `recommended_subset` içinde de kural olarak kullanılamazlar.
-
-dnsmos:
-  enabled: true          # bağlanmadı — `dnsmos_ovrl` sütunu üretilmiyor
-
-speaker:
-  # Bağlanmadı. `dedupe.speaker_field: speaker_id` bu aşamayı bekliyor;
-  # sütun yokken dışa aktarım uyarı basıp kanala düşüyor, yani "aynı metin +
-  # farklı ses korunur" kuralı fiilen "farklı kanal korunur" olarak çalışıyor.
-  model: pyannote/wespeaker-voxceleb-resnet34-LM
-  cluster_cosine: 0.75
-
-events:
-  # Bağlanmadı. Müzik aşaması AudioSet skorunu kendi içinde üretiyor;
-  # bu bölüm olay etiketlerinin ayrı yayımı için ayrılmış durumda.
-  model: MIT/ast-finetuned-audioset-10-10-0.4593
-  # v1'de bu modelin "Speech synthesizer" başlığı kapı olarak kullanıldı ve
-  # 981 saati sildi; kör denetimde 131 işaretli klipte sıfır doğru pozitif
-  # verdi. v2'de skoru yayımlanır, politikada kural olarak kullanılmaz.
-  gate_synthetic: false
+# Planlanan ama henüz yazılmamış aşamaların (DNSMOS, konuşmacı kümeleme,
+# olay etiketleri) konfig bölümleri BURADA DEĞİL, yazıldıklarında eklenecek.
+# Önceden konmuş ayarlar 30 Ağu 2026'da çıkarıldı: `dnsmos.enabled: true`
+# aşama olmadığı için "açık" görünüyordu ve politikada `dnsmos_ovrl ≥ 3,0`
+# kuralının 12.958 klipte sessizce geçmesine zemin olmuştu (politika v4'te
+# kaldırıldı). Konfig yalnızca uygulanan şeyi ilan eder; planlar
+# `docs/NOTEBOOK.md` içindeki "Koşulacak deneyler" başlığında durur.
+#
+# Bunun pratik sonucu: `dedupe.speaker_field: speaker_id` bekleyen sütun hâlâ
+# üretilmiyor, dışa aktarım uyarı basıp kanala düşüyor — yani "aynı metin +
+# farklı ses korunur" kuralı fiilen "farklı kanal korunur" olarak çalışıyor.
 
 # Arka plan müziği. Üç ölçüm de yayımlanır; hiçbiri kapı değildir.
 # `background_music` işareti yalnızca yayımlanan music_to_speech_db
@@ -200,7 +193,6 @@ music:
   # sınandı ve kullanılmıyor: v3 müziksiz kliplerin üçte ikisine "müzik"
   # dedi; AST varyantı AudioSet skoruyla aynı bilgiyi verdi. Yuva boş kalır.
   external_model: null
-  external_gate: false
 
 # Künye/anons madenciliği: kanalın kayıtlarının baş ve son bölgelerinde en az
 # `min_recordings` ayrı kayıtta kelimesi kelimesine tekrar eden ifadeler.
@@ -269,10 +261,11 @@ recommended_subset:
     #   min: 3.0
     - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate, background_music]
 
-export:
-  sample_rate: 24000
-  shard_rows: 2000
-  # Kanal başına saat tavanı YOK (kullanıcı kararı, 30 Ağu 2026). Anahtar
+# Yayın paketi (HF dışa aktarımı, parçalama, örnekleme hızı) henüz
+# yazılmadı; `export:` bölümü o aşama gelince eklenecek. Şu an dışa aktarım
+# `kiraat/pipeline.py` içinde manifest yazmaktan ibaret ve ayarı yok.
+#
+# Kanal başına saat tavanı YOK (kullanıcı kararı, 30 Ağu 2026). Anahtar
   # buradan çıkarıldı, çünkü hiçbir kod onu okumuyordu ve konfig uygulanmayan
   # bir kural ilan ediyordu. Tavan uygulansaydı korpus 3.440 saatten 1.849
   # saate inecekti; karar veri azaltmamak yönünde.

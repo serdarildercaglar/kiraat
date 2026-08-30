@@ -10,7 +10,41 @@ DEFAULT = "configs/default.yaml"
 def test_varsayilan_konfig_yuklenir():
     cfg = Config.load(DEFAULT)
     assert cfg.get("prepare.target_sr") == 24000
-    assert cfg.get("events.gate_synthetic") is False
+    assert cfg.get("asr.language") == "tr"
+
+
+def test_konfigde_okunmayan_anahtar_yok():
+    """Konfig yalnızca uygulanan şeyi ilan etmeli.
+
+    30 Ağu 2026'da on üç anahtar hiçbir kod tarafından okunmuyordu:
+    `export.max_hours_per_channel` (uygulansa korpusu yarıya indirecek bir
+    tavan), `music.audioset_labels` (etiketler koda gömülüydü),
+    `dnsmos.enabled: true` (aşama yok), `runtime.max_clips`, `clip_qc.enabled`
+    ve diğerleri. Bu yalnızca dağınıklık değil: okunmayan bir anahtarı
+    değiştirmek aşamanın sürüm özetini değiştirdiği için bütün korpusu
+    yeniden koşturur ve hiçbir şeyi değiştirmez.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from kiraat.segment import SegmentConfig
+
+    root = Path(__file__).resolve().parents[1]
+    cfg = yaml.safe_load((root / DEFAULT).read_text(encoding="utf-8"))
+    src = "\n".join(p.read_text(encoding="utf-8") for p in (root / "kiraat").rglob("*.py"))
+    okunmayan = []
+    for section, body in cfg.items():
+        if not isinstance(body, dict):
+            continue
+        for key in body:
+            if any(pat in src for pat in (f'"{key}"', f"'{key}'", f"{section}.{key}")):
+                continue
+            # `segment` bölümü SegmentConfig'e olduğu gibi açılır.
+            if section == "segment" and key in SegmentConfig.__dataclass_fields__:
+                continue
+            okunmayan.append(f"{section}.{key}")
+    assert not okunmayan, f"konfigde hiçbir kodun okumadığı anahtar(lar): {okunmayan}"
 
 
 def test_segment_konfigi_dataclassa_donuyor():

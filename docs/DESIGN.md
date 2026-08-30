@@ -102,8 +102,10 @@ korpusun en büyük dengesizliğinin doğrudan sebebi:
 **Karar.** Hiçbir aşama karar veremez. Klip aşamaları yalnızca ölçüm üretir
 ve `ClipStage.validate_output` bir aşamanın `recommended`/`decision` alanı
 yazmasını hata olarak reddeder. Önerilen alt küme, konfigdeki sürümlü kural
-listesinden hesaplanır. AudioSet skoru yayımlanır ama varsayılan politikada
-kural olarak kullanılmaz (`events.gate_synthetic: false`).
+listesinden hesaplanır. AudioSet skoru yayımlanır ama politikada kural
+olarak kullanılmaz; v1'i öldüren "Speech synthesizer" kapısının karşılığı
+v2'de yoktur ve bir anahtarı da yoktur (30 Ağu 2026'da `events` bölümü
+konfigden çıkarıldı: olmayan bir aşamanın ayarıydı).
 Uygulama: [`kiraat/scoring.py`](../kiraat/scoring.py), [`kiraat/base.py`](../kiraat/base.py).
 
 ## 3. Boş normalizasyon yuvası
