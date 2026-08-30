@@ -50,10 +50,16 @@ def git_state(root: Path | None = None) -> dict[str, Any]:
         except (subprocess.CalledProcessError, FileNotFoundError, OSError):
             return None
     commit = git("rev-parse", "HEAD")
-    status = git("status", "--porcelain")
+    # `dirty` yalnızca izlenen dosyalardaki değişikliği sayar: commit kodu
+    # tam belirler, izlenmeyen bir defter ya da çıktı dosyası onu bozmaz.
+    # İzlenmeyenler yine de sayılır — kiraat/ içine düşmüş izlenmeyen bir
+    # modül davranışı değiştirebilir, kayıtta görünsün.
+    tracked = git("status", "--porcelain", "--untracked-files=no")
+    untracked = git("ls-files", "--others", "--exclude-standard")
     return {"commit": commit,
             "branch": git("rev-parse", "--abbrev-ref", "HEAD"),
-            "dirty": None if status is None else bool(status),
+            "dirty": None if tracked is None else bool(tracked),
+            "untracked": None if untracked is None else len([l for l in untracked.splitlines() if l.strip()]),
             "describe": git("describe", "--always", "--dirty")}
 
 
