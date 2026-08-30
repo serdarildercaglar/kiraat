@@ -1813,7 +1813,15 @@ tamamlandığında yukarıya tarihli bir kayıt olarak taşınır.
 9. **Metin normalizasyonu: harf+rakam belirteçleri** — "MI6", "M5", "3G"
    okunuşa çevrilmiyor (`to_spoken`); ve tek başına sıra sayısı ("… 1.
    Naip …") ayrı cümle sayılıp 0,1 s'lik klip oluyor. İkisi için kural ve test.
-11. **Künye kesiminin cümle artığı ve kayıt başı büyük harf** — künye
+11. ~~**Künye kesiminin cümle artığı ve kayıt başı büyük harf**~~ — *kapandı
+    (30 Ağu 2026, kullanıcı kararı): küçük harfle başlamak kesim kusuru değil,
+    Whisper'ın büyük harfe çevirmemesi. Kalan örnekler ("bir padişah varmış.",
+    "ülkenin birinde…") tam cümleler ve kesim cümle sınırında. Bütün sesleri
+    ideal uzunlukta bölmek zaten mümkün değil; doğrulayıcıda FAIL olmaktan
+    çıkıp bilgi satırına indi. Bölütleyicinin kendi sözleşmesi
+    `tests/test_segment.py`'de denetim altında kalır.*
+
+    Eski madde: **Künye kesiminin cümle artığı ve kayıt başı büyük harf** — künye
     ifadesi cümle ortasında bitince kalan parça ("sizlerle …") küçük harfle
     başlayan klip oluyor (sample-25'te 3); Whisper kaydın ilk kelimesini
     büyük harfe çevirmiyor (1). İlkine işaret, ikincisine `to_spoken`
