@@ -1,28 +1,31 @@
-"""Koşu tarayıcısı ve manuel denetim aracı: hat çalışırken kanal kanal klipleri
-dinle, kusurları etiketle, bulguları tablo olarak al.
+"""Denetim tezgâhı: hat çalışırken klipleri ölçüte göre süz, dinle, karar ver.
 
     python scripts/browse_ui.py --work work/sample-25 [--port 8765]
     python scripts/browse_ui.py --work work/sample-25 --dump-notes      # kanal × kusur tablosu
     python scripts/browse_ui.py --work work/sample-25 --csv bulgular.csv
 
-Tarayıcıda http://127.0.0.1:8765 açılır. Üç sekme:
+Tarayıcıda http://127.0.0.1:8765 açılır. İki görünüm:
 
-  Denetim   Soldaki kanal listesinden bir kanal seç; kanal için sabit bir
-            "deste" çekilir (varsayılan 20 klip, kanalın kayıtlarına eşit
-            dağıtılmış, tohumlu). Her klip dinlenir, karar (temiz / kusurlu /
-            kullanılmaz) ve kusur etiketleri verilir. Deste
-            `<work>/review-decks.json` dosyasında kalıcıdır; koşu ilerleyip
-            yeni klip gelse de aynı klipler gösterilir ("yeni deste" ile
-            yeniden çekilir).
-  Bulgular  Kanal × karar/etiket tablosu, notlu kliplerin listesi, CSV.
-  Keşif     Serbest süzgeçler (işaret, dışlanma sebebi, ölçüm koşulu, kimlik
-            listesi) ve kaynağa göre gezinti; kural ayarlamak için.
+  Tezgâh    Solda ölçüt kurucu: her satır bir sütuna koşul koyar ve satırlar VE
+            ile birleşir. Süzülebilen sütun kümesi depodan okunur — klip
+            alanları, metin alanları, bütün ölçümler (iç içe olanlar
+            `music_stem_db.vocals` gibi açılır), manifestten gelen öneri ve
+            dışlanma sebepleri, manuel karar ve kusur etiketleri. Ortada
+            klipler üç kipte gelir: tohumlu rastgele örnek, herhangi bir
+            sütuna göre sıralı liste, ya da kanal başına kalıcı deste. Sağda
+            karne (havuzun kaçına karar verilmiş, kaçı temiz çıkmış) ve eşik
+            yardımcısı (seçili ölçümün havuzdaki dağılımı; kovaya tıklamak
+            koşul kurar). Altta klavyeyle karar çubuğu; kör mod metni ve
+            ölçümleri gizler, karar yalnızca sesle verilir.
+  Bulgular  Kanal × karar/etiket tablosu, kusurlu kliplerin listesi, CSV.
 
 Durum deposu salt-okunur açılır (WAL; hat yazarken okunabilir). Manifest
 üretilmişse `recommended` / `exclusion_reasons` kliplerin üstüne bindirilir.
 Notlar `<work>/manual-notes.jsonl` dosyasına eklenir; klip başına son not
-geçerlidir. Her klibin yanındaki "bağlam" düğmesi kaynağın 24 kHz wav'ından
-klibin 2 s öncesinden 2 s sonrasına kadar çalar (kesim sınırı denetimi).
+geçerlidir. Desteler `<work>/review-decks.json`, kayıtlı ölçütler
+`<work>/review-filters.json` dosyasında kalıcıdır. "bağlam" düğmesi kaynağın
+24 kHz wav'ından klibin 2 s öncesinden 2 s sonrasına kadar çalar (kesim
+sınırı denetimi).
 """
 
 from __future__ import annotations
@@ -49,9 +52,6 @@ sys.path.insert(0, str(ROOT))
 from kiraat.text.turkish import lower  # noqa: E402
 
 STAGES = ["prepare", "asr", "align", "boilerplate", "segment", "clip_qc", "music", "export"]
-SORT_KEYS = {"start", "duration", "n_words", "word_confidence", "word_confidence_mean", "align_score_min",
-             "align_score_mean", "music_to_speech_db", "music_score_audioset", "speech_ratio",
-             "internal_silence_sec", "lead_gap_sec", "trail_gap_sec", "rms_dbfs", "peak_dbfs", "clip_ratio"}
 VERDICTS = ["temiz", "kusurlu", "kullanilmaz"]
 #: Kusur etiketleri: anahtar, sayfadaki ad, klavye harfi. Sıra sayfadaki sıradır.
 TAGS = [
@@ -83,7 +83,8 @@ DB = WORK / "db" / "state.sqlite"
 MANIFEST = WORK / "manifests" / "clips.jsonl"
 NOTES = WORK / "manual-notes.jsonl"
 DECKS = WORK / "review-decks.json"
-TEMPLATE = ROOT / "scripts" / "browse_template.html"
+PRESETS = WORK / "review-filters.json"
+TEMPLATE = ROOT / "scripts" / "review_template.html"
 
 
 def connect() -> sqlite3.Connection:
@@ -342,82 +343,309 @@ def parse_conds(text: str) -> list[tuple[str, str, float]]:
     return out
 
 
-def cond_ok(cond, row, metrics) -> bool:
+def metric_value(c: dict, name: str):
+    """Koşullarda ve sıralamada kullanılan değer: klip alanı ya da ölçüm."""
+    if name in ("start", "end", "duration", "idx"):
+        return c.get(name)
+    v = c["metrics"].get(name)
+    return float(v) if isinstance(v, bool) else v
+
+
+def cond_ok(cond, c: dict) -> bool:
     name, op, val = cond
-    v = row[name] if name in ("start", "end", "duration") else metrics.get(name)
-    if v is None or isinstance(v, bool) and name not in metrics:
+    v = metric_value(c, name)
+    if v is None or isinstance(v, str):
         return False
-    if isinstance(v, bool):
-        v = float(v)
     return {">": v > val, "<": v < val, ">=": v >= val, "<=": v <= val, "=": v == val}[op]
 
 
-def clip_row(r, manifest, notes) -> dict:
-    metrics = json.loads(r["metrics_json"] or "{}")
-    flags = json.loads(r["flags_json"] or "[]")
-    mrow = manifest.get(r["id"], {})
-    return {"id": r["id"], "source_id": r["source_id"], "idx": r["idx"], "channel": r["channel"],
-            "start": r["start"], "end": r["end"], "duration": r["duration"],
-            "text": r["text"], "text_raw": r["text_raw"] if r["text_raw"] != r["text"] else None,
-            "text_spoken": r["text_spoken"] if r["text_spoken"] != r["text"] else None,
-            "flags": flags, "metrics": metrics, "has_audio": bool(r["audio"]),
-            "recommended": mrow.get("recommended"), "exclusion_reasons": mrow.get("exclusion_reasons", []),
-            "duplicate_of": mrow.get("duplicate_of"), "note": notes.get(r["id"])}
+_clips_cache: tuple[tuple, list[dict]] | None = None
+
+
+def base_rows() -> list[dict]:
+    """Bütün klipler, ölçümleri çözülmüş; manifest ve notlar bindirilmemiş.
+
+    Süzgeç istekleri saniyede birkaç kez gelir ve her biri bütün klipleri
+    tarar; depo değişmediği sürece çözümlenmiş satırlar bellekte tutulur.
+    Anahtar: dosya damgaları + klip sayısı, yani hat yazdıkça tazelenir."""
+    global _clips_cache
+    con = connect()
+    try:
+        wal = DB.parent / (DB.name + "-wal")
+        st = DB.stat()
+        wst = wal.stat() if wal.exists() else None
+        n = con.execute("select count(*) from clips").fetchone()[0]
+        key = (st.st_mtime_ns, st.st_size, wst.st_mtime_ns if wst else 0, wst.st_size if wst else 0, n)
+        if _clips_cache and _clips_cache[0] == key:
+            return _clips_cache[1]
+        src_name = {r["id"]: Path(r["path"]).name for r in con.execute("select id, path from sources")}
+        rows = []
+        for r in con.execute("select * from clips order by source_id, idx"):
+            text, raw, spoken = r["text"] or "", r["text_raw"] or "", r["text_spoken"] or ""
+            rows.append({"id": r["id"], "source_id": r["source_id"], "source_name": src_name.get(r["source_id"], ""),
+                         "idx": r["idx"], "channel": r["channel"],
+                         "start": r["start"], "end": r["end"], "duration": r["duration"],
+                         "text": text, "text_raw": raw, "text_spoken": spoken,
+                         "raw_differs": raw != text, "spoken_differs": spoken != text,
+                         "n_chars": len(text),
+                         "flags": json.loads(r["flags_json"] or "[]"),
+                         "metrics": json.loads(r["metrics_json"] or "{}"),
+                         "has_audio": bool(r["audio"]),
+                         "_lc": lower(text) + " " + lower(raw)})
+    finally:
+        con.close()
+    _clips_cache = (key, rows)
+    return rows
+
+
+def overlay(c: dict, manifest: dict, notes: dict) -> dict:
+    """Temel satıra manifest kararını ve son manuel notu bindir."""
+    m = manifest.get(c["id"], {})
+    out = {k: v for k, v in c.items() if k != "_lc"}
+    out.update({"recommended": m.get("recommended"), "exclusion_reasons": m.get("exclusion_reasons", []),
+                "duplicate_of": m.get("duplicate_of"), "policy_version": m.get("policy_version"),
+                "note": notes.get(c["id"])})
+    return out
 
 
 def clip_rows(ids: list[str], channel: str = "") -> list[dict]:
-    if not ids:
+    """Verilen kimlikler (deste). Sıra çağıranın işidir."""
+    want = set(ids)
+    if not want:
         return []
-    con = connect()
-    try:
-        q = ",".join("?" * len(ids))
-        rows = con.execute(f"select * from clips where id in ({q})", tuple(ids)).fetchall()
-    finally:
-        con.close()
     manifest, notes = load_manifest(), load_notes()
-    return [clip_row(r, manifest, notes) for r in rows]
+    return [overlay(c, manifest, notes) for c in base_rows() if c["id"] in want]
 
 
-def clips(params: dict) -> dict:
-    source = params.get("source", "")
+# ------------------------------------------------ sütunlar ve genel süzgeç
+#: Sabit sütunlar: anahtar, sayfadaki ad, tür, öbek. Ölçümler bunlara depodan
+#: eklenir (yeni bir aşama yeni ölçüm yazınca sütun kendiliğinden görünür).
+BASE_COLUMNS = [
+    ("id", "klip kimliği", "str", "klip"),
+    ("channel", "kanal", "enum", "klip"),
+    ("source_id", "kaynak no", "num", "klip"),
+    ("source_name", "kaynak dosyası", "str", "klip"),
+    ("idx", "kayıttaki sıra", "num", "klip"),
+    ("start", "başlangıç (s)", "num", "klip"),
+    ("end", "bitiş (s)", "num", "klip"),
+    ("duration", "süre (s)", "num", "klip"),
+    ("has_audio", "ses dosyası var", "bool", "klip"),
+    ("flags", "işaretler", "list", "klip"),
+    ("text", "metin", "str", "metin"),
+    ("text_raw", "ham metin", "str", "metin"),
+    ("text_spoken", "okunuş metni", "str", "metin"),
+    ("raw_differs", "ham metin farklı", "bool", "metin"),
+    ("spoken_differs", "okunuş metni farklı", "bool", "metin"),
+    ("n_chars", "karakter sayısı", "num", "metin"),
+    ("recommended", "önerilen alt kümede", "bool", "politika"),
+    ("exclusion_reasons", "dışlanma sebepleri", "list", "politika"),
+    ("duplicate_of", "kopyası olduğu klip", "str", "politika"),
+    ("policy_version", "politika sürümü", "str", "politika"),
+    ("verdict", "manuel karar", "enum", "manuel"),
+    ("tags", "kusur etiketleri", "list", "manuel"),
+    ("note_text", "not metni", "str", "manuel"),
+    ("note_ts", "not zamanı", "str", "manuel"),
+]
+METRIC_LABELS = {
+    "n_words": "kelime sayısı", "word_confidence": "kelime güveni min",
+    "word_confidence_mean": "kelime güveni ort", "confidence_source": "güven kaynağı",
+    "align_score_min": "hizalama skoru min", "align_score_mean": "hizalama skoru ort",
+    "music_to_speech_db": "müzik/konuşma dB", "music_score_audioset": "audioset müzik skoru",
+    "music_db_separated": "ayrıştırılmış müzik dB", "speech_ratio": "konuşma oranı",
+    "internal_silence_sec": "iç sessizlik (s)", "leading_silence_sec": "baş sessizlik (s)",
+    "trailing_silence_sec": "son sessizlik (s)", "lead_gap_sec": "baş komşu boşluğu (s)",
+    "trail_gap_sec": "son komşu boşluğu (s)", "rms_dbfs": "RMS dBFS", "peak_dbfs": "tepe dBFS",
+    "clip_ratio": "kırpılma oranı", "music_db_separated": "müzik ayrıştırmayla ölçüldü",
+    "music_stem_db.vocals": "kaynak: vokal dB", "music_stem_db.drums": "kaynak: davul dB",
+    "music_stem_db.bass": "kaynak: bas dB", "music_stem_db.other": "kaynak: diğer çalgı dB",
+}
+#: Tür başına kullanılabilir işleçler; sayfadaki açılır liste bunu okur.
+OPS = {
+    "num": [("gt", ">"), ("ge", "≥"), ("lt", "<"), ("le", "≤"), ("eq", "="), ("ne", "≠"),
+            ("empty", "ölçüm yok"), ("notempty", "ölçüm var")],
+    "str": [("contains", "içerir"), ("ncontains", "içermez"), ("eq", "eşittir"), ("ne", "eşit değil"),
+            ("starts", "ile başlar"), ("ends", "ile biter"), ("re", "düzenli ifade"),
+            ("empty", "boş"), ("notempty", "dolu")],
+    "enum": [("eq", "eşittir"), ("ne", "eşit değil"), ("contains", "içerir"),
+             ("empty", "boş"), ("notempty", "dolu")],
+    "list": [("has", "içinde var"), ("nothas", "içinde yok"), ("empty", "boş"), ("notempty", "dolu"),
+             ("count_gt", "öğe sayısı >"), ("count_lt", "öğe sayısı <")],
+    "bool": [("true", "doğru"), ("false", "yanlış"), ("empty", "hesaplanmadı")],
+}
+
+
+def field(c: dict, key: str):
+    """Bir klibin herhangi bir sütunundaki değer: klip alanı, ölçüm ya da not.
+    İç içe ölçümler noktayla açılır: `music_stem_db.vocals`."""
+    if key in c:
+        return c[key]
+    if key in c["metrics"]:
+        return c["metrics"][key]
+    if "." in key:
+        head, _, tail = key.partition(".")
+        v = c["metrics"].get(head)
+        return v.get(tail) if isinstance(v, dict) else None
+    note = c.get("note") or {}
+    if key == "verdict":
+        return note.get("verdict") or None
+    if key == "tags":
+        return note.get("tags", [])
+    if key == "note_text":
+        return note.get("note") or None
+    if key == "note_ts":
+        return note.get("ts") or None
+    return None
+
+
+def _num(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_empty(v) -> bool:
+    return v is None or v == "" or v == []
+
+
+def op_match(v, op: str, raw: str) -> bool:
+    """Tek bir süzgeç satırı: değer, işleç, kullanıcı girdisi."""
+    if op == "empty":
+        return is_empty(v)
+    if op == "notempty":
+        return not is_empty(v)
+    if op == "true":
+        return v is True or v == 1
+    if op == "false":
+        return v is False or v == 0
+    if isinstance(v, list):
+        t = lower(str(raw))
+        if op == "has":
+            return any(t in lower(str(x)) for x in v)
+        if op == "nothas":
+            return not any(t in lower(str(x)) for x in v)
+        n = _num(raw)
+        if op == "count_gt":
+            return n is not None and len(v) > n
+        if op == "count_lt":
+            return n is not None and len(v) < n
+        return False
+    if op in ("gt", "ge", "lt", "le") or (op in ("eq", "ne") and isinstance(v, (int, float)) and not isinstance(v, bool)):
+        a, b = _num(v), _num(raw)
+        if a is None or b is None:
+            return False
+        return {"gt": a > b, "ge": a >= b, "lt": a < b, "le": a <= b, "eq": a == b, "ne": a != b}[op]
+    t, s_ = lower(str(raw)), lower("" if v is None else str(v))
+    return {"eq": s_ == t, "ne": s_ != t, "contains": t in s_, "ncontains": t not in s_,
+            "starts": s_.startswith(t), "ends": s_.endswith(t),
+            "re": bool(re.search(raw, str(v or ""), re.IGNORECASE))}.get(op, False)
+
+
+def parse_filters(text: str) -> list[dict]:
+    """Sayfadan gelen JSON süzgeç satırları: [{"c":sütun,"o":işleç,"v":değer}, …]."""
+    if not text:
+        return []
+    try:
+        rows = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    return [r for r in rows if isinstance(r, dict) and r.get("c") and r.get("o")]
+
+
+def columns() -> list[dict]:
+    """Süzülebilir bütün sütunlar; sayısal olmayanlarda depodaki değer listesiyle."""
+    rows = base_rows()
+    manifest, notes = load_manifest(), load_notes()
+    #: Ölçüm türü tek klipten kestirilemez (ilk klipte null olabilir): boş
+    #: olmayan bütün değerlere bakılır, en sık tür kazanır.
+    kinds: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    for r in rows:
+        for k, v in r["metrics"].items():
+            if v is None or v == "":
+                kinds[k]["?"] += 0                  # anahtar görünsün, tür oy almasın
+                continue
+            if isinstance(v, dict):                 # iç içe ölçüm: alt anahtarlar ayrı sütun
+                for sub, sv in v.items():
+                    kinds[f"{k}.{sub}"]["num" if isinstance(sv, (int, float)) and not isinstance(sv, bool)
+                                        else "enum"] += 1
+                continue
+            kinds[k]["bool" if isinstance(v, bool) else "num" if isinstance(v, (int, float))
+                     else "list" if isinstance(v, list) else "enum"] += 1
+    seen = {k: (c.most_common(1)[0][0] if c and c.most_common(1)[0][1] else "num") for k, c in kinds.items()}
+    out = [{"key": k, "label": lb, "type": t, "group": g} for k, lb, t, g in BASE_COLUMNS]
+    out += [{"key": k, "label": METRIC_LABELS.get(k, k), "type": t, "group": "ölçüm"}
+            for k, t in sorted(seen.items(), key=lambda kv: (kv[0] not in METRIC_LABELS, kv[0]))]
+    vals: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    for r in rows:
+        vals["channel"][r["channel"]] += 1
+        vals["source_name"][r["source_name"]] += 1
+        for f in r["flags"]:
+            vals["flags"][f] += 1
+        for k, v in r["metrics"].items():
+            if isinstance(v, str):
+                vals[k][v] += 1
+    for m in manifest.values():
+        for x in m.get("exclusion_reasons", []):
+            vals["exclusion_reasons"][x] += 1
+        if m.get("policy_version"):
+            vals["policy_version"][str(m["policy_version"])] += 1
+    for n in notes.values():
+        if n.get("verdict"):
+            vals["verdict"][n["verdict"]] += 1
+        for t in n.get("tags", []):
+            vals["tags"][t] += 1
+    for col in out:
+        v = vals.get(col["key"])
+        if v:
+            col["values"] = [[k, n] for k, n in v.most_common(60)]
+    return out
+
+
+def select_clips(params: dict) -> list[dict]:
+    """Süzgeçlerden geçen klipler (sıralama/örnekleme yok). Tek yer: hem liste,
+    hem karne, hem dağılım aynı kümeyi görür."""
     q = lower(params.get("q", "").strip())
     flag = params.get("flag", "")
     rec = params.get("rec", "all")
     noted = params.get("noted", "all")
-    sort = params.get("sort", "start")
-    desc = params.get("dir", "asc") == "desc"
-    offset = int(params.get("offset", 0) or 0)
-    limit = max(1, min(int(params.get("limit", 200) or 200), 1000))
-    dmin = float(params.get("dmin") or 0)
-    dmax = float(params.get("dmax") or 1e9)
+    source = params.get("source", "")
     channel = params.get("channel", "")
     reason = params.get("reason", "")
+    dmin = float(params.get("dmin") or 0)
+    dmax = float(params.get("dmax") or 1e9)
     conds = parse_conds(params.get("cond", ""))
+    rows_f = parse_filters(params.get("f", ""))
     ids = {x.strip() for x in re.split(r"[\s,;]+", params.get("ids", "")) if x.strip()}
-    con = connect()
-    try:
-        if source and source != "all":
-            rows = con.execute("select * from clips where source_id=? order by idx", (int(source),)).fetchall()
-        else:
-            rows = con.execute("select * from clips order by source_id, idx").fetchall()
-    finally:
-        con.close()
-    manifest = load_manifest()
-    notes = load_notes()
+    only_audio = params.get("audio", "") == "yes"
+    manifest, notes = load_manifest(), load_notes()
     out = []
-    for r in rows:
-        c = clip_row(r, manifest, notes)
-        note, flags, metrics, rec_v = c["note"], c["flags"], c["metrics"], c["recommended"]
-        if q and q not in lower(r["text"] or "") and q not in lower(r["text_raw"] or ""):
+    for r in base_rows():
+        if source and source != "all" and r["source_id"] != int(source):
             continue
-        if flag == "none" and flags:
+        if channel and r["channel"] != channel:
             continue
-        if flag and flag not in ("none",) and flag not in flags:
+        if ids and r["id"] not in ids:
             continue
-        if rec == "yes" and rec_v is not True:
+        if q and q not in r["_lc"]:
             continue
-        if rec == "no" and rec_v is not False:
+        if flag == "none" and r["flags"]:
             continue
+        if flag and flag != "none" and flag not in r["flags"]:
+            continue
+        if not (dmin <= (r["duration"] or 0) <= dmax):
+            continue
+        if only_audio and not r["has_audio"]:
+            continue
+        if conds and not all(cond_ok(cc, r) for cc in conds):
+            continue
+        c = overlay(r, manifest, notes)
+        if rec == "yes" and c["recommended"] is not True:
+            continue
+        if rec == "no" and c["recommended"] is not False:
+            continue
+        if reason and not any(reason in x for x in c["exclusion_reasons"]):
+            continue
+        note = c["note"]
         if noted == "yes" and not note:
             continue
         if noted == "no" and note:
@@ -426,33 +654,145 @@ def clips(params: dict) -> dict:
             continue
         if noted.startswith("tag:") and (not note or noted[4:] not in note.get("tags", [])):
             continue
-        if not (dmin <= (r["duration"] or 0) <= dmax):
-            continue
-        if channel and r["channel"] != channel:
-            continue
-        if ids and r["id"] not in ids:
-            continue
-        if reason and not any(reason in x for x in c["exclusion_reasons"]):
-            continue
-        if conds and not all(cond_ok(cc, r, metrics) for cc in conds):
+        if rows_f and not all(op_match(field(c, f["c"]), f["o"], f.get("v", "")) for f in rows_f):
             continue
         out.append(c)
+    return out
 
-    def key(c):
-        v = c.get(sort) if sort in ("start", "duration") else c["metrics"].get(sort)
-        return (v is None, v if v is not None else 0)
+
+def sort_key(c: dict, col: str):
+    """Her sütunda sıralama: sayı sayıyla, metin metinle; boşlar en sonda."""
+    v = field(c, col)
+    if isinstance(v, list):
+        v = ", ".join(map(str, v)) or None
+    if isinstance(v, bool):
+        v = int(v)
+    if v is None or v == "":
+        return (1, 0.0, "")
+    if isinstance(v, (int, float)):
+        return (0, float(v), "")
+    return (0, 0.0, lower(str(v)))
+
+
+def sort_clips(rows: list[dict], sort: str, desc: bool) -> None:
+    if not sort:
+        return
+    rows.sort(key=lambda c: sort_key(c, sort), reverse=desc)
+    if desc:                      # değeri olmayanlar her hâlde sonda kalsın
+        rows.sort(key=lambda c: sort_key(c, sort)[0])
+
+
+def clips(params: dict) -> dict:
+    out = select_clips(params)
     total = len(out)
+    sort = params.get("sort", "start")
+    desc = params.get("dir", "asc") == "desc"
+    offset = int(params.get("offset", 0) or 0)
+    limit = max(1, min(int(params.get("limit", 200) or 200), 1000))
     sample = int(params.get("sample") or 0)
     if sample:
         # Rastgele örnek: süzgeçten geçen havuzdan tohumlu, tekrarlanabilir çekim.
         rng = random.Random(int(params.get("seed") or time.time_ns() % 1_000_000))
         out = rng.sample(out, min(sample, len(out)))
         return {"total": total, "offset": 0, "sampled": len(out), "clips": out}
-    if sort in SORT_KEYS:
-        out.sort(key=key, reverse=desc)
-        if desc:  # None'lar sonda kalsın
-            out.sort(key=lambda c: key(c)[0])
+    sort_clips(out, sort, desc)
     return {"total": total, "offset": offset, "clips": out[offset:offset + limit]}
+
+
+# ------------------------------------------------------- ölçüt karnesi
+PCTS = [1, 5, 10, 25, 50, 75, 90, 95, 99]
+
+
+def percentile(vals: list[float], p: float) -> float:
+    """Doğrusal aradeğerli yüzdelik (numpy'siz; vals sıralı olmalı)."""
+    if not vals:
+        return float("nan")
+    k = (len(vals) - 1) * p / 100
+    lo, hi = int(k), min(int(k) + 1, len(vals) - 1)
+    return vals[lo] + (vals[hi] - vals[lo]) * (k - lo)
+
+
+def distribution(rows: list[dict], metric: str, bins: int = 24) -> dict:
+    """Süzülen havuzda bir ölçümün dağılımı: yüzdelikler + histogram.
+
+    Eşik seçmek için: p5/p95 nerede, hangi kovada kaç klip var, o kovadan
+    itibaren kaç klip kalır (kümülatif). Kovaya tıklamak koşul üretir."""
+    vals = sorted(float(v) for v in (field(c, metric) for c in rows)
+                  if isinstance(v, (int, float)) and not isinstance(v, bool))
+    if not vals:
+        return {"metric": metric, "n": 0, "pcts": {}, "bins": []}
+    lo, hi = vals[0], vals[-1]
+    if hi <= lo:
+        hi = lo + 1e-9
+    width = (hi - lo) / bins
+    counts = [0] * bins
+    for v in vals:
+        counts[min(bins - 1, int((v - lo) / width))] += 1
+    below, out_bins = 0, []
+    for i, n in enumerate(counts):
+        out_bins.append({"lo": lo + i * width, "hi": lo + (i + 1) * width, "n": n,
+                         "below": below, "above": len(vals) - below - n})
+        below += n
+    return {"metric": metric, "n": len(vals), "min": lo, "max": vals[-1], "mean": sum(vals) / len(vals),
+            "pcts": {str(p): percentile(vals, p) for p in PCTS}, "bins": out_bins}
+
+
+def stats(params: dict) -> dict:
+    """Süzgeçten geçen havuzun karnesi: kaç klip, kaçına karar verilmiş, karar
+    dağılımı, en sık kusur etiketleri, kanal/sebep kırılımı ve istenirse bir
+    ölçümün dağılımı. Manuel test döngüsünün ölçtüğü sayı budur."""
+    rows = select_clips(params)
+    verdicts: collections.Counter = collections.Counter()
+    tags: collections.Counter = collections.Counter()
+    chans: collections.Counter = collections.Counter()
+    reasons: collections.Counter = collections.Counter()
+    flags: collections.Counter = collections.Counter()
+    rec = {"yes": 0, "no": 0, "none": 0}
+    sec = 0.0
+    for c in rows:
+        sec += c["duration"] or 0
+        chans[c["channel"]] += 1
+        rec["yes" if c["recommended"] is True else "no" if c["recommended"] is False else "none"] += 1
+        for x in c["exclusion_reasons"]:
+            reasons[x] += 1
+        for f in c["flags"]:
+            flags[f] += 1
+        n = c["note"]
+        if n and n["verdict"]:
+            verdicts[n["verdict"]] += 1
+            for t in n.get("tags", []):
+                tags[t] += 1
+    judged = sum(verdicts.values())
+    out = {"n": len(rows), "hours": sec / 3600, "judged": judged, "verdicts": dict(verdicts),
+           "clean_rate": (verdicts.get("temiz", 0) / judged) if judged else None,
+           "tags": dict(tags.most_common(6)), "channels": dict(chans.most_common(8)), "n_channels": len(chans),
+           "reasons": dict(reasons.most_common(6)), "flags": dict(flags.most_common(6)), "rec": rec}
+    metric = params.get("metric", "")
+    if metric:
+        out["dist"] = distribution(rows, metric)
+    return out
+
+
+# ------------------------------------------------------ kayıtlı süzgeçler
+def load_presets() -> list[dict]:
+    if PRESETS.exists():
+        return json.loads(PRESETS.read_text(encoding="utf-8"))
+    return []
+
+
+def edit_presets(body: dict) -> list[dict]:
+    """{'name':…, 'params':{…}} kaydeder (aynı ad üzerine yazar);
+    {'name':…, 'delete':true} siler. Ölçüt kümesi böylece tekrar açılabilir."""
+    name = str(body.get("name", "")).strip()
+    if not name:
+        raise ValueError("ad boş")
+    items = [p for p in load_presets() if p["name"] != name]
+    if not body.get("delete"):
+        items.append({"name": name, "params": dict(body.get("params") or {}),
+                      "ts": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    items.sort(key=lambda p: p["name"].casefold())
+    PRESETS.write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
+    return items
 
 
 # --------------------------------------------------------------- bulgular
@@ -630,6 +970,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(deck(params))
             elif u.path == "/api/notes":
                 self._json(load_notes())
+            elif u.path == "/api/columns":
+                self._json(columns())
+            elif u.path == "/api/ops":
+                self._json({t: [[k, lb] for k, lb in v] for t, v in OPS.items()})
+            elif u.path == "/api/stats":
+                self._json(stats(params))
+            elif u.path == "/api/presets":
+                self._json(load_presets())
             elif u.path == "/api/lists":
                 self._json(listen_lists())
             elif u.path == "/api/findings":
@@ -658,6 +1006,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(append_note(body))
             elif u.path == "/api/deck":
                 self._json(deck({k: str(v) for k, v in body.items()}, redraw=bool(body.get("redraw"))))
+            elif u.path == "/api/presets":
+                self._json(edit_presets(body))
             else:
                 self.send_error(404)
         except Exception as e:  # noqa: BLE001

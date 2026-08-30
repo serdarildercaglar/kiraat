@@ -23,6 +23,7 @@ def whisper_name(model: str) -> str:
 @register
 class AsrStage(SourceStage):
     name = "asr"
+    config_sections = ("vad",)   # VAD bölgeleri ASR girdisini belirler
     version = "2"
     gpu = True
     depends_on = ("prepare",)

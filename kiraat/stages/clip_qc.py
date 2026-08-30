@@ -85,6 +85,8 @@ def _measure_one(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
 @register
 class ClipQcStage(ClipStage):
     name = "clip_qc"
+    config_sections = ("vad",)
+    depends_on = ("segment",)
     version = "2"   # v2: VAD damgaları örnek tabanlı (ms çözünürlük), 0,1 s yuvarlama kalktı
     produces_metrics = ("clip_ratio", "peak_dbfs", "rms_dbfs", "speech_ratio", "internal_silence_sec",
                         "leading_silence_sec", "trailing_silence_sec")

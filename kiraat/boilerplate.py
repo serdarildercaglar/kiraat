@@ -21,6 +21,8 @@ from typing import Iterable, Mapping, Sequence
 
 from .dedupe import dedupe_key
 
+from .base import ChannelStage, register
+
 Phrase = tuple[str, ...]
 
 
@@ -146,3 +148,18 @@ def find_spans(tokens: Sequence[str], phrases: Iterable[Phrase]) -> list[tuple[i
             else:
                 i += 1
     return sorted(spans)
+
+
+@register
+class BoilerplateStage(ChannelStage):
+    """Künye madenciliğinin sürüm ve bağımlılık kaydı.
+
+    Yürütme `Pipeline.run_boilerplate` içinde; bu sınıf sürüm zincirinin
+    `segment`in `boilerplate` bağımlılığını çözebilmesi için var. Kanalın
+    ASR kelime dosyalarından madenlendiği için `asr`ye bağlıdır: ASR sürümü
+    değişince künye ifadeleri de, dolayısıyla `segment` de eskir.
+    """
+
+    name = "boilerplate"
+    version = "1"
+    depends_on = ("asr",)

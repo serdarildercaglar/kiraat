@@ -113,7 +113,7 @@ COLUMNS: tuple[Column, ...] = (
            "`duplicate`: aynı kayıt/kanal içinde aynı metnin tekrarı (bkz. `duplicate_of`); `boilerplate`: kanalın kayıtlarında tekrar eden künye/anons kalıbı; "
            "`unreadable_audio`: klip dosyası okunamadı, ölçümleri yok."),
     Column("duplicate_of", "string", "export",
-           "Klip bir yinelemeyse korunan (en uzun süreli) kopyanın kimliği; değilse boş. Aynı metin farklı sesle okunuyorsa yineleme sayılmaz.",
+           "Klip bir yinelemeyse korunan (en uzun süreli) kopyanın kimliği; değilse boş. Yineleme anahtarı (metin, konuşmacı) çiftidir: aynı metin farklı sesle okunuyorsa yineleme sayılmaz. Konuşmacı aşaması henüz bağlı olmadığı için `speaker_id` sütunu yoktur ve dışa aktarım uyarı basıp anahtarın konuşmacı yerine **kanalı** kullanır — bu sürümde kural fiilen \"aynı metin, farklı kanal korunur\" biçimindedir.",
            optional=True),
     Column("recommended", "bool", "export",
            "Sürümlü politikanın (`recommended_subset`) bu klibi varsayılan eğitim alt kümesine önerip önermediği. Veri elemez; kullanıcı ölçüm sütunlarından kendi kuralını koyabilir."),

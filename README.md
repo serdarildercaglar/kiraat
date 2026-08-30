@@ -41,11 +41,22 @@ içinde sürümlü tutulur; yeniden koşuda biten iş atlanır. Çıktı
 `work/manifests/clips.jsonl`, her klip her ölçümüyle ve `recommended` bayrağı
 + gerekçeleriyle.
 
+Aşamalar tek sırada gitmez: `kiraat/scheduler.py` CPU işlerini (prepare,
+segment, clip_qc) ve GPU işlerini (asr, align, music) ayrı süreç
+havuzlarında üst üste bindirir; bir kaynağın bölütlemesi, kanalının bütün
+kayıtlarının ASR'si bitmeden başlamaz (künye madenciliği kanalın tamamını
+görsün diye) ve depoya yalnızca ana süreç yazar. `--serial` tek süreçli
+sıralı yolu koşturur; ikisi aynı manifestoyu üretir
+(`scripts/compare_manifests.py` ile sınanır). İşçi sayıları
+`runtime.source_workers` / `runtime.gpu_stage_concurrency` (CLI:
+`--cpu-workers`, `--gpu-workers`).
+
 ## Yapı
 
 ```
 kiraat/
   pipeline.py       orkestratör: kaynak keşfi (kanal-dönüşümlü), aşama sırası, dışa aktarım
+  scheduler.py      bağımlılık çizelgeli dağıtıcı: CPU/GPU havuzları, kanal bariyeri, tek yazıcı
   store.py          sqlite durum deposu (sources, clips, done)
   segment.py        cümle hizalı bölütleyici — hattın çekirdeği
   boundaries.py     sınırı ASR damgasından sessizliğe çekme
@@ -56,7 +67,7 @@ kiraat/
   base.py           SourceStage / ClipStage sözleşmeleri
   stages/           prepare, asr, segmentation, clip_qc, music
   text/             turkish (I/ı), sentences, normalize
-scripts/            probe_segment, probe_boilerplate, probe_music, listen_ui, report
+scripts/            probe_segment, probe_boilerplate, probe_music, listen_ui, report, compare_manifests, exp_parallel
 configs/default.yaml
 docs/NOTEBOOK.md    araştırma defteri — makale bundan yazılacak
 docs/DESIGN.md      iç belge: mühendislik gerekçeleri

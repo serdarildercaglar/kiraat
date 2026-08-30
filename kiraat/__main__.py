@@ -29,6 +29,10 @@ def main(argv: list[str] | None = None) -> int:
                      help="prepare.max_minutes'ı geçersiz kıl (kayıt başına dakika tavanı)")
     run.add_argument("--dry-run", action="store_true", help="yalnızca seçilen kaynakları kanal başına özetle, koşma")
     run.add_argument("--work-root", default=None, help="paths.work_root ve paths.db'yi bu dizine taşı (ayrı koşu)")
+    run.add_argument("--serial", action="store_true",
+                     help="dağıtıcı yerine tek süreçli sıralı yol (runtime.parallel=false); karşılaştırma koşuları için")
+    run.add_argument("--cpu-workers", type=int, default=None, help="runtime.source_workers'ı geçersiz kıl")
+    run.add_argument("--gpu-workers", type=int, default=None, help="runtime.gpu_stage_concurrency'yi geçersiz kıl")
     sch = sub.add_parser("schema", help="yayımlanan sütun şemasını Markdown tablo olarak bas ya da bir manifestoyu şemayla karşılaştır")
     sch.add_argument("--check", default=None, help="bu clips.jsonl'in anahtarlarını şemayla karşılaştır; uyuşmazlıkta 1 döner")
     sch.add_argument("--all", action="store_true", help="yerel (yayımlanmayan) sütunları da tabloya al")
@@ -49,6 +53,12 @@ def main(argv: list[str] | None = None) -> int:
     for key in ("max_sources", "max_channels", "max_hours", "sample_seed", "max_sources_per_channel"):
         if getattr(args, key) is not None:
             runtime[key] = getattr(args, key)
+    if args.serial:
+        runtime["parallel"] = False
+    if args.cpu_workers is not None:
+        runtime["source_workers"] = args.cpu_workers
+    if args.gpu_workers is not None:
+        runtime["gpu_stage_concurrency"] = args.gpu_workers
     prep = dict(cfg.section("prepare"))
     if args.max_minutes is not None:
         prep["max_minutes"] = args.max_minutes

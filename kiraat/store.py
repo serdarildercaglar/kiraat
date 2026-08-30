@@ -171,8 +171,13 @@ class Store:
                          (kind, key, stage, version))
         self.con.commit()
 
-    def pending_clips(self, stage: str, version: str) -> list[dict[str, Any]]:
+    def pending_clips(self, stage: str, version: str, source_id: int | None = None) -> list[dict[str, Any]]:
+        where = "(d.key is null or d.version<>?)"
+        params: tuple[Any, ...] = (stage, version)
+        if source_id is not None:
+            where += " and c.source_id=?"
+            params += (source_id,)
         rows = self.con.execute(
             "select c.* from clips c left join done d on d.kind='clip' and d.key=c.id and d.stage=? "
-            "where d.key is null or d.version<>? order by c.source_id, c.idx", (stage, version)).fetchall()
+            f"where {where} order by c.source_id, c.idx", params).fetchall()
         return [self._clip(r) for r in rows]

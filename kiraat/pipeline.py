@@ -1,9 +1,14 @@
 """Orkestratör: kaynakları bul, aşamaları sırayla koştur, manifestoyu yaz.
 
-Tek süreç, sıralı. Her aşama bitirdiği nesneyi `done` tablosuna sürümüyle
-yazar; yeniden koşuda aynı sürümle bitmiş nesneler atlanır. Kaynak
-aşamaları kayıt kayıt, klip aşamaları toplu çalışır. Hiçbir aşama klip
-elemez; `recommended` yalnızca dışa aktarımda politikadan hesaplanır.
+Her aşama bitirdiği nesneyi `done` tablosuna sürümüyle yazar; yeniden
+koşuda aynı sürümle bitmiş nesneler atlanır. Kaynak aşamaları kayıt kayıt,
+klip aşamaları toplu çalışır. Hiçbir aşama klip elemez; `recommended`
+yalnızca dışa aktarımda politikadan hesaplanır.
+
+Varsayılan koşu `scheduler.Scheduler` ile CPU ve GPU işlerini üst üste
+bindirir; `runtime.parallel: false` (CLI: `--serial`) buradaki tek süreçli,
+aşama aşama sıralı yolu koşturur. İkisi aynı çıktıyı üretir; sıralı yol
+karşılaştırma ölçütü olarak duruyor.
 
 Kaynak seçimi kanal-dönüşümlüdür: `runtime.max_sources` küçükken bile
 örnek kanal çeşitliliği taşısın diye kanallar sırayla birer kayıt verir.
@@ -105,18 +110,57 @@ def discover_sources(cfg: Config, duration_of: Callable[[str], float] | None = N
     return out
 
 
-def stage_version(cfg: Config, stage: base.Stage) -> str:
-    """Kod sürümü + aşamanın konfig bölümünün özeti.
+#: Sürüm özetine asla giremeyecek bölümler. `runtime`'ı dağıtıcı işçi
+#: konfiginde değiştiriyor (`scheduler._worker_init` `source_workers`'ı 1
+#: yapar), `paths` koşudan koşuya değişir; ikisi de sürümü süreçler ve
+#: çalışma dizinleri arasında kararsız yapardı.
+FORBIDDEN_VERSION_SECTIONS = frozenset({"runtime", "paths"})
 
-    Konfigde eşik değişince (`segment.min_sec` gibi) 'bitti' kaydı eskimeli;
-    yalnızca kod sürümüne bakmak konfig değişikliğini görmezden geliyordu.
-    Bölütleme hizalama ayarlarına da bağlıdır.
+
+def _canonical(value: Any) -> Any:
+    """Sayıları tek biçime indir: CLI `--max-minutes 20` float, YAML `20` int
+    verir; aynı anlam iki farklı özet üretmesin."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _canonical(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_canonical(v) for v in value]
+    return value
+
+
+def stage_version(cfg: Config, stage: base.Stage | type[base.Stage],
+                  _stack: tuple[str, ...] = ()) -> str:
+    """Kod sürümü + tüketilen konfig bölümleri + üst akış sürümleri.
+
+    Bir aşamanın 'bitti' kaydı üç şeyden biri değişince eskir: kendi kod
+    sürümü, okuduğu bir konfig bölümü, ya da bağlı olduğu bir aşamanın sürüm
+    dizgesi. Üçüncüsü 29 Ağu 2026'da eklendi: `align` kod sürümü 1'den 2'ye
+    çıkarken (hizalama skorlarını yarıya bölen hata) o skorları klibe yazan
+    `segment` atlanıyor ve düzeltme manifestoya hiç ulaşmıyordu.
+
+    Hesap süreçten bağımsızdır (sıralı anahtarlı JSON + sha1); dağıtıcı
+    sürümleri ana süreçte hesaplar, işçiler yalnızca aşamayı koşturur.
     """
-    sections = [stage.name]
-    if stage.name == "segment":
-        sections += ["align", "text"]
-    payload = json.dumps({s: cfg.section(s) for s in sections}, sort_keys=True, ensure_ascii=False, default=str)
-    return f"{stage.version}+{hashlib.sha1(payload.encode('utf-8')).hexdigest()[:8]}"
+    cls = stage if isinstance(stage, type) else type(stage)
+    if cls.name in _stack:
+        raise ValueError(f"asama bagimliliginda dongu: {' -> '.join((*_stack, cls.name))}")
+    forbidden = FORBIDDEN_VERSION_SECTIONS & set(cls.hashed_sections())
+    if forbidden:
+        raise ValueError(f"{cls.name}: {', '.join(sorted(forbidden))} bolumu surume giremez")
+    config: dict[str, Any] = {}
+    for name in cls.hashed_sections():
+        section = dict(cfg.section(name))
+        if name == cls.name:
+            section = {k: v for k, v in section.items() if k not in cls.version_ignore}
+        config[name] = _canonical(section)
+    deps = {d: stage_version(cfg, base.get_stage(d), (*_stack, cls.name))
+            for d in sorted(set(cls.depends_on))}
+    payload = json.dumps({"config": config, "deps": deps},
+                         sort_keys=True, ensure_ascii=False, default=str)
+    return f"{cls.version}+{hashlib.sha1(payload.encode('utf-8')).hexdigest()[:8]}"
 
 
 class Pipeline:
@@ -124,6 +168,9 @@ class Pipeline:
         self.cfg = cfg
         self.store = Store(cfg.get("paths.db"))
         self.work = Path(cfg.get("paths.work_root"))
+        #: Dağıtıcı işçilerinin kuruluşta içe aktaracağı ek modüller (testler
+        #: sahte aşamaları buradan kaydettirir).
+        self.worker_imports: tuple[str, ...] = ()
 
     # ------------------------------------------------------------ kaynaklar
     def run_source_stage(self, name: str, source_ids: Sequence[int]) -> None:
@@ -163,7 +210,7 @@ class Pipeline:
     def run_boilerplate(self, source_ids: Sequence[int]) -> None:
         """Kanal düzeyi: ASR'si biten kayıtlardan künye/anons ifadeleri madenle."""
         opts = self.cfg.section("boilerplate")
-        version = "1"
+        version = stage_version(self.cfg, base.get_stage("boilerplate"))
         out_dir = self.work / "boilerplate"
         out_dir.mkdir(parents=True, exist_ok=True)
         by_channel: dict[str, dict[str, list[str]]] = {}
@@ -233,8 +280,10 @@ class Pipeline:
                     "source_flags": s.get("meta", {}).get("source_flags", []),
                     "start": c["start"], "end": c["end"], "duration": c["duration"],
                     "text_raw": c.get("text_raw"), "text": c.get("text"), "text_spoken": c.get("text_spoken"),
-                    "flags": c["flags"], "duplicate_of": c.get("duplicate_of"),
-                    **{k: v for k, v in c["metrics"].items()},
+                    # İşaret ve ölçüm sırası aşamaların bitiş sırasına bağlıdır (dağıtıcıda
+                    # müzik clip_qc'den önce bitebilir); manifest sıraya bakmadan aynı olsun.
+                    "flags": sorted(c["flags"]), "duplicate_of": c.get("duplicate_of"),
+                    **{k: c["metrics"][k] for k in sorted(c["metrics"])},
                     "recommended": c["recommended"], "exclusion_reasons": c["exclusion_reasons"],
                     "policy_version": c["policy_version"],
                 }
@@ -249,6 +298,10 @@ class Pipeline:
         ids = [s["id"] for s in self.store.sources() if s["path"] in {f["path"] for f in found}]
         log.info("kaynak: %d bulundu, %d yeni, %d seçili", len(found), added, len(ids))
         wanted = list(stages) if stages else [*SOURCE_STAGES, *CLIP_STAGES, "export"]
+        if bool(self.cfg.get("runtime.parallel", True)):
+            from .scheduler import Scheduler
+
+            return Scheduler(self, wanted, ids, worker_imports=self.worker_imports).run()
         for name in wanted:
             if name == "segment" and "boilerplate" not in wanted:
                 self.run_boilerplate(ids)

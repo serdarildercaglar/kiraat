@@ -4,121 +4,180 @@
 <meta charset="utf-8">
 <title>kiraat — manuel denetim</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=Source+Sans+3:wght@400;600&family=Literata:opsz,wght@7..72,400;7..72,500&display=swap">
 <style>
-  :root { --bg:#f6f5f1; --card:#fff; --ink:#1d1d1b; --mute:#6b6a64; --line:#e1dfd7; --acc:#2f5fa8; --ok:#2b7a3c; --warn:#b26a00; --bad:#b3261e; --chip:#eeede7; --okbg:#e3f1e5; --warnbg:#fbefd9; --badbg:#f8e1df; --accbg:#eef3fb; }
+  :root { --bg:#F5F7F4; --card:#fff; --ink:#1C2321; --mute:#5F6A66; --line:#D5DBD7; --acc:#0E6B60; --accbg:#DCEDE9;
+          --ok:#2E7D3B; --warn:#9A6B00; --bad:#B23A2F; --chip:#ECEFEC; --okbg:#E1F0E3; --warnbg:#F8EDD3; --badbg:#F6E0DC;
+          --shadow:0 1px 2px rgba(20,30,27,.06), 0 4px 14px rgba(20,30,27,.05); }
   * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 -apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; padding-bottom:110px; }
-  header { position:sticky; top:0; z-index:5; background:var(--card); border-bottom:1px solid var(--line); padding:8px 16px; display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; }
-  header h1 { font-size:15px; margin:0; font-weight:600; }
-  header .meta { color:var(--mute); font-size:12px; }
-  .stages { display:flex; flex-wrap:wrap; gap:6px; }
-  .stage { font-size:12px; padding:2px 8px; border-radius:10px; background:var(--chip); border:1px solid var(--line); }
-  .stage.done { background:var(--okbg); border-color:#bfe0c5; }
-  .stage.part { background:var(--warnbg); border-color:#f0d7a7; }
-  .tabs { display:flex; gap:4px; margin-left:auto; }
-  .tabs button { background:none; border:1px solid var(--line); padding:4px 12px; border-radius:6px; cursor:pointer; font:inherit; }
-  .tabs button.on { background:var(--acc); color:#fff; border-color:var(--acc); }
-  main { display:grid; grid-template-columns:300px 1fr; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 "Source Sans 3",system-ui,-apple-system,"Segoe UI",sans-serif; padding-bottom:150px; -webkit-font-smoothing:antialiased; }
+  h1, h2, .card-n { font-family:"Bricolage Grotesque","Source Sans 3",sans-serif; font-weight:600; letter-spacing:-.01em; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 20px; display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; }
+  header h1 { font-size:1.2rem; margin:0; }
+  header .meta { color:var(--mute); font-size:.9rem; }
+  .stages { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 8px; }
+  .stage { font-size:.78rem; padding:1px 8px; border-radius:10px; background:var(--chip); border:1px solid var(--line); }
+  .stage.done { background:var(--okbg); border-color:#BFDCC4; } .stage.part { background:var(--warnbg); border-color:#EAD6A6; }
+  .tabs { display:flex; gap:0; margin-left:auto; border:1px solid var(--line); border-radius:7px; overflow:hidden; }
+  .tabs button { background:transparent; border:0; border-left:1px solid var(--line); padding:5px 14px; cursor:pointer; font:inherit; font-weight:600; font-size:.92rem; color:var(--ink); }
+  .tabs button:first-child { border-left:0; }
+  .tabs button.on { background:var(--acc); color:#fff; }
+  main { display:grid; grid-template-columns:250px minmax(0,1fr); }
   main.single { grid-template-columns:1fr; }
-  aside { border-right:1px solid var(--line); background:var(--card); min-height:calc(100vh - 50px); padding:8px; }
-  aside h3 { margin:4px 8px 8px; font-size:12px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
-  .ch { padding:7px 8px; border-radius:6px; cursor:pointer; border:1px solid transparent; margin-bottom:3px; }
+  main.single section { margin:0 auto; width:100%; }
+  aside { border-right:1px solid var(--line); background:var(--card); min-height:calc(100vh - 52px); padding:10px 8px; }
+  aside h3 { margin:4px 8px 8px; font-size:.78rem; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:.08em; }
+  .ch { padding:6px 9px; border-radius:7px; cursor:pointer; border:1px solid transparent; margin-bottom:2px; }
   .ch:hover { background:var(--chip); }
   .ch.on { border-color:var(--acc); background:var(--accbg); }
   .ch .t { display:flex; justify-content:space-between; align-items:baseline; gap:6px; }
-  .ch .t b { font-weight:600; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .ch .t .st { font-size:11px; color:var(--mute); white-space:nowrap; }
+  .ch .t b { font-weight:600; font-size:.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ch .t .st { font-size:.78rem; color:var(--mute); white-space:nowrap; font-variant-numeric:tabular-nums; }
   .ch .t .st.done { color:var(--ok); font-weight:600; }
-  .ch .m { color:var(--mute); font-size:11.5px; margin-top:1px; }
-  .ch .bar { height:5px; background:var(--chip); border-radius:3px; margin-top:5px; display:flex; overflow:hidden; }
+  .ch .m { color:var(--mute); font-size:.8rem; margin-top:0; }
+  .ch .bar { height:4px; background:var(--chip); border-radius:2px; margin-top:5px; display:flex; overflow:hidden; }
   .ch .bar i { display:block; height:100%; }
   .ch .bar i.t { background:var(--ok); } .ch .bar i.k { background:var(--warn); } .ch .bar i.u { background:var(--bad); }
-  .ch .pipe { display:flex; gap:2px; margin-top:4px; }
-  .ch .pipe i { flex:1; height:3px; background:var(--chip); border-radius:2px; }
-  .ch .pipe i.d { background:#9fc3a6; }
-  .src { padding:6px 8px; border-radius:6px; cursor:pointer; border:1px solid transparent; margin-bottom:3px; }
+  .src { padding:6px 8px; border-radius:6px; cursor:pointer; border:1px solid transparent; margin-bottom:2px; }
   .src:hover { background:var(--chip); } .src.on { border-color:var(--acc); background:var(--accbg); }
-  .src .t { font-weight:600; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .src .m { color:var(--mute); font-size:11.5px; }
-  section { padding:12px 16px; min-width:0; }
-  .panel { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
-  .panel h3 { margin:0 0 6px; font-size:12px; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
-  .guide { background:#fffbea; border-color:#efe2a8; }
-  .guide summary { cursor:pointer; font-weight:600; font-size:13px; }
-  .guide ol { margin:8px 0 0 18px; padding:0; } .guide li { margin:3px 0; }
-  .guide p { margin:6px 0 0; }
+  .src .t { font-weight:600; font-size:.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .src .m { color:var(--mute); font-size:.8rem; }
+  section { padding:16px 24px; min-width:0; max-width:860px; }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin-bottom:14px; box-shadow:var(--shadow); }
+  .panel h3 { margin:0 0 6px; font-size:.78rem; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:.08em; }
+  .guide { background:var(--card); }
+  .guide summary { cursor:pointer; font-weight:600; font-size:.95rem; }
+  .guide ol { margin:8px 0 0 20px; padding:0; max-width:64ch; } .guide li { margin:4px 0; }
+  .guide p { margin:8px 0 0; color:var(--mute); font-size:.92rem; max-width:64ch; }
   .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   .bar + .bar { margin-top:8px; }
-  .bar label { font-size:12px; color:var(--mute); display:flex; gap:4px; align-items:center; }
-  .bar input, .bar select { font:inherit; padding:4px 6px; border:1px solid var(--line); border-radius:5px; background:var(--card); }
+  .bar label { font-size:.85rem; color:var(--mute); display:flex; gap:4px; align-items:center; }
+  .bar input, .bar select { font:inherit; font-size:.9rem; padding:4px 6px; border:1px solid var(--line); border-radius:5px; background:var(--card); color:var(--ink); }
+  #d-channel-sel, #f-channel { font-weight:600; min-width:260px; padding:6px 8px; }
   .bar input[type=number] { width:72px; }
-  button { font:inherit; padding:4px 10px; border:1px solid var(--line); border-radius:5px; background:var(--card); cursor:pointer; }
+  button { font:inherit; font-size:.9rem; padding:4px 10px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); cursor:pointer; }
+  button:focus-visible { outline:2px solid var(--acc); outline-offset:1px; }
   button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
   button.quick.on { background:var(--accbg); border-color:var(--acc); color:var(--acc); }
   .conds { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
-  .cond { display:inline-flex; gap:6px; align-items:center; padding:2px 6px 2px 10px; border-radius:12px; background:var(--accbg); border:1px solid #cfdcf3; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; }
+  .cond { display:inline-flex; gap:6px; align-items:center; padding:2px 6px 2px 10px; border-radius:12px; background:var(--accbg); border:1px solid #BFD9D3; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.8rem; }
   .cond button { padding:0 6px; border:none; background:none; color:var(--mute); font-size:14px; }
-  .info { color:var(--mute); font-size:12px; margin-bottom:8px; }
-  .deckhead { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; margin-bottom:10px; }
-  .deckhead h2 { margin:0; font-size:18px; }
-  .deckhead .prog { font-size:13px; color:var(--mute); }
+  .info { color:var(--mute); font-size:.88rem; margin-bottom:8px; }
+  .deckhead { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; margin:4px 0 14px; }
+  .deckhead h2 { margin:0; font-size:1.35rem; }
+  .deckhead .prog { font-size:.95rem; color:var(--mute); font-variant-numeric:tabular-nums; }
   .deckhead .prog b { color:var(--ink); }
-  .clip { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:8px; }
-  .clip.cur { border-color:var(--acc); box-shadow:0 0 0 2px #cfdcf3; }
+  .deckhead details { font-size:.85rem; color:var(--mute); }
+  .deckhead details summary { cursor:pointer; }
+  .deckhead details .bar { margin-top:6px; }
+  .clip { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px 12px; margin-bottom:12px; box-shadow:var(--shadow); cursor:pointer; }
+  .clip.cur { border-color:var(--acc); box-shadow:0 0 0 3px var(--accbg), var(--shadow); }
   .clip.v-temiz { border-left:4px solid var(--ok); } .clip.v-kusurlu { border-left:4px solid var(--warn); } .clip.v-kullanilmaz { border-left:4px solid var(--bad); }
-  .clip .head { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; font-size:12px; color:var(--mute); }
-  .clip .head .n { font-weight:700; color:var(--ink); min-width:22px; }
-  .clip .head .id { font-family:ui-monospace,Menlo,Consolas,monospace; }
-  .clip .play { width:30px; height:30px; border-radius:50%; padding:0; font-size:13px; }
-  .clip .text { font-size:17px; margin:6px 0 4px; line-height:1.4; }
-  .clip .raw { font-size:12px; color:var(--mute); }
+  .clip .head { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; font-size:.85rem; color:var(--mute); font-variant-numeric:tabular-nums; }
+  .clip .head .card-n { color:var(--ink); font-size:1.05rem; min-width:26px; }
+  .clip .head .id { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.8rem; }
+  .clip .play { width:32px; height:32px; border-radius:50%; padding:0; font-size:13px; }
+  .clip .head .right { margin-left:auto; display:flex; gap:6px; align-items:center; }
+  .clip .text { font-family:"Literata",Georgia,serif; font-size:1.08rem; line-height:1.55; margin:10px 0 4px; padding:10px 14px; border-left:3px solid var(--accbg); background:color-mix(in srgb, var(--accbg) 35%, transparent); border-radius:0 6px 6px 0; }
+  .clip .raw { font-size:.82rem; color:var(--mute); margin-top:4px; }
   .clip .raw b { color:var(--ink); font-weight:600; }
-  .chip { display:inline-block; padding:1px 7px; border-radius:9px; background:var(--chip); font-size:11px; }
+  .chip { display:inline-block; padding:1px 8px; border-radius:9px; background:var(--chip); font-size:.76rem; font-weight:600; white-space:nowrap; }
   .chip.ok { background:var(--okbg); color:var(--ok); }
   .chip.bad { background:var(--badbg); color:var(--bad); }
   .chip.warn { background:var(--warnbg); color:var(--warn); }
-  .metrics { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12px; color:var(--mute); margin-top:6px; }
+  .chip.v-temiz { background:var(--okbg); color:var(--ok); } .chip.v-kusurlu { background:var(--warnbg); color:var(--warn); } .chip.v-kullanilmaz { background:var(--badbg); color:var(--bad); }
+  .metrics { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:.82rem; color:var(--mute); margin-top:6px; }
   .metrics span b { color:var(--ink); font-weight:500; font-family:ui-monospace,Menlo,Consolas,monospace; }
   .metrics span.low b { color:var(--bad); }
-  details.more summary { font-size:11.5px; color:var(--mute); cursor:pointer; margin-top:4px; }
-  .judge { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin-top:10px; padding-top:8px; border-top:1px dashed var(--line); }
-  .judge .grp { display:flex; gap:4px; flex-wrap:wrap; align-items:center; }
-  .judge .lbl { font-size:11px; color:var(--mute); text-transform:uppercase; letter-spacing:.04em; margin-right:2px; }
-  .judge button kbd { margin-right:4px; }
-  .judge button.v.on-temiz { background:var(--okbg); border-color:var(--ok); color:var(--ok); font-weight:600; }
-  .judge button.v.on-kusurlu { background:var(--warnbg); border-color:var(--warn); color:var(--warn); font-weight:600; }
-  .judge button.v.on-kullanilmaz { background:var(--badbg); border-color:var(--bad); color:var(--bad); font-weight:600; }
+  details.more summary { font-size:.8rem; color:var(--mute); cursor:pointer; margin-top:6px; }
+  /* alt çubuk: oynatıcı + seçili klibin kararı */
+  .player { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:8px 20px 10px; z-index:6; box-shadow:0 -4px 14px rgba(20,30,27,.06); }
+  .player .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .player .row + .row { margin-top:8px; }
+  .player audio { width:300px; height:36px; }
+  .player .now { flex:1; min-width:240px; font-size:.9rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .player .now .id { font-family:ui-monospace,Menlo,Consolas,monospace; color:var(--mute); font-size:.78rem; }
+  .judge { display:flex; flex-direction:column; gap:6px; align-items:stretch; }
+  .player .judge { align-items:stretch; }
+  .judge .line { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; }
+  .judge .lbl { font-size:.72rem; color:var(--mute); text-transform:uppercase; letter-spacing:.08em; width:44px; }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:7px; overflow:hidden; }
+  .seg button { border:0; border-radius:0; border-left:1px solid var(--line); padding:5px 12px; font-weight:600; }
+  .seg button:first-child { border-left:0; }
+  .seg button:hover { background:var(--chip); }
+  .seg button.on-temiz { background:var(--ok); color:#fff; } .seg button.on-kusurlu { background:var(--warn); color:#fff; } .seg button.on-kullanilmaz { background:var(--bad); color:#fff; }
+  .judge .tags { display:flex; flex-wrap:wrap; gap:4px; }
+  .judge button.tag { padding:3px 9px; font-size:.85rem; border-radius:14px; }
   .judge button.tag.on { background:var(--warnbg); border-color:var(--warn); color:var(--warn); font-weight:600; }
-  .judge input[type=text] { flex:1; min-width:180px; font:inherit; padding:4px 8px; border:1px solid var(--line); border-radius:5px; }
-  .judge .saved { font-size:11px; color:var(--mute); }
-  .player { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:8px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; z-index:6; }
-  .player audio { width:340px; height:36px; }
-  .player .now { flex:1; min-width:240px; font-size:13px; }
-  .player .now .id { font-family:ui-monospace,Menlo,Consolas,monospace; color:var(--mute); font-size:12px; }
-  .player .keys { font-size:11px; color:var(--mute); }
-  kbd { font-family:ui-monospace,Menlo,Consolas,monospace; background:var(--chip); padding:0 4px; border-radius:3px; border:1px solid var(--line); font-size:11px; }
-  pre.log { background:#1f1f1d; color:#ddd; font-size:11px; padding:8px; border-radius:6px; max-height:180px; overflow:auto; margin:0 0 10px; }
+  .judge button kbd { margin-right:5px; }
+  .judge input[type=text] { flex:1; min-width:200px; font:inherit; font-size:.9rem; padding:5px 9px; border:1px solid var(--line); border-radius:6px; }
+  .judge .saved { font-size:.78rem; color:var(--mute); white-space:nowrap; }
+  .judge.off { opacity:.45; pointer-events:none; }
+  kbd { font-family:ui-monospace,Menlo,Consolas,monospace; background:var(--chip); padding:0 5px; border-radius:3px; border:1px solid var(--line); font-size:.74rem; }
+  pre.log { background:#1B2220; color:#D8DED9; font-size:.75rem; padding:8px; border-radius:6px; max-height:180px; overflow:auto; margin:6px 0 0; }
   .pager { display:flex; gap:8px; align-items:center; margin:8px 0; }
   .err { color:var(--bad); }
-  details summary { cursor:pointer; font-size:12px; color:var(--mute); }
-  table.find { border-collapse:collapse; font-size:12.5px; width:100%; }
-  table.find th, table.find td { border-bottom:1px solid var(--line); padding:4px 8px; text-align:right; white-space:nowrap; }
+  details summary { cursor:pointer; font-size:.85rem; color:var(--mute); }
+  table.find { border-collapse:collapse; font-size:.85rem; width:100%; }
+  table.find th, table.find td { border-bottom:1px solid var(--line); padding:4px 8px; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
   table.find th:first-child, table.find td:first-child { text-align:left; }
-  table.find th { color:var(--mute); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; position:sticky; top:50px; background:var(--card); }
+  table.find th { color:var(--mute); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; position:sticky; top:52px; background:var(--card); }
   table.find tr.total td { font-weight:700; border-top:2px solid var(--ink); }
-  table.find td.z { color:#c9c7bf; }
+  table.find td.z { color:#C4CBC6; }
   table.find td.t { color:var(--ok); } table.find td.k { color:var(--warn); } table.find td.u { color:var(--bad); }
   .wrap { overflow-x:auto; }
-  .flist .row { display:grid; grid-template-columns:150px 170px 110px 1fr; gap:8px; padding:5px 0; border-bottom:1px solid var(--line); font-size:12.5px; }
+  .flist .row { display:grid; grid-template-columns:150px 170px 110px 1fr; gap:8px; padding:5px 0; border-bottom:1px solid var(--line); font-size:.85rem; }
   .flist .row .id { font-family:ui-monospace,Menlo,Consolas,monospace; cursor:pointer; color:var(--acc); }
   .flist .row .tx { color:var(--mute); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* --- ölçüt paneli: her sütun için bir süzgeç satırı --- */
+  .fpanel .head { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:baseline; margin-bottom:10px; }
+  .fpanel .head h3 { margin:0; }
+  .match { font-size:.95rem; color:var(--mute); font-variant-numeric:tabular-nums; }
+  .match b { font-size:1.25rem; color:var(--ink); font-family:"Bricolage Grotesque","Source Sans 3",sans-serif; }
+  .match.stale { opacity:.45; }
+  .frows { display:flex; flex-direction:column; gap:6px; }
+  .frow { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,.85fr) minmax(0,1.2fr) 30px; gap:8px; align-items:center; }
+  .frow select, .frow input { font:inherit; font-size:.9rem; padding:5px 7px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); width:100%; min-width:0; }
+  .frow select.col { font-weight:600; }
+  .frow .rm { border:none; background:none; color:var(--mute); font-size:17px; padding:0; line-height:1; }
+  .frow .rm:hover { color:var(--bad); }
+  .frow.off select, .frow.off input { opacity:.5; }
+  .frow .novalue { color:var(--mute); font-size:.85rem; padding:5px 2px; }
+  .fempty { color:var(--mute); font-size:.9rem; padding:2px 0 4px; }
+  .quickrow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+  .quickrow .lbl, .krow .lbl { font-size:.74rem; color:var(--mute); font-weight:600; text-transform:uppercase; letter-spacing:.07em; margin-right:2px; }
+  button.quick { font-size:.83rem; padding:3px 9px; border-radius:13px; }
+  button.quick.on { background:var(--accbg); border-color:var(--acc); color:var(--acc); }
+  /* --- karne --- */
+  .kbar { display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--chip); margin:2px 0 10px; }
+  .kbar i { display:block; height:100%; }
+  .kbar i.t { background:var(--ok); } .kbar i.k { background:var(--warn); } .kbar i.u { background:var(--bad); }
+  .knums { display:flex; flex-wrap:wrap; gap:6px 18px; font-size:.9rem; color:var(--mute); font-variant-numeric:tabular-nums; }
+  .knums b { color:var(--ink); font-size:1.02rem; }
+  .knums .ok b { color:var(--ok); } .knums .warn b { color:var(--warn); } .knums .bad b { color:var(--bad); }
+  .krow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-top:8px; }
+  .krow .chip { cursor:pointer; font-weight:400; }
+  .krow .chip:hover { outline:1px solid var(--acc); }
+  /* --- eşik yardımcısı --- */
+  .hist { display:flex; align-items:flex-end; gap:2px; height:96px; margin:10px 0 4px; padding-bottom:1px; border-bottom:1px solid var(--line); }
+  .hist i { flex:1; background:var(--accbg); border:1px solid #C4DBD6; border-bottom:0; border-radius:2px 2px 0 0; cursor:pointer; min-width:0; }
+  .hist i:hover { background:var(--acc); border-color:var(--acc); }
+  .pcts { display:flex; flex-wrap:wrap; gap:5px; }
+  .pct { font-size:.78rem; padding:2px 8px; border-radius:10px; background:var(--chip); border:1px solid var(--line); cursor:pointer; font-variant-numeric:tabular-nums; }
+  .pct:hover { border-color:var(--acc); color:var(--acc); }
+  .pct b { font-family:ui-monospace,Menlo,Consolas,monospace; }
+  /* --- klip kartı: ölçümler süzgeç seçeneğidir --- */
+  .metrics .m { cursor:pointer; border:1px solid transparent; border-radius:6px; padding:1px 5px; }
+  .metrics .m:hover { border-color:var(--acc); color:var(--acc); }
+  .metrics .m.hot { background:var(--accbg); border-color:#BFD9D3; }
+  .clip.blind .text, .clip.blind .raw, .clip.blind .more, .clip.blind .cmeta { display:none; }
+  .clip .revealbtn { font-size:.8rem; padding:2px 8px; }
 </style>
 </head>
 <body>
 <header>
   <h1>kiraat — manuel denetim</h1>
   <span class="meta" id="hdr-meta">…</span>
-  <div class="stages" id="stages"></div>
   <span class="meta" id="hdr-notes"></span>
   <div class="tabs">
     <button id="tab-review" class="on">Denetim</button>
@@ -133,33 +192,43 @@
     <div id="side-sources" style="display:none"><h3>Kaynaklar</h3><div id="sources"></div></div>
   </aside>
   <section>
-    <details id="logbox"><summary>Son log satırları</summary><pre class="log" id="log"></pre></details>
+    <details id="logbox"><summary>Koşu durumu ve son log satırları</summary><div class="stages" id="stages"></div><pre class="log" id="log"></pre></details>
 
     <!-- ===================== DENETİM ===================== -->
     <div id="view-review">
-      <details class="panel guide" id="guide" open>
-        <summary>Ne yapacaksın?</summary>
+      <details class="panel guide" id="guide">
+        <summary>Nasıl çalışır?</summary>
         <ol>
-          <li>Soldan bir kanal seç. Kanal için sabit bir <b>deste</b> çekilir: kanalın üç kaydına eşit dağıtılmış 20 klip (varsayılan olarak önerilen alt kümeden; manifest henüz yoksa bütün kliplerden).</li>
-          <li>Her klibi dinle (<kbd>boşluk</kbd> çal/durdur, <kbd>j</kbd>/<kbd>k</kbd> sonraki/önceki). Kesim sınırından şüphelenirsen <kbd>c</kbd> ile 2 s öncesi–sonrasıyla dinle.</li>
-          <li>Karar ver: <kbd>1</kbd> <b>temiz</b> (eğitime girebilir) · <kbd>2</kbd> <b>kusurlu</b> (küçük kusur; hangi kusur olduğunu etiketle) · <kbd>3</kbd> <b>kullanılmaz</b> (etiketle).</li>
-          <li>Etiketler harflerle de açılıp kapanır: <kbd>b</kbd> baş kesik · <kbd>e</kbd> son kesik · <kbd>t</kbd> metin hatalı (transcript yanlış) · <kbd>o</kbd> okunuş hatalı (sayı/kısaltma okunuşu) · <kbd>m</kbd> müzik · <kbd>g</kbd> gürültü/yankı · <kbd>y</kbd> yapay ses · <kbd>a</kbd> künye/anons · <kbd>s</kbd> başka konuşmacı · <kbd>d</kbd> diğer. Açıklama gerekiyorsa <kbd>n</kbd> ile not yaz.</li>
-          <li>Karar verince sıradaki klibe geçilir. Kanalın destesi bitince solda ✓ görünür; sonraki kanala geç. Bulgular sekmesinde kanal × kusur tablosu ve CSV var.</li>
+          <li>Soldan bir kanal seç; kanalın üç kaydından 20 kliplik sabit bir <b>deste</b> gelir.</li>
+          <li>Klibi dinle: <kbd>boşluk</kbd> çal/durdur, <kbd>j</kbd>/<kbd>k</kbd> sonraki/önceki, <kbd>c</kbd> kesimin 2 s öncesi–sonrasıyla.</li>
+          <li>Alttaki çubukta karar ver: <kbd>1</kbd> temiz · <kbd>2</kbd> kusurlu · <kbd>3</kbd> kullanılmaz. Kusurluysa etiketle (düğmelerdeki harfler kısayol), gerekirse <kbd>n</kbd> ile not yaz.</li>
+          <li>Karar verince sıradaki klibe geçilir; deste bitince solda ✓ görünür. Kanal × kusur tablosu Bulgular sekmesinde.</li>
         </ol>
-        <p>Her klik anında kaydedilir (<code>manual-notes.jsonl</code>); aynı klibe sonraki karar öncekini geçersiz kılar. Kanal/ölçüm gizli değildir; bu tur kör dinleme değil, kanal kanal kusur envanteridir.</p>
+        <p>Her karar anında kaydedilir; aynı klibe sonraki karar öncekini geçersiz kılar. Bu tur kör dinleme değil, kanal kanal kusur envanteridir.</p>
       </details>
 
-      <div id="deck-empty" class="info">soldan bir kanal seç</div>
+      <div class="panel">
+        <div class="bar">
+          <label>Kanal <select id="d-channel-sel"><option value="">— seç —</option></select></label>
+          <button id="d-prev-ch" title="önceki kanal">‹</button><button id="d-next-ch" title="sonraki kanal">›</button>
+          <span class="info" id="d-chsum" style="margin:0"></span>
+        </div>
+      </div>
+      <div id="deck-empty" class="info">yukarıdan bir kanal seç</div>
       <div id="deck" style="display:none">
         <div class="deckhead">
           <h2 id="d-channel"></h2>
           <span class="prog" id="d-prog"></span>
-          <label style="font-size:12px;color:var(--mute)">havuz <select id="d-pool"><option value="rec">önerilen alt küme</option><option value="all">bütün klipler</option><option value="excluded">dışlananlar</option></select></label>
-          <label style="font-size:12px;color:var(--mute)">adet <input type="number" id="d-n" value="20" min="5" max="200" style="width:64px"></label>
-          <button id="d-redraw" title="Bu kanal için desteyi yeniden çek (eski notlar silinmez)">yeni deste</button>
-          <label style="font-size:12px;color:var(--mute)"><input type="checkbox" id="d-auto" checked> karar verince sıradakine geç</label>
-          <label style="font-size:12px;color:var(--mute)"><input type="checkbox" id="d-autoplay" checked> geçince çal</label>
-          <span class="info" id="d-info" style="margin:0"></span>
+          <details><summary>deste ayarları</summary>
+            <div class="bar">
+              <label>havuz <select id="d-pool"><option value="rec">önerilen alt küme</option><option value="all">bütün klipler</option><option value="excluded">dışlananlar</option></select></label>
+              <label>adet <input type="number" id="d-n" value="20" min="5" max="200" style="width:64px"></label>
+              <button id="d-redraw" title="Bu kanal için desteyi yeniden çek (eski notlar silinmez)">yeni deste</button>
+              <label><input type="checkbox" id="d-auto" checked> karar verince sıradakine geç</label>
+              <label><input type="checkbox" id="d-autoplay" checked> geçince çal</label>
+            </div>
+            <div class="info" id="d-info" style="margin:6px 0 0"></div>
+          </details>
         </div>
         <div id="d-list"></div>
       </div>
@@ -187,74 +256,101 @@
 
     <!-- ===================== KEŞİF ===================== -->
     <div id="view-explore" style="display:none">
-      <div class="panel">
-        <h3>Süzgeçler <span style="font-weight:400;text-transform:none;letter-spacing:0">— rastgele örnek de kaynak listesi de bu havuzdan</span></h3>
-        <div class="bar">
-          <label>Öneri <select id="f-rec"><option value="all">hepsi</option><option value="yes">önerilen alt küme</option><option value="no">dışlananlar</option></select></label>
-          <label>Dışlanma sebebi <select id="f-reason"><option value="">hepsi</option></select></label>
-          <label>İşaret <select id="f-flag"><option value="">hepsi</option><option value="none">işaretsiz</option></select></label>
-          <label>Kanal <select id="f-channel"><option value="">hepsi</option></select></label>
-          <label>Not <select id="f-noted"><option value="all">hepsi</option><option value="no">notsuz</option><option value="yes">notlu</option><option value="temiz">temiz</option><option value="kusurlu">kusurlu</option><option value="kullanilmaz">kullanılmaz</option></select></label>
-          <label>Süre <input type="number" id="f-dmin" placeholder="min" step="0.5"> – <input type="number" id="f-dmax" placeholder="max" step="0.5"> s</label>
-          <input type="search" id="f-q" placeholder="transcript'te ara" style="min-width:200px">
-          <input type="text" id="f-ids" placeholder="klip kimlikleri (boşluk/virgülle; yapıştır)" style="min-width:260px" title="Yalnızca bu kimlikler: src00001-00005 src00002-00010 …">
+      <details class="panel guide" id="xguide">
+        <summary>Ölçüt testi nasıl yapılır?</summary>
+        <ol>
+          <li><b>Ölçütü kur:</b> süzgeç satırı ekle — soldaki listede klibin <i>bütün</i> sütunları var (süre, kelime güveni, hizalama, müzik, sessizlikler, RMS, tepe, kırpılma, metin, kanal, işaretler, dışlanma sebebi, manuel karar…). Panelin başındaki sayaç, sen yazarken kaç klibin eşleştiğini söyler.</li>
+          <li><b>Eşiği bilmiyorsan</b> eşik yardımcısını aç: seçtiğin ölçümün bu havuzdaki dağılımı ve yüzdelikleri. Kovanın soluna tıkla <code>&lt;</code>, sağına tıkla <code>&gt;</code> koşulu kurulur.</li>
+          <li><b>Dinle:</b> kör modu aç, <kbd>Yeni örnek</kbd> ile tohumlu örnek çek. <kbd>boşluk</kbd> çal/durdur · <kbd>j</kbd>/<kbd>k</kbd> gezin · <kbd>c</kbd> kesim bağlamı · <kbd>r</kbd> metni ve ölçümleri göster.</li>
+          <li><b>Karar ver:</b> <kbd>1</kbd> temiz · <kbd>2</kbd> kusurlu · <kbd>3</kbd> kullanılmaz, kusur etiketleri harflerle. Karne kutusu ölçütün karşılığını yazar: dinlenenin yüzde kaçı temiz çıktı.</li>
+          <li><b>Sakla:</b> ölçüte ad ver, tohumla birlikte aynı örnek geri gelir; adres çubuğundaki bağlantı da ölçütü taşır.</li>
+        </ol>
+        <p>Buradaki karar hiçbir klibi elemez, yalnızca ölçüm üretir; eleme konfigdeki sürümlü <code>recommended_subset</code> politikasının işidir. Bu sayfa o politikanın eşiğini sınamak içindir.</p>
+      </details>
+
+      <div class="panel fpanel">
+        <div class="head">
+          <h3>Ölçüt</h3>
+          <span class="match" id="x-match">…</span>
+          <span style="margin-left:auto"></span>
+          <label style="font-size:.85rem;color:var(--mute)">kayıtlı <select id="p-list" title="work/&lt;koşu&gt;/review-filters.json"><option value="">—</option></select></label>
+          <button id="p-save" title="Şu anki ölçütü adlandırıp kaydet">kaydet</button>
+          <button id="p-del" title="Seçili kayıtlı ölçütü sil">sil</button>
+          <button id="f-clear" title="Bütün süzgeçleri sıfırla">temizle</button>
+        </div>
+        <div class="frows" id="frows"></div>
+        <div class="bar" style="margin-top:8px">
+          <button class="primary" id="f-add">+ süzgeç satırı</button>
+          <span class="info" id="f-hint" style="margin:0">satırlar VE ile birleşir</span>
+        </div>
+        <div class="bar" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+          <label>Kanal <select id="f-channel"><option value="">bütün kanallar</option></select></label>
+          <input type="search" id="f-q" placeholder="transcript'te ara" style="min-width:180px">
+          <input type="text" id="f-ids" placeholder="klip kimlikleri (yapıştır)" style="min-width:200px" title="Yalnızca bu kimlikler: src00001-00005 src00002-00010 …">
           <label>Hazır liste <select id="f-list" title="work/&lt;koşu&gt;/listen-*.txt dosyaları"><option value="">—</option></select></label>
+          <label><input type="checkbox" id="f-audio" checked> yalnızca dinlenebilir</label>
         </div>
-        <div class="bar" id="quick">
-          <span style="font-size:12px;color:var(--mute)">Hazır kategoriler:</span>
-          <button class="quick" data-cond="music_to_speech_db>-40">müzikli (&gt;−40 dB)</button>
-          <button class="quick" data-cond="music_score_audioset>0.3">audioset müzik &gt;0.3</button>
-          <button class="quick" data-cond="word_confidence<0.6">düşük kelime güveni (&lt;0.6)</button>
-          <button class="quick" data-cond="align_score_min<0.2">düşük hizalama (&lt;0.2)</button>
-          <button class="quick" data-cond="internal_silence_sec>1">uzun iç sessizlik (&gt;1 s)</button>
-          <button class="quick" data-cond="speech_ratio<0.6">az konuşma (&lt;0.6)</button>
-          <button class="quick" data-cond="clip_ratio>0.002">kırpılmış</button>
-          <button class="quick" data-cond="rms_dbfs<-30">sessiz kayıt (RMS&lt;−30)</button>
-          <button class="quick" data-cond="duration<2.5">kısa (&lt;2.5 s)</button>
-          <button class="quick" data-cond="duration>12">uzun (&gt;12 s)</button>
-          <button class="quick" data-cond="lead_gap_sec<0.3">baş boşluğu dar (&lt;0.3 s)</button>
-        </div>
-        <div class="bar">
-          <label>Özel koşul
-            <select id="c-metric">
-              <option value="duration">süre</option><option value="n_words">kelime sayısı</option>
-              <option value="word_confidence">kelime güveni min</option><option value="word_confidence_mean">kelime güveni ort</option>
-              <option value="align_score_min">hizalama min</option><option value="align_score_mean">hizalama ort</option>
-              <option value="music_to_speech_db">müzik/konuşma dB</option><option value="music_score_audioset">audioset müzik</option>
-              <option value="speech_ratio">konuşma oranı</option><option value="internal_silence_sec">iç sessizlik</option>
-              <option value="leading_silence_sec">baş sessizlik</option><option value="trailing_silence_sec">son sessizlik</option>
-              <option value="lead_gap_sec">baş komşu boşluğu</option><option value="trail_gap_sec">son komşu boşluğu</option>
-              <option value="rms_dbfs">RMS dBFS</option><option value="peak_dbfs">tepe dBFS</option><option value="clip_ratio">kırpılma oranı</option>
-            </select>
-            <select id="c-op"><option>&gt;</option><option>&lt;</option><option>&gt;=</option><option>&lt;=</option><option>=</option></select>
-            <input type="number" id="c-val" step="any" style="width:90px">
-            <button id="c-add">ekle</button>
-          </label>
-          <div class="conds" id="conds"></div>
-          <button id="f-clear">Süzgeçleri temizle</button>
-          <button class="primary" id="f-apply">Uygula</button>
+        <div class="quickrow" id="quick">
+          <span class="lbl">hazır ölçüt</span>
+          <button class="quick" data-f='[{"c":"music_to_speech_db","o":"gt","v":"-40"}]'>müzikli (&gt;−40 dB)</button>
+          <button class="quick" data-f='[{"c":"music_score_audioset","o":"gt","v":"0.3"}]'>audioset müzik &gt;0,3</button>
+          <button class="quick" data-f='[{"c":"word_confidence","o":"lt","v":"0.6"}]'>düşük kelime güveni</button>
+          <button class="quick" data-f='[{"c":"align_score_min","o":"lt","v":"0.2"}]'>düşük hizalama</button>
+          <button class="quick" data-f='[{"c":"internal_silence_sec","o":"gt","v":"1"}]'>uzun iç sessizlik</button>
+          <button class="quick" data-f='[{"c":"speech_ratio","o":"lt","v":"0.6"}]'>az konuşma</button>
+          <button class="quick" data-f='[{"c":"clip_ratio","o":"gt","v":"0.002"}]'>kırpılmış</button>
+          <button class="quick" data-f='[{"c":"duration","o":"lt","v":"2.5"}]'>kısa (&lt;2,5 s)</button>
+          <button class="quick" data-f='[{"c":"duration","o":"gt","v":"12"}]'>uzun (&gt;12 s)</button>
+          <button class="quick" data-f='[{"c":"recommended","o":"true","v":""}]'>önerilen alt küme</button>
+          <button class="quick" data-f='[{"c":"recommended","o":"false","v":""}]'>dışlananlar</button>
+          <button class="quick" data-f='[{"c":"verdict","o":"empty","v":""}]'>karar verilmemiş</button>
+          <button class="quick" data-f='[{"c":"flags","o":"notempty","v":""}]'>işaretli</button>
+          <button id="q-counts" title="Her hazır ölçüt için, kalan süzgeçler geçerliyken eşleşen klip sayısını hesapla">sayıları göster</button>
         </div>
       </div>
-      <div class="bar" style="margin-bottom:8px">
-        <label>Görünüm <select id="x-mode"><option value="sample">rastgele örnek</option><option value="source">kaynağa göre (soldan seç)</option></select></label>
+
+      <div class="panel">
+        <div class="head" style="display:flex;gap:14px;align-items:baseline">
+          <h3 style="margin:0">Karne</h3>
+          <span class="info" id="karne-info" style="margin:0"></span>
+          <button id="karne-refresh" style="margin-left:auto" title="Havuzu ve kararları yeniden say">yenile</button>
+        </div>
+        <div id="karne"></div>
+      </div>
+
+      <details class="panel" id="x-dist">
+        <summary>Eşik yardımcısı <span class="info" id="dist-sum" style="margin:0;font-weight:400"></span></summary>
+        <div class="bar" style="margin-top:8px">
+          <label>Ölçüm <select id="dist-metric"></select></label>
+          <span class="info" id="dist-info" style="margin:0"></span>
+        </div>
+        <div class="hist" id="dist-hist"></div>
+        <div class="pcts" id="dist-pcts"></div>
+        <div class="info" style="margin:8px 0 0">Kovanın soluna tıkla → <code>&lt;</code>, sağına tıkla → <code>&gt;</code> koşulu. Yüzdelik rozeti seçili ölçümde <code>&lt;</code> koşulu kurar (satırdan işleci değiştirebilirsin).</div>
+      </details>
+
+      <div class="bar" style="margin-bottom:10px">
+        <label>Görünüm <select id="x-mode">
+          <option value="sample">rastgele örnek</option>
+          <option value="ranked">sıralı liste</option>
+          <option value="source">kaynağa göre</option>
+        </select></label>
         <span id="x-sample-ctl" style="display:contents">
           <label>Adet <input type="number" id="s-n" value="30" min="1" max="500"></label>
-          <label>Tohum <input type="number" id="s-seed" style="width:100px"></label>
+          <label>Tohum <input type="number" id="s-seed" style="width:96px"></label>
           <button class="primary" id="s-new">Yeni örnek</button>
           <button id="s-again" title="Aynı tohumla aynı örneği yeniden çek">Aynı örnek</button>
         </span>
-        <span id="x-source-ctl" style="display:none">
-          <label>Sırala <select id="f-sort">
-            <option value="start">zaman</option><option value="duration">süre</option><option value="n_words">kelime sayısı</option>
-            <option value="word_confidence">kelime güveni (min)</option><option value="align_score_min">hizalama skoru (min)</option>
-            <option value="music_to_speech_db">müzik dB</option><option value="music_score_audioset">audioset müzik</option><option value="speech_ratio">konuşma oranı</option>
-            <option value="internal_silence_sec">iç sessizlik</option><option value="rms_dbfs">RMS</option><option value="peak_dbfs">tepe</option>
-            <option value="lead_gap_sec">baş boşluğu</option><option value="trail_gap_sec">son boşluğu</option><option value="clip_ratio">kırpılma</option>
-          </select></label>
+        <span id="x-sort-ctl" style="display:none">
+          <label>Sırala <select id="f-sort"></select></label>
           <label><select id="f-dir"><option value="asc">artan</option><option value="desc">azalan</option></select></label>
           <span class="pager"><button id="p-prev">‹ önceki</button><span id="p-info" class="info" style="margin:0"></span><button id="p-next">sonraki ›</button></span>
         </span>
-        <label><input type="checkbox" id="autoadvance" checked> klip bitince sıradakine geç</label>
+        <span style="margin-left:auto"></span>
+        <label title="Metin, ölçüm ve öneri gizlenir; kararı yalnızca sesle verirsin (r ile açılır)"><input type="checkbox" id="x-blind"> kör mod</label>
+        <label><input type="checkbox" id="x-auto" checked> karar verince geç</label>
+        <label><input type="checkbox" id="x-autoplay" checked> geçince çal</label>
+        <label><input type="checkbox" id="autoadvance" checked> bitince geç</label>
       </div>
       <div class="info" id="x-info"></div>
       <div id="x-list"></div>
@@ -263,11 +359,13 @@
 </main>
 
 <div class="player">
-  <audio id="audio" controls preload="none"></audio>
-  <button id="pl-prev">‹</button><button id="pl-next">›</button>
-  <button id="pl-ctx" title="kaynak kaydından 2 s önce → 2 s sonra">bağlam</button>
-  <div class="now"><div class="id" id="now-id">klip seçilmedi</div><div id="now-text"></div></div>
-  <div class="keys"><kbd>boşluk</kbd> çal/durdur · <kbd>j</kbd>/<kbd>k</kbd> sonraki/önceki · <kbd>c</kbd> bağlam · <kbd>1</kbd> temiz <kbd>2</kbd> kusurlu <kbd>3</kbd> kullanılmaz · etiket: <kbd>b</kbd> <kbd>e</kbd> <kbd>t</kbd> <kbd>o</kbd> <kbd>m</kbd> <kbd>g</kbd> <kbd>y</kbd> <kbd>a</kbd> <kbd>s</kbd> <kbd>d</kbd> · <kbd>n</kbd> not</div>
+  <div class="row">
+    <audio id="audio" controls preload="none"></audio>
+    <button id="pl-prev" title="önceki (k)">‹</button><button id="pl-next" title="sonraki (j)">›</button>
+    <button id="pl-ctx" title="kaynak kaydından 2 s önce → 2 s sonra (c)">bağlam</button>
+    <div class="now"><div class="id" id="now-id">klip seçilmedi</div><div id="now-text"></div></div>
+  </div>
+  <div class="row judge off" id="dock"></div>
 </div>
 
 <script>
@@ -322,16 +420,26 @@ function renderChannels() {
   $('#channels').innerHTML = s.channels.map(c => {
     const v = c.verdicts||{}, n = Math.max(c.deck_n, 1);
     const st = !c.n_clips ? 'klip yok' : !c.deck_n ? 'deste yok' : c.reviewed>=c.deck_n ? '✓ bitti' : `${c.reviewed}/${c.deck_n}`;
-    const tagsum = Object.entries(c.tags||{}).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,n])=>`${(state.tags.find(t=>t.key===k)||{label:k}).label} ${n}`).join(' · ');
     return `<div class="ch ${state.channel===c.channel?'on':''}" data-ch="${esc(c.channel)}">
       <div class="t"><b title="${esc(c.channel)}">${esc(c.channel)}</b><span class="st ${c.deck_n&&c.reviewed>=c.deck_n?'done':''}">${st}</span></div>
-      <div class="m">${c.n_sources} kayıt · ${c.hours.toFixed(2)} sa · ${c.n_clips} klip${s.manifest.exists&&c.n_clips?` · önerilen %${(100*c.recommended/c.n_clips).toFixed(0)}`:''}${c.errors?` · <span class="err">${c.errors} hata</span>`:''}</div>
+      <div class="m">${c.n_clips} klip${s.manifest.exists&&c.n_clips?` · önerilen %${(100*c.recommended/c.n_clips).toFixed(0)}`:''}${c.errors?` · <span class="err">${c.errors} hata</span>`:''}</div>
       ${c.deck_n?`<div class="bar" title="temiz ${v.temiz||0} · kusurlu ${v.kusurlu||0} · kullanılmaz ${v.kullanilmaz||0}"><i class="t" style="width:${100*(v.temiz||0)/n}%"></i><i class="k" style="width:${100*(v.kusurlu||0)/n}%"></i><i class="u" style="width:${100*(v.kullanilmaz||0)/n}%"></i></div>`:''}
-      ${tagsum?`<div class="m" style="color:var(--warn)">${esc(tagsum)}</div>`:''}
-      <div class="pipe" title="hazırlık → asr → hizalama → bölütleme biten kayıt: ${c.stages_done}/${c.n_sources}">${[...Array(c.n_sources)].map((_,i)=>`<i class="${i<c.stages_done?'d':''}"></i>`).join('')}</div>
     </div>`; }).join('');
   document.querySelectorAll('#channels .ch').forEach(el => el.onclick = () => selectChannel(el.dataset.ch));
+  const sel = $('#d-channel-sel');
+  sel.innerHTML = '<option value="">— seç —</option>' + s.channels.map(c => {
+    const st = !c.n_clips ? 'klip yok' : !c.deck_n ? 'deste yok' : c.reviewed>=c.deck_n ? '✓ bitti' : `${c.reviewed}/${c.deck_n}`;
+    return `<option value="${esc(c.channel)}">${esc(c.channel)} — ${st}</option>`; }).join('');
+  sel.value = state.channel || '';
+  $('#d-chsum').textContent = `${done}/${s.channels.length} kanal bitti`;
 }
+$('#d-channel-sel').onchange = () => { if ($('#d-channel-sel').value) selectChannel($('#d-channel-sel').value); };
+function stepChannel(d) {
+  const chs = (state.summary||{channels:[]}).channels.map(c=>c.channel); if (!chs.length) return;
+  const i = chs.indexOf(state.channel); const j = i<0 ? 0 : (i + d + chs.length) % chs.length;
+  selectChannel(chs[j]);
+}
+$('#d-prev-ch').onclick = () => stepChannel(-1); $('#d-next-ch').onclick = () => stepChannel(1);
 function renderSources() {
   const s = state.summary; if (!s) return;
   $('#sources').innerHTML = s.sources.map(x => `
@@ -350,14 +458,16 @@ function clipCard(c, i) {
   const low = (v,th) => (v!==null&&v!==undefined&&v<th) ? 'low' : '';
   const note = c.note || { verdict:'', tags:[], note:'' };
   const v = note.verdict || '';
+  const tagLabel = k => (state.tags.find(t=>t.key===k)||{label:k}).label;
+  const verdict = v ? `<span class="chip v-${v}">${VLABEL[v]}</span>${note.tags.map(t=>`<span class="chip warn">${esc(tagLabel(t))}</span>`).join('')}` : '';
   return `<div class="clip ${i===state.cur?'cur':''} ${v?'v-'+v:''}" id="clip-${i}" data-i="${i}">
     <div class="head">
-      <span class="n">${i+1}.</span>
+      <span class="card-n">${i+1}</span>
       <button class="play" data-i="${i}" title="çal">▶</button>
-      <span class="id">${c.id}</span><span>${esc(c.channel)}</span>
-      <span>${mmss(c.start)} – ${mmss(c.end)} · <b>${fmt(c.duration,1)} s</b> · ${fmt(m.n_words,0)} kelime</span>
+      <span class="id">${c.id}</span>
+      <span>${mmss(c.start)}–${mmss(c.end)} · <b>${fmt(c.duration,1)} s</b> · ${fmt(m.n_words,0)} kelime</span>
       ${rec} ${flags} ${c.duplicate_of?`<span class="chip warn">kopya: ${c.duplicate_of}</span>`:''}
-      <button class="ctx" data-i="${i}" title="kaynaktan 2 s önce/sonra ile çal (c)">bağlam</button>
+      <span class="right">${verdict}</span>
     </div>
     <div class="text">${esc(c.text)}</div>
     ${c.text_raw?`<div class="raw"><b>ham:</b> ${esc(c.text_raw)}</div>`:''}
@@ -374,30 +484,35 @@ function clipCard(c, i) {
       <span>RMS <b>${fmt(m.rms_dbfs,1)}</b> tepe <b>${fmt(m.peak_dbfs,1)}</b> dBFS</span>
       <span class="${(m.clip_ratio>0.002)?'low':''}">kırpılma <b>${fmt(m.clip_ratio,4)}</b></span>
     </div></details>
-    <div class="judge">
-      <span class="grp"><span class="lbl">karar</span>
-        ${state.verdicts.map((k,j)=>`<button class="v ${v===k?'on-'+k:''}" data-v="${k}" data-i="${i}"><kbd>${j+1}</kbd>${VLABEL[k]}</button>`).join('')}
-      </span>
-      <span class="grp"><span class="lbl">kusur</span>
-        ${state.tags.map(t=>`<button class="tag ${note.tags.includes(t.key)?'on':''}" data-t="${t.key}" data-i="${i}"><kbd>${t.hotkey}</kbd>${t.label}</button>`).join('')}
-      </span>
-      <input type="text" data-i="${i}" placeholder="not (Enter ile kaydet)" value="${esc(note.note)}">
-      <span class="saved">${c.note?('kaydedildi '+c.note.ts.slice(11,16)):''}</span>
-    </div>
+    ${note.note?`<div class="raw"><b>not:</b> ${esc(note.note)}</div>`:''}
   </div>`;
 }
 function wireCard(el, i) {
-  el.querySelector('button.play').onclick = () => play(i);
-  el.querySelector('button.ctx').onclick = () => playContext(i);
-  el.querySelectorAll('button.v').forEach(b => b.onclick = () => setVerdict(i, b.dataset.v));
-  el.querySelectorAll('button.tag').forEach(b => b.onclick = () => toggleTag(i, b.dataset.t));
-  const inp = el.querySelector('.judge input'); inp.onkeydown = e => { if (e.key==='Enter') { saveNote(i, { note: inp.value }); inp.blur(); } };
+  el.querySelector('button.play').onclick = e => { e.stopPropagation(); play(i); };
+  el.onclick = e => { if (e.target.closest('details, a, button')) return; setCur(i); };
+}
+// ---- alt çubuk: seçili klibin kararı (kartlarda tekrarlanmaz)
+function renderDock() {
+  const dock = $('#dock'); const c = state.list[state.cur];
+  if (!c) { dock.className = 'row judge off'; dock.innerHTML = '<div class="line"><span class="lbl">karar</span><span class="info" style="margin:0">bir klip seç</span></div>'; return; }
+  const note = c.note || { verdict:'', tags:[], note:'' }; const v = note.verdict || '';
+  dock.className = 'row judge';
+  dock.innerHTML = `<div class="line"><span class="lbl">karar</span>
+      <span class="seg">${state.verdicts.map((k,j)=>`<button class="v ${v===k?'on-'+k:''}" data-v="${k}"><kbd>${j+1}</kbd>${VLABEL[k]}</button>`).join('')}</span>
+      <input type="text" id="dk-note" placeholder="not (n · Enter ile kaydet)" value="${esc(note.note)}">
+      <span class="saved">${c.note?('kaydedildi '+c.note.ts.slice(11,16)):''}</span></div>
+    <div class="line"><span class="lbl">kusur</span>
+      <span class="tags">${state.tags.map(t=>`<button class="tag ${note.tags.includes(t.key)?'on':''}" data-t="${t.key}"><kbd>${t.hotkey}</kbd>${t.label}</button>`).join('')}</span></div>`;
+  dock.querySelectorAll('button.v').forEach(b => b.onclick = () => setVerdict(state.cur, b.dataset.v));
+  dock.querySelectorAll('button.tag').forEach(b => b.onclick = () => toggleTag(state.cur, b.dataset.t));
+  const inp = $('#dk-note'); inp.onkeydown = e => { if (e.key==='Enter') { saveNote(state.cur, { note: inp.value }); inp.blur(); } };
 }
 function listEl() { return state.tab==='review' ? $('#d-list') : $('#x-list'); }
 function renderList() {
   const el = listEl();
   el.innerHTML = state.list.map(clipCard).join('') || '<div class="info">gösterilecek klip yok</div>';
   el.querySelectorAll('.clip').forEach(c => wireCard(c, +c.dataset.i));
+  renderDock();
 }
 function rerenderCard(i) {
   const old = document.getElementById(`clip-${i}`); if (!old) return;
@@ -407,7 +522,7 @@ function rerenderCard(i) {
 
 // ---- denetim: kanal destesi
 async function selectChannel(ch) {
-  state.channel = ch; state.list = []; state.cur = -1; renderChannels();
+  state.channel = ch; state.list = []; state.cur = -1; renderChannels(); $('#d-channel-sel').value = ch;
   $('#deck-empty').style.display = 'none'; $('#deck').style.display = '';
   $('#d-channel').textContent = ch; $('#d-info').textContent = 'deste çekiliyor…'; $('#d-list').innerHTML = '';
   await loadDeck(false);
@@ -456,34 +571,94 @@ function renderFindingList() {
 }
 $('#fd-refresh').onclick = loadFindings; $('#fd-ch').onchange = renderFindingList; $('#fd-tag').onchange = renderFindingList;
 
-// ---- keşif: süzgeçler
+// ---- keşif: ölçüt kurma
+const METRICS = [
+  ['duration','süre (s)'], ['n_words','kelime sayısı'],
+  ['word_confidence','kelime güveni min'], ['word_confidence_mean','kelime güveni ort'],
+  ['align_score_min','hizalama min'], ['align_score_mean','hizalama ort'],
+  ['music_to_speech_db','müzik/konuşma dB'], ['music_score_audioset','audioset müzik'],
+  ['music_db_separated','ayrıştırılmış müzik dB'], ['speech_ratio','konuşma oranı'],
+  ['internal_silence_sec','iç sessizlik (s)'], ['leading_silence_sec','baş sessizlik (s)'],
+  ['trailing_silence_sec','son sessizlik (s)'], ['lead_gap_sec','baş komşu boşluğu (s)'],
+  ['trail_gap_sec','son komşu boşluğu (s)'], ['rms_dbfs','RMS dBFS'], ['peak_dbfs','tepe dBFS'],
+  ['clip_ratio','kırpılma oranı'], ['start','kayıttaki zaman (s)'],
+];
+const PREC = { music_to_speech_db:1, music_db_separated:1, rms_dbfs:1, peak_dbfs:1, clip_ratio:4,
+               music_score_audioset:3, n_words:0, start:0, duration:1 };
+const MLABEL = Object.fromEntries(METRICS);
+const mfmt = (k,v) => (v===null||v===undefined||isNaN(v)) ? '–' : (+v).toFixed(PREC[k]!==undefined?PREC[k]:2);
+for (const id of ['c-metric','dist-metric','f-sort']) {
+  $('#'+id).innerHTML = METRICS.map(([k,l]) => `<option value="${k}">${l}</option>`).join('');
+}
+$('#f-sort').value = 'start'; $('#dist-metric').value = 'music_to_speech_db';
+
+const FILTER_IDS = ['f-rec','f-reason','f-flag','f-channel','f-noted','f-dmin','f-dmax','f-q','f-ids'];
 function filterParams() {
-  return { rec:$('#f-rec').value, reason:$('#f-reason').value, flag:$('#f-flag').value, channel:$('#f-channel').value,
-           noted:$('#f-noted').value, dmin:$('#f-dmin').value, dmax:$('#f-dmax').value, q:$('#f-q').value, ids:$('#f-ids').value, cond:state.conds.join(';') };
+  const o = { cond: state.conds.join(';'), audio: $('#f-audio').checked ? 'yes' : '' };
+  for (const id of FILTER_IDS) o[id.slice(2)] = $('#'+id).value;
+  return o;
 }
+function activeCount() {   // kaç süzgeç etkin (varsayılandan sapan)
+  return state.conds.length
+    + ['f-reason','f-flag','f-q','f-ids','f-channel','f-dmin','f-dmax'].filter(id=>$('#'+id).value).length
+    + ['f-rec','f-noted'].filter(id=>$('#'+id).value!=='all').length;
+}
+function setFilters(o) {
+  state.conds = (o.cond||'').split(';').filter(Boolean);
+  for (const id of FILTER_IDS) if (o[id.slice(2)]!==undefined) $('#'+id).value = o[id.slice(2)];
+  if (o.audio!==undefined) $('#f-audio').checked = o.audio==='yes';
+  renderConds();
+}
+
+// ---- adres çubuğu: ölçüt bağlantıyla taşınır
+let hashLock = false;
+function syncHash() {
+  const o = filterParams();
+  for (const k of Object.keys(o)) if (!o[k] || o[k]==='all') delete o[k];
+  o.mode = $('#x-mode').value;
+  if (o.mode==='sample') { o.n = $('#s-n').value; if (state.sampleSeed!==null) o.seed = state.sampleSeed; }
+  else { o.sort = $('#f-sort').value; o.dir = $('#f-dir').value; }
+  hashLock = true; location.hash = new URLSearchParams(o).toString(); setTimeout(()=>hashLock=false, 0);
+}
+function readHash() {
+  const h = location.hash.replace(/^#/,''); if (!h) return false;
+  const o = Object.fromEntries(new URLSearchParams(h));
+  setFilters({ rec:'all', noted:'all', reason:'', flag:'', channel:'', dmin:'', dmax:'', q:'', ids:'', cond:'', audio:'yes', ...o });
+  if (o.mode) $('#x-mode').value = o.mode;
+  if (o.n) $('#s-n').value = o.n;
+  if (o.seed) { state.sampleSeed = +o.seed; $('#s-seed').value = o.seed; }
+  if (o.sort) $('#f-sort').value = o.sort;
+  if (o.dir) $('#f-dir').value = o.dir;
+  return true;
+}
+window.addEventListener('hashchange', () => { if (!hashLock && state.tab==='explore') { readHash(); apply(); } });
+
+// ---- koşul çipleri ve hazır kategoriler
 function renderConds() {
-  $('#conds').innerHTML = state.conds.map((c,i) => `<span class="cond">${esc(c)}<button data-i="${i}" title="kaldır">×</button></span>`).join('');
+  $('#conds').innerHTML = state.conds.map((c,i) => `<span class="cond">${esc(c)}<button data-i="${i}" title="kaldır">×</button></span>`).join('')
+    || '<span class="info" style="margin:0">koşul yok — bütün havuz</span>';
   $('#conds').querySelectorAll('button').forEach(b => b.onclick = () => { state.conds.splice(+b.dataset.i,1); renderConds(); apply(); });
-  document.querySelectorAll('#quick button').forEach(b => b.classList.toggle('on', state.conds.includes(b.dataset.cond)));
+  document.querySelectorAll('#quick button.quick').forEach(b => b.classList.toggle('on', state.conds.includes(b.dataset.cond)));
 }
-document.querySelectorAll('#quick button').forEach(b => b.onclick = () => {
+function addCond(c) { if (c && !state.conds.includes(c)) state.conds.push(c); renderConds(); apply(); }
+document.querySelectorAll('#quick button.quick').forEach(b => b.onclick = () => {
   const c = b.dataset.cond; const i = state.conds.indexOf(c);
   if (i>=0) state.conds.splice(i,1); else state.conds.push(c);
   renderConds(); apply();
 });
 $('#c-add').onclick = () => {
   const v = $('#c-val').value; if (v==='') return;
-  const c = `${$('#c-metric').value}${$('#c-op').value}${v}`;
-  if (!state.conds.includes(c)) state.conds.push(c);
-  $('#c-val').value = ''; renderConds(); apply();
+  addCond(`${$('#c-metric').value}${$('#c-op').value}${v}`); $('#c-val').value = '';
 };
 $('#c-val').onkeydown = e => { if (e.key==='Enter') $('#c-add').onclick(); };
 $('#f-clear').onclick = () => {
   state.conds = []; for (const id of ['f-rec','f-noted']) $('#'+id).value = 'all';
   for (const id of ['f-reason','f-flag','f-channel','f-dmin','f-dmax','f-q','f-ids','f-list']) $('#'+id).value = '';
+  $('#f-audio').checked = true; $('#p-list').value = '';
   renderConds(); apply();
 };
-$('#f-apply').onclick = () => apply();
+
+// ---- hazır dinleme listeleri (work/listen-*.txt)
 let LISTS = [];
 async function loadLists() {
   try { LISTS = await api('/api/lists'); setOptions($('#f-list'), LISTS.map(l=>[l.name, `${l.name} (${l.n})`]), false); } catch (e) {}
@@ -493,52 +668,209 @@ $('#f-list').onchange = () => {
   $('#f-ids').value = l ? l.ids : ''; if (l) { $('#f-rec').value='all'; $('#s-n').value = Math.min(500, l.n); } apply();
 };
 loadLists();
-for (const id of ['f-rec','f-reason','f-flag','f-channel','f-noted']) $('#'+id).onchange = () => apply();
+
+// ---- kayıtlı ölçütler (work/review-filters.json)
+let PRESETS = [];
+async function loadPresets() {
+  try { PRESETS = await api('/api/presets'); setOptions($('#p-list'), PRESETS.map(p=>[p.name,p.name]), false); } catch (e) {}
+}
+$('#p-list').onchange = () => {
+  const p = PRESETS.find(x=>x.name===$('#p-list').value); if (!p) return;
+  const o = { ...p.params };
+  setFilters(o);
+  if (o.mode) $('#x-mode').value = o.mode;
+  if (o.n) $('#s-n').value = o.n;
+  if (o.seed) { state.sampleSeed = +o.seed; $('#s-seed').value = o.seed; }
+  if (o.sort) $('#f-sort').value = o.sort; if (o.dir) $('#f-dir').value = o.dir;
+  $('#x-mode').onchange();
+};
+$('#p-save').onclick = async () => {
+  const name = prompt('Ölçüte ad ver (aynı ad üzerine yazar):', $('#p-list').value || '');
+  if (!name) return;
+  const params = { ...filterParams(), mode:$('#x-mode').value, n:$('#s-n').value,
+                   seed: state.sampleSeed===null ? '' : String(state.sampleSeed),
+                   sort:$('#f-sort').value, dir:$('#f-dir').value };
+  try { PRESETS = await api('/api/presets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, params }) });
+        setOptions($('#p-list'), PRESETS.map(p=>[p.name,p.name]), false); $('#p-list').value = name; }
+  catch (e) { alert('kaydedilemedi: '+e.message); }
+};
+$('#p-del').onclick = async () => {
+  const name = $('#p-list').value; if (!name || !confirm(`"${name}" silinsin mi?`)) return;
+  PRESETS = await api('/api/presets', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ name, delete:true }) });
+  setOptions($('#p-list'), PRESETS.map(p=>[p.name,p.name]), false);
+};
+loadPresets();
+
+// ---- eşleşen sayısı + karne
+let matchTimer = null;
+function scheduleMatch() { clearTimeout(matchTimer); matchTimer = setTimeout(refreshMatch, 250); }
+async function refreshMatch() {
+  $('#x-match').textContent = 'sayılıyor…'; $('#x-match').className = 'match';
+  try {
+    const st = await api('/api/stats?' + new URLSearchParams(filterParams()));
+    state.stats = st;
+    const pct = st.n ? Math.round(100*st.rec.yes/st.n) : 0;
+    $('#x-match').innerHTML = `<b>${st.n}</b> klip eşleşiyor · ${st.hours.toFixed(2)} saat · ${st.n_channels} kanal`
+      + (st.rec.none<st.n ? ` · önerilen %${pct}` : '') + ` · <span class="info" style="margin:0">${activeCount()} süzgeç etkin</span>`;
+    renderKarne(st);
+    if ($('#x-dist').open) loadDist();
+  } catch (e) { $('#x-match').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+function renderKarne(st) {
+  const v = st.verdicts||{}, j = st.judged;
+  const tagLabel = k => (state.tags.find(t=>t.key===k)||{label:k}).label;
+  const pc = n => j ? (100*n/j).toFixed(0) : '0';
+  const bad = (v.kusurlu||0) + (v.kullanilmaz||0);
+  $('#karne-info').textContent = `${st.n} kliplik havuzda ${j} karar`;
+  if (!st.n) { $('#karne').innerHTML = '<div class="info" style="margin:0">bu ölçüte uyan klip yok</div>'; return; }
+  $('#karne').innerHTML = `
+    <div class="kbar" title="temiz ${v.temiz||0} · kusurlu ${v.kusurlu||0} · kullanılmaz ${v.kullanilmaz||0} · karar verilmemiş ${st.n-j}">
+      <i class="t" style="width:${100*(v.temiz||0)/st.n}%"></i><i class="k" style="width:${100*(v.kusurlu||0)/st.n}%"></i>
+      <i class="u" style="width:${100*(v.kullanilmaz||0)/st.n}%"></i></div>
+    <div class="knums">
+      <span><b>${st.n}</b> klip · ${st.hours.toFixed(2)} saat</span>
+      <span><b>${j}</b> karar verilmiş</span>
+      <span class="ok">temiz <b>${v.temiz||0}</b> (%${pc(v.temiz||0)})</span>
+      <span class="warn">kusurlu <b>${v.kusurlu||0}</b> (%${pc(v.kusurlu||0)})</span>
+      <span class="bad">kullanılmaz <b>${v.kullanilmaz||0}</b> (%${pc(v.kullanilmaz||0)})</span>
+      <span>ölçütün tuttuğu kusur: <b>%${pc(bad)}</b></span>
+    </div>
+    ${j && j<10 ? '<div class="info" style="margin:6px 0 0">karar sayısı az (&lt;10); oranı ölçü saymadan önce örneği büyüt</div>' : ''}
+    ${Object.keys(st.tags).length ? `<div class="krow"><span class="lbl">kusur etiketleri</span>${Object.entries(st.tags).map(([k,n])=>`<span class="chip warn">${esc(tagLabel(k))} ${n}</span>`).join(' ')}</div>` : ''}
+    ${Object.keys(st.reasons).length ? `<div class="krow"><span class="lbl">dışlanma sebepleri</span>${Object.entries(st.reasons).map(([k,n])=>`<span class="chip bad" data-reason="${esc(k)}" title="süzgece ekle">${esc(k)} ${n}</span>`).join(' ')}</div>` : ''}
+    ${Object.keys(st.flags).length ? `<div class="krow"><span class="lbl">işaretler</span>${Object.entries(st.flags).map(([k,n])=>`<span class="chip warn" data-flag="${esc(k)}" title="süzgece ekle">${esc(k)} ${n}</span>`).join(' ')}</div>` : ''}
+    <div class="krow"><span class="lbl">kanallar</span>${Object.entries(st.channels).map(([k,n])=>`<span class="chip" data-ch="${esc(k)}" title="süzgece ekle">${esc(k)} ${n}</span>`).join(' ')}${st.n_channels>Object.keys(st.channels).length?`<span class="info" style="margin:0">+${st.n_channels-Object.keys(st.channels).length} kanal daha</span>`:''}</div>`;
+  $('#karne').querySelectorAll('[data-ch]').forEach(el => el.onclick = () => { $('#f-channel').value = el.dataset.ch; apply(); });
+  $('#karne').querySelectorAll('[data-flag]').forEach(el => el.onclick = () => { $('#f-flag').value = el.dataset.flag; apply(); });
+  $('#karne').querySelectorAll('[data-reason]').forEach(el => el.onclick = () => { $('#f-reason').value = el.dataset.reason; apply(); });
+}
+$('#karne-refresh').onclick = refreshMatch;
+
+// ---- eşik yardımcısı: ölçümün havuzdaki dağılımı
+async function loadDist() {
+  const metric = $('#dist-metric').value;
+  $('#dist-info').textContent = 'hesaplanıyor…';
+  try {
+    const st = await api('/api/stats?' + new URLSearchParams({ ...filterParams(), metric }));
+    const d = st.dist;
+    $('#dist-sum').textContent = `— ${MLABEL[metric]}`;
+    if (!d || !d.n) { $('#dist-info').textContent = 'bu havuzda bu ölçüm yok'; $('#dist-hist').innerHTML=''; $('#dist-pcts').innerHTML=''; return; }
+    $('#dist-info').innerHTML = `${d.n}/${st.n} klipte ölçüm var · en küçük <b>${mfmt(metric,d.min)}</b> · ortanca <b>${mfmt(metric,d.pcts['50'])}</b> · ortalama <b>${mfmt(metric,d.mean)}</b> · en büyük <b>${mfmt(metric,d.max)}</b>`;
+    const top = Math.max(...d.bins.map(b=>b.n)) || 1;
+    $('#dist-hist').innerHTML = d.bins.map((b,i) => `<i class="b" data-i="${i}" style="height:${Math.max(2, 100*b.n/top)}%"
+        title="${mfmt(metric,b.lo)} – ${mfmt(metric,b.hi)}: ${b.n} klip · altında ${b.below} · üstünde ${b.above}"></i>`).join('');
+    $('#dist-hist').querySelectorAll('.b').forEach(el => el.onclick = ev => {
+      const b = d.bins[+el.dataset.i]; const left = ev.offsetX < el.clientWidth/2;
+      addCond(`${metric}${left?'<':'>'}${(left?b.hi:b.lo).toFixed(PREC[metric]!==undefined?PREC[metric]:3)}`);
+    });
+    $('#dist-pcts').innerHTML = Object.entries(d.pcts).map(([p,v]) =>
+      `<span class="pct" data-v="${v}" title="kliplerin %${p}'i bu değerin altında — tıkla: seçili karşılaştırmayla koşul kur">p${p} <b>${mfmt(metric,v)}</b></span>`).join('');
+    $('#dist-pcts').querySelectorAll('.pct').forEach(el => el.onclick = () => {
+      const v = (+el.dataset.v).toFixed(PREC[metric]!==undefined?PREC[metric]:3);
+      $('#c-metric').value = metric; addCond(`${metric}${$('#c-op').value}${v}`);
+    });
+  } catch (e) { $('#dist-info').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+$('#dist-metric').onchange = loadDist;
+$('#x-dist').addEventListener('toggle', () => { if ($('#x-dist').open) loadDist(); });
+
+// ---- hazır kategorilerin sayıları
+$('#q-counts').onclick = async () => {
+  const btns = [...document.querySelectorAll('#quick button.quick')];
+  $('#q-counts').textContent = 'sayılıyor…';
+  await Promise.all(btns.map(async b => {
+    const conds = state.conds.includes(b.dataset.cond) ? state.conds : [...state.conds, b.dataset.cond];
+    try {
+      const st = await api('/api/stats?' + new URLSearchParams({ ...filterParams(), cond: conds.join(';') }));
+      if (!b.dataset.label) b.dataset.label = b.textContent;
+      b.textContent = `${b.dataset.label} · ${st.n}`;
+    } catch (e) {}
+  }));
+  $('#q-counts').textContent = 'sayıları yenile';
+};
+
+// ---- listeyi çekme
+function apply() {
+  state.offset = 0; scheduleMatch(); syncHash();
+  const m = $('#x-mode').value;
+  if (m==='sample') loadSample(false); else if (m==='ranked') loadRanked(); else loadSourceClips();
+}
+$('#f-apply') && ($('#f-apply').onclick = apply);
+for (const id of ['f-rec','f-reason','f-flag','f-channel','f-noted']) $('#'+id).onchange = apply;
+$('#f-audio').onchange = apply;
+for (const id of ['f-dmin','f-dmax']) $('#'+id).onchange = apply;
 $('#f-q').onkeydown = e => { if (e.key==='Enter') apply(); };
 $('#f-ids').onkeydown = e => { if (e.key==='Enter') apply(); };
-function apply() { state.offset = 0; if ($('#x-mode').value==='sample') loadSample(false); else loadSourceClips(); }
 $('#x-mode').onchange = () => {
-  const src = $('#x-mode').value==='source';
-  $('#x-sample-ctl').style.display = src ? 'none' : 'contents'; $('#x-source-ctl').style.display = src ? 'contents' : 'none';
+  const m = $('#x-mode').value, src = m==='source';
+  $('#x-sample-ctl').style.display = m==='sample' ? 'contents' : 'none';
+  $('#x-sort-ctl').style.display = m==='sample' ? 'none' : 'contents';
   $('#side-sources').style.display = src ? '' : 'none'; $('#side-channels').style.display = src ? 'none' : '';
+  $('#aside').style.display = src ? '' : 'none'; $('#main').classList.toggle('single', !src);
   apply();
 };
 async function loadSample(newSeed) {
   if (newSeed || state.sampleSeed===null) state.sampleSeed = Math.floor(Math.random()*1e6);
-  $('#s-seed').value = state.sampleSeed;
+  $('#s-seed').value = state.sampleSeed; syncHash();
   const p = new URLSearchParams({ source:'all', sample:$('#s-n').value, seed:state.sampleSeed, ...filterParams() });
   $('#x-info').textContent = 'çekiliyor…';
   try {
     const r = await api('/api/clips?'+p);
-    state.list = r.clips; state.cur = -1;
-    $('#x-info').textContent = `süzgeçten geçen havuz ${r.total} klip · örnek ${state.list.length} · tohum ${state.sampleSeed}`;
+    state.list = r.clips; state.cur = -1; state.revealed = new Set();
+    $('#x-info').innerHTML = `havuz <b>${r.total}</b> klip · örnek <b>${state.list.length}</b> · tohum ${state.sampleSeed}`
+      + (state.blind ? ' · <b>kör mod</b> (metin ve ölçümler gizli, <kbd>r</kbd> ile aç)' : '');
     renderList();
+    if (state.list.length) setCur(0);
   } catch (e) { $('#x-info').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 }
 $('#s-new').onclick = () => loadSample(true);
 $('#s-again').onclick = () => { state.sampleSeed = +$('#s-seed').value || null; loadSample(false); };
 $('#s-seed').onchange = () => { state.sampleSeed = +$('#s-seed').value; };
-async function loadSourceClips() {
-  if (state.source===null) { $('#x-list').innerHTML = '<div class="info">soldan bir kaynak seç</div>'; $('#p-info').textContent=''; $('#x-info').textContent=''; return; }
-  const p = new URLSearchParams({ source:state.source, sort:$('#f-sort').value, dir:$('#f-dir').value, offset:state.offset, limit:state.limit, ...filterParams() });
+$('#s-n').onchange = () => { if ($('#x-mode').value==='sample') loadSample(false); };
+async function loadRanked() {
+  const p = new URLSearchParams({ source:'all', sort:$('#f-sort').value, dir:$('#f-dir').value,
+                                  offset:state.offset, limit:state.limit, ...filterParams() });
+  $('#x-info').textContent = 'çekiliyor…';
   try {
     const r = await api('/api/clips?'+p);
-    state.list = r.clips; state.cur = -1;
+    state.list = r.clips; state.cur = -1; state.revealed = new Set();
+    $('#p-info').textContent = r.total ? `${r.total} klip · ${r.offset+1}–${Math.min(r.offset+state.limit, r.total)}` : '0 klip';
+    $('#x-info').innerHTML = `<b>${MLABEL[$('#f-sort').value]}</b> ölçümüne göre ${$('#f-dir').value==='desc'?'azalan':'artan'} sıralı · en uçtaki klipler eşiği burada görünür`;
+    renderList();
+  } catch (e) { $('#x-info').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+async function loadSourceClips() {
+  if (state.source===null) { $('#x-list').innerHTML = '<div class="info">soldan bir kaynak seç</div>'; $('#p-info').textContent=''; $('#x-info').textContent=''; return; }
+  const p = new URLSearchParams({ source:state.source, sort:$('#f-sort').value, dir:$('#f-dir').value,
+                                  offset:state.offset, limit:state.limit, ...filterParams() });
+  try {
+    const r = await api('/api/clips?'+p);
+    state.list = r.clips; state.cur = -1; state.revealed = new Set();
     $('#p-info').textContent = r.total ? `${r.total} klip · ${r.offset+1}–${Math.min(r.offset+state.limit, r.total)}` : '0 klip';
     $('#x-info').textContent = '';
     renderList();
   } catch (e) { $('#x-list').innerHTML = `<div class="err">${esc(e.message)}</div>`; }
 }
-$('#f-sort').onchange = () => apply(); $('#f-dir').onchange = () => apply();
-$('#p-prev').onclick = () => { state.offset = Math.max(0, state.offset - state.limit); loadSourceClips(); };
-$('#p-next').onclick = () => { state.offset += state.limit; loadSourceClips(); };
+function reload() { const m = $('#x-mode').value; if (m==='sample') loadSample(false); else if (m==='ranked') loadRanked(); else loadSourceClips(); }
+$('#f-sort').onchange = () => { state.offset = 0; syncHash(); reload(); };
+$('#f-dir').onchange = () => { state.offset = 0; syncHash(); reload(); };
+$('#p-prev').onclick = () => { state.offset = Math.max(0, state.offset - state.limit); reload(); };
+$('#p-next').onclick = () => { state.offset += state.limit; reload(); };
+
+// ---- kör mod
+$('#x-blind').onchange = () => {
+  state.blind = $('#x-blind').checked; state.revealed = new Set();
+  renderList(); if (state.cur>=0) setCur(state.cur);
+};
+function reveal(i) { state.revealed.add(i); rerenderCard(i); if (i===state.cur) setCur(i); }
 
 // ---- sekmeler
 function setTab(t) {
   state.tab = t;
   for (const k of ['review','findings','explore']) { $('#tab-'+k).classList.toggle('on', t===k); $('#view-'+k).style.display = t===k ? '' : 'none'; }
-  $('#aside').style.display = t==='findings' ? 'none' : ''; $('#main').classList.toggle('single', t==='findings');
   const src = t==='explore' && $('#x-mode').value==='source';
+  const hideAside = !src;
+  $('#aside').style.display = hideAside ? 'none' : ''; $('#main').classList.toggle('single', hideAside);
   $('#side-sources').style.display = src ? '' : 'none'; $('#side-channels').style.display = src ? 'none' : '';
   state.list = []; state.cur = -1;
   $('#d-list').innerHTML = ''; $('#x-list').innerHTML = '';   // gizli sekmede aynı clip-N id'leri kalmasın
@@ -555,6 +887,7 @@ function setCur(i) {
   state.cur = i; const el = document.getElementById(`clip-${i}`);
   if (el) { el.classList.add('cur'); el.scrollIntoView({ block:'center', behavior:'smooth' }); }
   const c = state.list[i]; $('#now-id').textContent = c ? `${i+1}/${state.list.length} · ${c.id} · ${mmss(c.start)}–${mmss(c.end)}` : 'klip seçilmedi'; $('#now-text').textContent = c ? c.text : '';
+  renderDock();
 }
 function play(i) {
   if (i<0 || i>=state.list.length) return;
@@ -578,12 +911,12 @@ $('#pl-prev').onclick = () => play(state.cur-1); $('#pl-next').onclick = () => p
 async function saveNote(i, patch) {
   const c = state.list[i]; if (!c) return;
   const cur = c.note || { verdict:'', tags:[], note:'' };
-  const inp = document.querySelector(`#clip-${i} .judge input`);
+  const inp = (i===state.cur) ? $('#dk-note') : null;
   const body = { clip_id:c.id, channel:c.channel, verdict: patch.verdict!==undefined ? patch.verdict : cur.verdict,
                  tags: patch.tags!==undefined ? patch.tags : cur.tags, note: patch.note!==undefined ? patch.note : (inp ? inp.value : cur.note) };
   try {
     const r = await api('/api/note', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    c.note = r; rerenderCard(i); if (state.tab==='review') updateProgress(); refreshSummary();
+    c.note = r; rerenderCard(i); if (i===state.cur) renderDock(); if (state.tab==='review') updateProgress(); refreshSummary();
   } catch (e) { alert('kaydedilemedi: ' + e.message); }
 }
 async function setVerdict(i, v) {
@@ -616,11 +949,12 @@ document.addEventListener('keydown', e => {
   else if (e.key==='k') play(state.cur-1);
   else if (e.key==='c') playContext(state.cur);
   else if (e.key==='1' || e.key==='2' || e.key==='3') setVerdict(state.cur, state.verdicts[+e.key-1]);
-  else if (e.key==='n') { const inp = document.querySelector(`#clip-${state.cur} .judge input`); if (inp) { e.preventDefault(); inp.focus(); } }
+  else if (e.key==='n') { const inp = $('#dk-note'); if (inp && state.cur>=0) { e.preventDefault(); inp.focus(); } }
   else { const t = state.tags.find(x => x.hotkey===e.key); if (t && state.cur>=0) toggleTag(state.cur, t.key); }
 });
 
 renderConds();
+$('#aside').style.display = 'none'; $('#main').classList.add('single');   // kenar çubuğu yalnızca Keşif › kaynağa göre
 refreshSummary();
 setInterval(refreshSummary, 10000);
 </script>

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 
 from kiraat.stages.asr import whisper_name
@@ -136,13 +138,29 @@ def test_asama_surumu_konfigle_degisir():
 
 
 
-def test_prepare_sinirlayici_otomatik_seviye_kapali():
+def test_prepare_sinirlayici_istege_bagli_ve_varsayilan_kapali():
+    """Sınırlayıcı açıkken `clip_ratio` kaynağın kırpılmasını değil hattın
+    kendi tavanını ölçüyordu; varsayılan kapalı, açılırsa `level=false`."""
     from kiraat.stages.prepare import ffmpeg_filters
+
+    kapali = ffmpeg_filters({"highpass_hz": 40.0, "peak_ceiling_db": None})
+    assert kapali == ["highpass=f=40.0"]
+    assert ffmpeg_filters({"highpass_hz": 40.0}) == ["highpass=f=40.0"]
 
     filters = ffmpeg_filters({"highpass_hz": 40.0, "peak_ceiling_db": -1.0})
     lim = [f for f in filters if f.startswith("alimiter")][0]
     assert "level=false" in lim and "limit=0.8913" in lim
     assert filters[0] == "highpass=f=40.0"
+
+
+def test_varsayilan_konfigde_tepe_sinirlayici_yok():
+    """Politikadaki `clip_ratio` kuralının ölü olmaması buna bağlı."""
+    from kiraat.config import Config
+    from kiraat.stages.prepare import ffmpeg_filters
+
+    opts = Config.load(Path(__file__).resolve().parents[1] / "configs/default.yaml").section("prepare")
+    assert opts["peak_ceiling_db"] is None
+    assert not any(f.startswith("alimiter") for f in ffmpeg_filters(opts))
 
 
 def test_saat_butcesi_alt_sinir(tmp_path):
@@ -215,3 +233,134 @@ def test_asama_yeniden_kosunca_sahipli_anahtarlar_silinir(tmp_path):
     c = st.clips()[0]
     assert c["metrics"] == {"speech_ratio": 0.8, "music_to_speech_db": -50.0}   # hayalet anahtar yok, başka aşamanınki duruyor
     assert c["flags"] == ["short"]                                             # sahipli işaret düştü, başkası kaldı
+
+
+# --------------------------------------------------------------- sürüm zinciri
+def _cfg_ile(**bolumler):
+    from kiraat.config import Config
+    cfg = Config.load(Path(__file__).resolve().parents[1] / "configs/default.yaml")
+    data = {k: (dict(v) if isinstance(v, dict) else v) for k, v in cfg.data.items()}
+    for ad, degisiklik in bolumler.items():
+        data[ad] = {**data[ad], **degisiklik}
+    return Config(data)
+
+
+def _surumler(cfg):
+    from kiraat import base
+    from kiraat.pipeline import stage_version
+    from kiraat.stages import align, asr, clip_qc, music, prepare, segmentation  # noqa: F401
+    return {n: stage_version(cfg, base.get_stage(n))
+            for n in ("prepare", "asr", "align", "boilerplate", "segment", "clip_qc", "music")}
+
+
+def test_ust_akis_kod_surumu_alt_akisi_eskitir(monkeypatch):
+    """align kod sürümü değişince align_score'u klibe yazan segment de eskimeli.
+
+    29 Ağu 2026: `AlignStage.version` 1→2 yapıldı (skorları yarıya bölen hata)
+    ama `segment`in sürümü değişmediği için artımlı yeniden koşuda düzeltme
+    manifestoya hiç ulaşmıyordu.
+    """
+    from kiraat.stages.align import AlignStage
+
+    cfg = _cfg_ile()
+    once = _surumler(cfg)
+    monkeypatch.setattr(AlignStage, "version", AlignStage.version + "x")
+    sonra = _surumler(cfg)
+    assert [n for n in once if once[n] != sonra[n]] == ["align", "segment", "clip_qc", "music"]
+
+
+def test_vad_bolumu_asr_ve_clip_qc_surumune_giriyor():
+    """İkisi de cfg.section('vad') okuyor; eşik değişince yeniden koşmalılar."""
+    once = _surumler(_cfg_ile())
+    sonra = _surumler(_cfg_ile(vad={"threshold": 0.40}))
+    degisen = {n for n in once if once[n] != sonra[n]}
+    assert {"asr", "clip_qc"} <= degisen
+    assert "prepare" not in degisen
+
+
+def test_yalnizca_basarim_ayari_surumu_degistirmez():
+    once = _surumler(_cfg_ile())
+    sonra = _surumler(_cfg_ile(prepare={"ffmpeg_threads": 8}))
+    assert once == sonra
+
+
+def test_hizalayici_guven_kaynagi_yeniden_hizalama_gerektirmez():
+    """`confidence_source`u yalnızca segment okur; align sürümü sabit kalmalı,
+    yoksa tercih değişince 3.400 saat boşuna yeniden hizalanır."""
+    once = _surumler(_cfg_ile())
+    sonra = _surumler(_cfg_ile(align={"confidence_source": "align"}))
+    assert once["align"] == sonra["align"]
+    assert once["segment"] != sonra["segment"]
+
+
+def test_sayi_bicimi_surumu_degistirmez():
+    """CLI --max-minutes 20 float, YAML 20 int verir; aynı anlam aynı özet."""
+    assert _surumler(_cfg_ile(prepare={"max_minutes": 20}))["prepare"] == \
+           _surumler(_cfg_ile(prepare={"max_minutes": 20.0}))["prepare"]
+
+
+def test_boilerplate_sozde_asamasi_zincirde():
+    """`segment` künyeye bağlı; künye de ASR'ye. Sürümü kanalın 'bitti'
+    kaydına yazılan dizgedir, elle yazılmış '1' değil."""
+    from kiraat import base
+    from kiraat.pipeline import stage_version
+
+    once = _surumler(_cfg_ile())
+    assert once["boilerplate"].startswith("1+")
+    sonra = _surumler(_cfg_ile(boilerplate={"min_ratio": 0.9}))
+    assert once["boilerplate"] != sonra["boilerplate"]
+    assert once["segment"] != sonra["segment"]
+    assert stage_version(_cfg_ile(), base.get_stage("boilerplate")) == once["boilerplate"]
+
+
+def test_runtime_bolumu_surume_giremez():
+    """İşçi konfigi runtime'ı değiştiriyor; sürüm süreçler arası kararsız olurdu."""
+    import pytest
+    from kiraat.base import SourceStage, _REGISTRY, register
+    from kiraat.pipeline import stage_version
+
+    saved = dict(_REGISTRY)
+    try:
+        @register
+        class _Kotu(SourceStage):
+            name = "_kotu"
+            config_sections = ("runtime",)
+
+            def process_source(self, source):
+                return []
+
+        with pytest.raises(ValueError, match="surume giremez"):
+            stage_version(_cfg_ile(), _Kotu)
+    finally:
+        _REGISTRY.clear()
+        _REGISTRY.update(saved)
+
+
+def test_surum_dongusu_hata_verir():
+    import pytest
+    from kiraat.base import SourceStage, _REGISTRY, register
+    from kiraat.pipeline import stage_version
+
+    saved = dict(_REGISTRY)
+    try:
+        @register
+        class _A(SourceStage):
+            name = "_a"
+            depends_on = ("_b",)
+
+            def process_source(self, source):
+                return []
+
+        @register
+        class _B(SourceStage):
+            name = "_b"
+            depends_on = ("_a",)
+
+            def process_source(self, source):
+                return []
+
+        with pytest.raises(ValueError, match="dongu"):
+            stage_version(_cfg_ile(), _A)
+    finally:
+        _REGISTRY.clear()
+        _REGISTRY.update(saved)

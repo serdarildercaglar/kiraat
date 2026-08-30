@@ -485,6 +485,13 @@ Whisper (`align.confidence_source: asr`), hizalayıcı skoru
 düzeyinde asgari yerine dayanıklı bir istatistik (10. yüzdelik) ve insan
 referanslı CER ile kalibrasyon gerekiyor (koşulacak deney 3).
 
+[**Düzeltme, 29 Ağu 2026:** bu iki skor yanlıştı. Aşama emisyona fazladan
+bir `log_softmax` uyguluyordu ve bütün hizalayıcı skorlarını tam yarıya
+bölüyordu; gerçek değerler 0,80 ve 0,96. Damgalar ve korelasyon
+etkilenmedi. Ayrıntı ve kanıt aşağıda, "Tam koşu öncesi denetim"
+kaydında; skorun `word_confidence` kaynağı olup olamayacağı yeniden
+açık.]
+
 **3. Müzik eşiği kör dinlemeyle −30 → −40 dB** (politika v2). 34 klip,
 beş dB bandından 6'şar + ayrıştırılmamış 4 kontrol, kanal ve dB gizli.
 Sonuç: −40 dB altındaki 10 klipte 9 "yok" 1 "hafif"; **−40…−33 bandında
@@ -1095,6 +1102,408 @@ sayfası açık; manifest hazır olduğundan kanal desteleri artık kalıcı
 çekiliyor (önerilen alt küme havuzu). Beklenen: 27 kanal × 20 klip = 540
 karar + 181 kliplik sınır listesi (baş kesik / temiz).
 
+## 2026-08-29 — Dağıtıcı: CPU ve GPU işleri üst üste; sıralı koşuyla özdeş çıktı, 27× → 44×
+
+Hat bu sabaha kadar tek süreçte, aşama aşama ve her aşamada kaynak kaynak
+sıralı koşuyordu: ffmpeg çözerken GPU boş bekliyor, ASR sırasında CPU boş
+bekliyordu. Sample-25'in sıralı koşusu (81 kaynak, 24,69 saat) 54,7 dk
+sürdü: ASR 20,7 dk, müzik 10,9, hizalama 7,1, bölütleme 5,8, prepare 5,2,
+clip_qc 5,0. Sorulan soru şuydu: birbirinden bağımsız CPU ve GPU işlerini
+paralel koşturmak süreyi kısaltır ama doğruluğa zarar verir mi?
+
+Kodu okuyunca cevap "doğru kurulursa hayır" çıktı ve "doğru"nun üç şartı
+belirlendi. Kaynak aşamaları (prepare → asr → align → segment) yalnızca
+kendi kaynağının önceki çıktısına bakıyor; klip aşamaları klip başına
+bağımsız. Tek istisna künye madenciliği: `boilerplate` kanal düzeyinde
+çalışıyor ve kanalın **bütün** kayıtlarının ASR çıktısını okuyor; bir
+kaynağın bölütlemesi kanalın diğer kayıtları bitmeden başlarsa madenlenen
+ifade kümesi o an hangi kaydın bitmiş olduğuna, yani zamanlamaya bağlı
+olurdu. Bu yüzden (1) kanal bariyeri: `segment(s)`, kanalın seçili bütün
+kayıtlarının ASR'si bitene ya da hataya düşene kadar hazır olmaz.
+(2) Tek yazıcı: işçiler yalnızca sonuç döndürür, sqlite'a ana süreç yazar
+ve 'bitti' kaydını yazımdan sonra düşer. (3) İş içi hesap sıralı kodla
+aynıdır: aşama nesneleri aynı `process_source` / `process_clips` yolunu
+koşar, paketleme yalnızca hangi klibin hangi işçide ölçüleceğini
+değiştirir; dolgulu toplu çıkarım yoktur (HDemucs'a klipleri dolguyla
+batch hâlinde vermek kenarlarda stem enerjisini değiştirirdi, yapılmadı).
+
+Uygulama `kiraat/scheduler.py`: ana süreç bağımlılık çizgesini kurar, iki
+süreç havuzuna dağıtır — CPU havuzu (`runtime.source_workers`, 6: prepare,
+segment, clip_qc) ve GPU havuzu (`runtime.gpu_stage_concurrency`: asr,
+align, music; her işçi bütün GPU modellerini bir kez yükler). Bir kaynağın
+bölütlemesi biter bitmez klipleri clip_qc ve müzik paketlerine bölünüp
+kuyruğa girer; GPU kuyruğunda öncelik asr > align > music, çünkü ASR alt
+akışı besler, müzik yalnızca kendini. Müzik aşamasında ayrıca ön-yükleme
+eklendi: çözme, 16 kHz yeniden örnekleme ve AST log-mel öznitelikleri CPU
+işidir ve GPU ölçerken boş bekliyordu; artık iş parçacıkları sonraki
+klipleri hazırlıyor (`MusicMeasurer.prepare` / `measure_prepared`; `measure`
+API'si aynı). `done` tablosu ve sürüm kontrolü değişmedi, yeniden koşu
+aynen kaldığı yerden sürer. Sıralı yol `--serial` ile duruyor. Manifestoda
+işaret ve ölçüm sütunlarının sırası aşamaların bitiş sırasına bağlıydı
+(dağıtıcıda müzik clip_qc'den önce bitebiliyor); export artık ikisini de
+sıralı yazıyor. `configs/default.yaml`'daki hiç okunmayan `lease_sec` ve
+`max_job_attempts` anahtarları kaldırıldı.
+
+Testler (`tests/test_scheduler.py`, sahte aşamalarla, gerçek spawn
+havuzlarında): sıralı ve paralel koşu bayt bayt aynı manifestoyu üretir;
+hiçbir bölütleme kanalının bütün ASR'leri bitmeden başlamaz; bozuk kaynak
+`error` alır, ASR'ye gitmez ve bariyeri tıkamaz; yeniden koşu sıfır iş
+yapar; klip işi hatası koşuyu durdurur (sıralı kodla aynı). 106 test
+geçiyor, 1 atlanıyor.
+
+**Deney 1 (özdeşlik, küçük):** 3 kanal × 2 kayıt × ≤20 dk = 1,92 saat ses
+(`scripts/exp_parallel.sh`, tohum 2026). Aynı örneklem sıralı, paralel
+(gpu 1) ve paralel (gpu 2) koşuldu; `scripts/compare_manifests.py` 856 klibi
+her sütunda karşılaştırdı: **üçü özdeş**. Süre 263 → 237 → 169 s; küçük
+örneklemde model yükleme payı büyük, hız sayısı buradan alınmaz.
+
+**Deney 2 (özdeşlik + hız, sample-25):** aynı 81 kaynak paralel modda
+(`--gpu-workers 2`, 6 CPU işçi) temiz dizine (`work/sample-25-par`)
+yeniden koşuldu. 12.958 klip, sabah sıralı koşuyla **her sütunda özdeş**
+(işaret listeleri küme olarak; sıraları farklıydı). Süre 14:38:29 →
+15:12:26 = **34,0 dk**, sıralı 54,7 dk'ya karşı 1,61×; hız **27× → 44×
+gerçek zaman**. Zaman çizgisi: prepare 2,1 dk'da bitti (sıralıda 5,2;
+tamamı ASR'nin altına gömüldü), ASR 17,6 dk'da (iki GPU işçisi), hizalama
++ bölütleme + clip_qc birlikte 15:04'te, müzik 15:03–15:12. Koşu artık
+GPU'ya bağlı: ASR ≈ 18 + hizalama ≈ 6 + müzik ≈ 9 dk ≈ 33 dk, duvar saati
+34 dk. Bundan sonrası CPU örtüştürmeyle değil GPU işini azaltmakla gelir
+(müzik ayrıştırıcı eleği, ASR toplu boyutu); bunlar ölçüm değiştirebilecek
+kararlardır, ayrıca ele alınır. İki GPU işçisi bütün modellerle 21,6 GB
+VRAM tuttu (RTX 3090, 24 GB); üçüncü işçi sığmaz.
+
+Tam korpus tahmini: ~3.100 saat / 44× ≈ 70 saat ≈ 3 gün (sıralıda ≈ 115
+saat). Tam koşu yine örneklem doğrulanıp açık onay gelmeden başlatılmayacak.
+
+## 2026-08-29 — Denetim aracının yüzü sadeleştirildi
+
+Kullanıcı sample-25 denetim sayfasını "çorba gibi" buldu ve eski kör
+dinleme sayfasının (`scripts/listen_ui.py`) daha anlaşılır olduğunu söyledi.
+Bakınca haklıydı: her klip kartı karar düğmelerini, on kusur etiketini ve not
+alanını ayrı ayrı tekrarlıyordu; 20 kartlık deste alt alta bir düğme duvarı
+oluyordu. Üstte sekiz aşama çipi, açık duran uzun kılavuz ve kanal
+satırlarındaki üç ayrı çubuk da göz gürültüsüydü.
+
+Yapılan: karar/kusur/not denetimleri kartlardan çıkarıldı, yalnızca seçili
+klip için alttaki sabit çubukta (oynatıcının hemen altında) tek kopya
+duruyor; kartlar eski sayfadaki gibi yalnızca numara, ses, metin (serif) ve
+katlanmış ölçümler taşıyor, verilen karar kartın sağ üstünde rozet olarak
+görünüyor. Aşama çipleri "koşu durumu" katlanır kutusuna, kılavuz kısaltılıp
+varsayılan kapalıya, deste ayarları ve Keşif süzgeçleri katlanır bölümlere
+alındı; kanal satırı ad + ilerleme + klip sayısına indi. Klavye kısayolları
+ve API değişmedi; sunucu şablonu her istekte okuduğu için yeniden
+başlatılmadı. Headless Chromium ile üç sekme denetlendi, konsol hatası yok.
+
+## 2026-08-29 — Denetim sayfası sıfırdan yazıldı: her sütun süzülebilir
+
+Kullanıcının isteği açıktı: sayfa, ölçütlere göre kolayca süzülüp elle
+sınanabilir olmalı ve klip kartında görünen her ölçüm — kelime güveni,
+hizalama skoru, müzik/konuşma dB, konuşma oranı, iç ve baş/son sessizlik,
+komşu boşluklar, RMS, tepe, kırpılma — bir süzgeç seçeneği olmalı. Eski
+sayfada süzgeç, elle yazılan birkaç metin koşuluyla sınırlıydı ve ölçümlerin
+çoğuna hiç dokunulamıyordu; arayüz de üst üste yamandığı için dağınıktı.
+
+Sunucu tarafında süzgeç tek bir motora çevrildi. `base_rows` bütün klipleri
+bir kez çözüp bellekte tutuyor (anahtar: depo damgaları + klip sayısı, yani
+hat yazdıkça tazeleniyor), `field` bir klibin herhangi bir sütunundaki değeri
+veriyor, `op_match` tek bir süzgeç satırını uyguluyor. `/api/columns` süzülebilen
+sütunları depodan okuyarak döndürüyor: klip alanları, metin alanları ve türevleri,
+manifestten gelen öneri/dışlanma sebebi/politika sürümü, manuel karar ile kusur
+etiketleri, ve bütün ölçümler. Ölçümün türü tek klipten kestirilemediği için
+(ilk klipte null olabiliyor) boş olmayan bütün değerlere bakılıp en sık tür
+seçiliyor; iç içe ölçümler `music_stem_db.vocals` gibi ayrı sütunlara açılıyor.
+sample-25'te 46 sütun çıkıyor. Sıralama da artık her sütunda çalışıyor.
+İki uç daha eklendi: `/api/stats` süzgeçten geçen havuzun karnesini (kaç klip,
+kaç saat, kaça karar verilmiş, karar dağılımı, en sık etiket/sebep/işaret/kanal)
+ve istenirse bir ölçümün dağılımını (yüzdelikler + histogram kovaları, her
+kovanın altında ve üstünde kaç klip kaldığıyla) veriyor; `/api/presets` ölçüt
+kümesini `<work>/review-filters.json` dosyasına adla kaydediyor.
+
+Arayüz sıfırdan yazıldı (`scripts/review_template.html`; eski
+`browse_template.html` artık sunulmuyor). Solda ölçüt kurucu: her satır
+[sütun][işleç][değer], satırlar VE ile birleşiyor, işleç listesi sütunun
+türüne göre değişiyor (sayıda eşik, metinde içerir/eşittir/düzenli ifade,
+listede içinde var/yok, mantıksalda doğru/yanlış, hepsinde boş/dolu) ve
+değerin bilinen seçenekleri açılır listeden geliyor. Ortada klipler üç kipte:
+tohumlu rastgele örnek, herhangi bir sütuna göre sıralı liste (eşiğin iki ucunu
+görmek için), kanal başına kalıcı deste. Seçili klibin bütün ölçümleri rozet
+olarak görünüyor ve rozete tıklamak o sütunda süzgeç satırı açıyor — istenen
+"her ölçüm bir süzgeç seçeneği" bağı burada kuruluyor. Sağda karne ve eşik
+yardımcısı; histogram kovasının soluna tıklamak `<`, sağına tıklamak `>`
+koşulu kuruyor, yüzdelik rozetleri de koşula dönüşüyor. Kovaların yüksekliği
+karekök ölçekli, çünkü müziksiz kliplerin tamamı −80 dB kovasında toplanıp
+ötekileri yassıltıyordu. Altta klavyeyle karar çubuğu duruyor; kör mod metni,
+kimliği, ölçümleri ve öneriyi gizliyor, karar yalnızca sesle veriliyor (`r`
+ile açılıyor). Ölçüt adres çubuğuna yazılıyor, yani bir sınama bağlantıyla
+paylaşılabiliyor.
+
+Karar hâlâ hiçbir klibi elemiyor: sayfa yalnızca ölçüm üretiyor, eleme
+konfigdeki sürümlü `recommended_subset` politikasının işi. Headless Chromium
+ile denendi: metin süzgeci (`text içerir "çünkü"`) 12.958 klipten 215'ini,
+üstüne `word_confidence<0.6` eklenince 13'ünü bırakıyor; kanal destesi, kör
+mod ve Bulgular görünümü çalışıyor, konsol hatası yok.
+
+## 2026-08-29 — Tam koşu öncesi denetim: hizalayıcı skoru yarıya bölünmüştü, ara ses FLAC'a çevrildi
+
+Tam korpus koşusu istenince önce sample-25'in deposu ve manifestosu baştan
+sona incelendi. Doğrulayıcının bildiği iki FAIL dışında yeni bir kod hatası
+çıktı ve tam koşunun diske sığmadığı görüldü; ikisi de koşudan önce
+düzeltildi.
+
+**1. `align_score` tam yarıya bölünüyordu (`stages/align.py`).** Aşama
+emisyona bir kez daha `torch.log_softmax` uyguluyordu. MMS_FA çıktısı zaten
+log-olasılık; `get_model(with_star=True)` sonuna 0 değerli, yani olasılığı
+1,0 olan ve kasıtlı olarak normalize edilmemiş bir `<star>` sütunu ekliyor.
+Model doğrudan koşturulup ölçüldü: `em.exp().sum(-1)` her karede tam 2,0.
+Yeniden normalize edilince star tam 0,5'e oturuyor, gerçek belirteçlerin
+hepsi yarıya iniyor. Verideki izi buydu — `align_score_mean` 12.938 klibin
+11.362'sinde 0,5 kovasında, mutlak tavan 0,5, medyan 0,48.
+
+Kayma her karede tekdüze (−log 2) olduğu için Viterbi yolu değişmez. Bu
+önce üç gerçek parçada doğrulandı (CTC yolu ve kelime damgaları bit bazında
+aynı, skorlar tam 2,0000 kat), sonra uçtan uca: aynı üç kaynak eski ve yeni
+kodla ayrı work-root'larda koşuldu, 99 klibin **`align_score_min/mean`
+dışındaki her sütunu özdeş**, skor oranı 1,9946–2,0028 (fark yalnızca dört
+haneye yuvarlama). Yani bölütleme, kesim sınırları, `text_raw`,
+`word_confidence`, müzik ve clip_qc ölçümleri hiç etkilenmemiş; yanlış olan
+tek şey yayımlanan skor sütunuydu.
+
+Bunun bedeli ölçümden büyük. 28 Ağu kaydı (yukarıda, "Zorlamalı hizalama
+bağlandı") skoru "klip başına asgari medyan 0,40, ortalama 0,48" diye
+yazmış; gerçek değerler 0,80 ve 0,96. Düşüklük `confidence_source: asr`
+kararının gerekçelerinden biri olmuştu ve koşulacak deney 3 (hizalama
+güveni geçerlemesi) bu yanlış tabandan planlanmıştı. **Her iki sayı da
+yeniden koşulmalı**; hizalayıcı skorunun `word_confidence` kaynağı olup
+olamayacağı sorusu yeniden açıktır.
+
+`AlignStage.version` 1 → 2. Doğrulayıcıya sınıf düzeyinde bir muhafız
+eklendi: korpus genelinde en yüksek `align_score_mean` 0,9'u geçmeli. Hata
+hiçbir aralık denetimine takılmıyordu, çünkü 0,48 de [0,1] içindedir; yeni
+denetim eski koşuda FAIL (azami 0,4990), yenisinde PASS (0,9990) veriyor.
+
+**2. Ara ses WAV yerine FLAC (`stages/prepare.py`).** Tam korpusun ölçüsü
+alındı: 2.695 dosya, 27 kanal; 80 dosyalık ffprobe örnekleminde kayıt
+ortalaması 47 dk, tahmini toplam **~2.100 saat**. sample-25 24,69 saatte
+5,94 GB üretti (ara ses 3,97 + klipler 1,97), yani 0,241 GB/saat; tam koşu
+~510 GB demek ve diskte 585 GB boş var. Yükün büyüğü ara ses: 24 kHz mono
+PCM16 tek başına ~366 GB ve `work/audio/srcNNNNN.wav` hiçbir yerde
+silinmiyor.
+
+Silme yerine kayıpsız sıkıştırma seçildi, çünkü silmek bir tuzak kuruyor:
+`prepare` 'bitti' kalırken kaynak sesi kaybolduğu için sonraki bir aşama
+sürümü (tam da bu turda `align` v2 gibi) yeniden koşulamaz hâle gelirdi.
+FLAC ile ~366 GB → ~160 GB, toplam beklenti ~326 GB.
+
+`-sample_fmt s16` zorunlu çıktı ve bunu ölçüm gösterdi: ffmpeg'in FLAC
+kodlayıcısı varsayılan olarak s32/24 bit seçiyor, o zaman hem dosya
+küçülmüyor (WAV'ın %93'ü) hem de örnekler PCM16 yolundakiyle **aynı
+olmuyor** — sessiz bir veri değişikliği olurdu. s16 ile hem `soundfile` hem
+`faster_whisper.audio.decode_audio` iki dosyadan bit bazında aynı örnekleri
+okuyor; gerçek koşuda ara ses WAV'ın %52'si (4 dk kayıtlar), tam kayıtlarda
+%47–49. `PrepareStage.version` 4 → 5.
+
+**3. Politikadan boşa çalışan DNSMOS kuralı kaldırıldı (v3 → v4).**
+`dnsmos_ovrl min 3.0` kuralı `allow_missing: true` taşıyordu ve DNSMOS
+aşaması bağlı olmadığı için sütun hiç üretilmiyordu: kural 12.958 klibin
+hepsinde sessizce geçiyordu. Politika "DNSMOS ≥ 3,0 uygulandı" gibi
+okunuyor ama hiçbir klibi etkilemiyordu. Kural yoruma alındı; hiçbir klibin
+`recommended` değeri değişmez. `tests/test_config.py` artık politikadaki her
+ölçüm kuralının şemada karşılığı olmasını şart koşuyor — bu sınıf hata bir
+daha sessizce giremez. Konfigdeki `dnsmos`, `speaker` ve `events`
+bölümlerinin başına "bağlanmadı" notu düşüldü; `speaker` yokluğunda dışa
+aktarımın kanala düşmesi, yani "aynı metin + farklı ses korunur" kuralının
+fiilen "farklı kanal korunur" olarak çalıştığı da oraya yazıldı
+(sample-25'te 28 yinelemenin hepsi kanal içiydi, zarar yok).
+
+**Denetimde temiz çıkanlar.** 43 denetimin 41'i geçiyordu ve bilinen iki
+FAIL (180 klip ilk kelimesini kapsamıyor, 4 klip küçük harfle başlıyor)
+zaten açık madde. Ek olarak bakıldı ve sorun bulunmadı: 12.958 klibin
+hepsinin ses dosyası var, 300'lük örneklemde istisnasız 24 kHz mono FLAC ve
+süreler ±10 ms içinde; ASR halüsinasyonu yok (ardışık kelime tekrarı sıfır);
+künye/abone/altyazı cümlelerinin hepsi önerilen alt kümenin dışında (tek
+istisna 6,5 s'lik "İzlediğiniz için teşekkürler."); kaynak hatası 0.
+Doğrulayıcıya ikinci bir denetim daha eklendi: `oversize` işareti paylar
+eklenmeden verildiği için 38 klip 15,0–15,4 s aralığında işaretsiz kalıp
+önerilen alt kümeye giriyor — bu tasarım gereği, ama artık bilgi olarak
+raporlanıyor ve pay aşılırsa FAIL veriyor.
+
+**Tam koşu beklentisi.** ~2.100 saat, dağıtıcı 41,5× gerçek zamanda gitti
+(sample-25-par: 33,9 dk / 23,5 saat) → **~51 saat**. Doğrulama koşuları
+`work/fixcheck` (yeni kod) ve `work/fixcheck-old` (eski kod) altında duruyor.
+
+
+## 2026-08-30 — sample-25 silindi; aynı örneklem düzeltilmiş hatla yeniden: `sample-25b`
+
+Dün akşamki düzeltmelerden (dağıtıcı, hizalayıcı skoru — align v2, ara
+ses FLAC — prepare v5, politika v4, yeni denetim sayfası) sonra bütün
+örnek çıktılar silindi: `sample-25`, `sample-25-par`, `exp-par`
+(sıralı/paralel özdeşlik deneyi), `fixcheck*`. Karar kanıtı olan küçük
+dosyalar — `manual-notes.jsonl`, `review-decks.json`,
+`listen-cut-start.txt`, koşu logları, `exp-par/times.txt` —
+`work/archive/sample-25/` altında.
+
+Yeni koşu `work/sample-25b`: **aynı örneklem tanımı ve aynı tohum (2026)**,
+yani aynı 81 kaynak (27 kanal × 3 kayıt, ≤20 dk; sayılan 24,70 saat,
+`--dry-run` ile doğrulandı). Tohum bilerek değiştirilmedi: bölütleme kodu
+değişmediği için klip kimlikleri ve sınırlar dünkü koşuyla birebir aynı
+olmalı, yalnızca `align_score_*` (v2, iki katı) ve `policy_version` (4)
+değişmeli — bu, düzeltmelerin etkisini doğrudan karşılaştırmayı sağlar
+(`scripts/compare_manifests.py` arşivdeki manifest yok; sayılar defterdeki
+dünkü kayıtla karşılaştırılır: 12.958 klip, önerilen 10.121). Dağıtıcı
+varsayılan (`runtime.parallel: true`), 09:59'da başladı; denetim sayfası
+`python scripts/browse_ui.py --work work/sample-25b` (8765) açık.
+
+**Sonuç (10:39):** koşu 09:59–10:39, **39 dakikada 24,7 saat ≈ 38×**
+(dünkü sıralı koşu 54 dk / 27×; dağıtıcı deneyindeki 44× tek başına
+GPU'yken ölçülmüştü, bu koşuda denetim sunucusu da aynı makinede). Çıktı
+beklendiği gibi dünküyle birebir: **12.958 klip / 22,42 saat, önerilen
+10.121 (%78,1) / 17,07 saat**, dışlanma sayıları aynı (müzik 1.251,
+word_confidence 974, forced_split 421, short 125). Değişen tek şey
+hizalayıcı skoru: `align_score_min` medyan 0,795, p10 0,453, p90 0,953;
+0,5 kovasında 270 klip (dün 11.362). Sütun doğrulaması: dünkü iki FAIL
+aynen (4 küçük harf → madde 11; 180 sınır klibi → `listen-cut-start.txt`
+yeni dizine kopyalandı, kimlikler aynı), kalan denetimlerin hepsi geçti.
+Örneklem denetime hazır.
+
+## 2026-08-30 — Tam koşu öncesi kod incelemesi: sürüm zinciri, dağıtıcı eşitliği, tepe sınırlayıcı, kare adımı
+
+83 saatlik tam koşu istenince önce hattın tamamı gözden geçirildi. Beş kusur
+çıktı; hiçbiri koşuyu çökertmiyor, hepsi sessizce yanlış ya da boş sayı
+üretiyordu. Hepsi düzeltildi ve her biri için hatayı yakalayan bir test
+yazıldı; testlerin düzeltme öncesi kodda düştüğü tek tek doğrulandı.
+
+**1. Aşama sürümü yukarı akışı taşımıyordu.** `stage_version` yalnızca
+aşamanın kendi adını taşıyan konfig bölümünü özetliyordu. Sonuç ölçüldü:
+`AlignStage.version` 1'den 2'ye çıkarıldığı hâlde (skorları yarıya bölen
+hata) `align_score_min/mean` sütunlarını klibe yazan `segment`in sürümü
+`8+0528b4a1` olarak kalıyordu — mevcut bir DB'nin kaydettiğiyle bayt bayt
+aynı. Artımlı yeniden koşuda düzeltme manifestoya **hiç ulaşmıyordu**.
+
+Aynı kökten ikinci bir örnek: `asr` ve `clip_qc` ikisi de `cfg.section("vad")`
+okuyor ama `vad` ikisinin de özetinde yoktu. `vad.threshold` değişse hiçbir
+şey yeniden koşmaz, `speech_ratio` ve üç sessizlik sütunu korpus boyunca iki
+ayrı VAD ayarının karışımı olurdu — hiçbir yerde iz bırakmadan.
+
+Sürüm artık özyinelemeli: kendi kod sürümü + tükettiği konfig bölümleri +
+geçişli bağımlılıklarının sürüm dizgeleri. `Stage`e iki bildirim niteliği
+eklendi — `config_sections` (kendi adı dışında okuduğu bölümler) ve
+`version_ignore` (yalnızca başarım ayarları). Varsayılan bilinçli olarak
+muhafazakâr: `config_sections` unutulursa hata geri gelir, `version_ignore`
+unutulursa yalnızca fazladan yeniden koşu olur. `runtime` ve `paths` sürüme
+girmesi yasak — işçi konfigi `runtime`ı değiştiriyor, sürüm süreçler arasında
+kararsız olurdu. Künye madenciliği kayıtlı bir aşama sınıfı değildi ama
+`segment` ona bağlı; `BoilerplateStage` (yeni `ChannelStage` alt sınıfı)
+yalnızca sürüm ve bağımlılık defterine girmek için eklendi, yürütmesi yerinde
+kaldı.
+
+Ölçülen davranış: `align` kod sürümü değişince `align`, `segment`, `clip_qc`,
+`music` eskiyor, `prepare` ve `asr` durur; `vad.threshold` değişince `asr` ve
+altındaki her şey; `prepare.ffmpeg_threads` değişince hiçbir şey;
+`align.confidence_source` değişince `segment` eskiyor ama `align` **durur** —
+tercih değişikliği 3.400 saati yeniden hizalatmıyor. CLI'nin verdiği `20.0`
+ile YAML'ın verdiği `20` aynı özeti üretsin diye sayılar tek biçime indiriliyor.
+
+**2. Dağıtıcı ile sıralı yol aynı klip kümesini ölçmüyordu.** Sıralı
+`run_clip_stage` `pending_clips`i kaynak süzgeci olmadan çağırıyor — depodaki
+her bekleyen klibi ölçüyor. `Scheduler._build` ise klip işlerini yalnız
+seçilmiş **ve hatasız** kaynaklardan kuruyordu. `export` her iki yolda da
+bütün klipleri yazdığı için, klipleri üretildikten sonra hata alan bir
+kaynağın klipleri ölçülmeden manifestoya girip `eksik_olcum:*` ile önerilen
+alt kümeden sessizce düşüyordu. Aynı kök künyeyi de vuruyordu: kanal listesi
+hata süzgecinden geçtiği için dağıtıcı künyeyi daha az kayıttan madenliyor,
+farklı ifade kümesi farklı `boilerplate` işaretleri ve farklı klip metni
+üretiyordu.
+
+Doğru taraf sıralı yol: `export` bütün klipleri yazdığına göre depodaki her
+klip ölçülmelidir. Dağıtıcı artık klip işlerini genel bekleyen kümeden kuruyor
+(bu koşuda yeniden bölütlenecek kaynaklar hariç; onlar `_write_source`
+üzerinden giriyor), kuyruk boşalınca bölütlemesi hataya düşenler için tek
+seferlik bir geç tarama yapıyor, künyeyi de hata süzgeçsiz kanal listesinden
+madenliyor. Dağıtıcı belgesine 4. kural eklendi: **kaynak işi seçime, klip işi
+depoya bağlıdır.**
+
+Bu, tam koşudan sonra `speaker` aşamasının bağlanabilmesinin de şartıydı:
+düzeltme olmadan `--stages speaker export` hata almış kaynakların kliplerini
+sessizce atlardı.
+
+Mevcut testler bunu kaçırıyordu, çünkü `fake_stages`teki tek bozuk kaynak
+`prepare`de düşüyor ve hiç klip üretmiyor. Üç yeni test yazıldı; üçü de
+düzeltme öncesi kodda düşüyor, sonrasında geçiyor.
+
+**3. Hizalama kare adımında 0 → +20 ms testere dişi sapma.** `align.py` kare
+süresini `(len(audio)/sr)/T` diye hesaplıyordu. Model koşturulup ölçüldü:
+gerçek evrişim adımı tam 20,000 ms, kodunki 20,013 ms (30 s parçada); sapma
+parça sonunda tam +20 ms'ye ulaşıp her parça başında sıfırlanıyor — 10, 30 ve
+60 s parçalarda aynı sonuç. Gürültü değil, kelimenin parça içindeki konumuyla
+orantılı bir eğim. Adım artık `setup()` içinde iki ileri geçişle modelden
+çözülüyor (`(L₂−L₁)/(T₂−T₁)/sr`), sabit sayı yok; ölçülen değer 0,020000 s.
+`AlignStage.version` 3.
+
+**4. Tepe sınırlayıcı kaldırıldı — ama ilk teşhis fazla güçlüydü, kaydı düzgün
+duruyor.** `prepare` sesi `alimiter` ile −1 dBFS'e sınırlıyordu; `clip_qc` ise
+tepeyi ve kırpılmayı bu sınırlanmış sesten kesilen klipte ölçüyor. İlk sınama
+sentetikti — %57,5'i kırpılmış bir 24 kHz sinüs zincirden geçirildi, çıkışta
+tepe tam −1,000 dBFS ve `clip_ratio` 0,000000 — ve buradan "sütun sıfırdan
+başka değer alamaz" sonucu çıkarıldı. **Bu sonuç yanlıştı.** Sentetik girdi
+zaten 24 kHz olduğu için yeniden örnekleme hiç koşmadı; gerçek kaynaklar
+44,1 kHz ve ffmpeg yeniden örneklemeyi filtre zincirinden **sonra** yapıyor,
+örnekler arası taşma sınırlanmış tepeleri tavanın üstüne geri çıkarıyor.
+sample-25b'de (limitleyici açıkken) 12.958 klibin 2.058'i −1 dBFS'in
+üstündeydi ve 3'ünde `clip_ratio > 0`.
+
+Aynı üç kaynak üzerinde kontrollü karşılaştırma yapıldı:
+
+| | limitleyicisiz | limitleyicili |
+|---|---|---|
+| `clip_ratio > 0` | 6 / 102 | 0 / 99 |
+| tepe > −0,1 dBFS | 9 | 0 |
+| tepe azami | −0,000 dBFS | −0,890 dBFS |
+| RMS medyanı | −22,17 dBFS | −22,19 dBFS |
+
+Yani sınırlayıcı kırpılma sinyalini gerçekten bastırıyor (6 → 0) ve `peak_dbfs`
+kaynağın değil hattın tavanının ölçüsü oluyor; kaldırma kararı bu yüzden
+doğru. Ama sütun "yapısal olarak sıfır" değildi, yalnızca bastırılmıştı.
+Sınırlayıcı artık `peak_ceiling_db: null` ile varsayılan kapalı, isteğe bağlı
+kaldı. `PrepareStage.version` 6.
+
+**Bağımsız ve henüz açık ikinci sorun:** politikadaki `clip_ratio max: 0.002`
+kuralı **hiçbir yapılandırmada tek bir klip elemedi** — sample-25b'de 0/12.958,
+limitleyicisiz koşuda 0/102. Gözlenen azami `clip_ratio` 7×10⁻⁵, eşiğin yirmi
+katı altında. Yani eşik ölçülen büyüklüğe göre fazla gevşek ve kural
+sınırlayıcı kalksa bile ölü. Eşiğin nereye konacağı dinleme denetimi ister;
+açık madde 12 olarak aşağıya eklendi.
+
+**5. Doğrulayıcı ve şema.** Bir gün önce eklediğim iki denetimin kendi kusuru
+düzeltildi: `oversize` toleransı 0,4 s diye sabit yazılmıştı (sample-25'teki
+azami aşım 0,378 s'ydi — payın hemen altında; 140 kat daha çok klipte yanlış
+FAIL verirdi), artık konfigden ve `RefineConfig`ten türetiliyor (15,0 + 1,0 s);
+hizalama tavanı muhafızı skor hiç yokken `0/0` ile boş geçiyordu, artık
+`align.enabled` açıkken skor yokluğu FAIL. Bir de sınıf denetimi eklendi:
+politikada adı geçen her ölçüm korpusta değişkenlik göstermeli. Dürüstlük payı
+— bu muhafız `dnsmos_ovrl`i yakalar ama sample-25b'de `clip_ratio`yu
+**yakalamadı**, çünkü sütunun iki farklı değeri vardı (0 ve 10⁻⁵). Sabit
+sütunu görür, "neredeyse sabit" sütunu görmez. `schema.py`de `duplicate_of`
+açıklaması da düzeltildi: konuşmacı aşaması bağlı olmadığı için dışa aktarım
+kanala düşüyor ve kural fiilen "aynı metin, farklı kanal korunur" biçiminde.
+
+**Doğrulama.** 120 test geçiyor. Üç kaynaklık koşu paralel ve sıralı yolda
+**özdeş** manifest üretti (102 klip). `verify_columns` 45 denetimin 44'ünü
+geçti; tek FAIL bilinen açık madde (klip ilk kelimesini kapsamıyor, 1 klip,
+dinleme kararı bekliyor). Koşu kaydına artık aşama sürümleri de düşüyor, yani
+`run.log` neyin neyi eskittiğini gösteriyor.
+
+**Sürüm dizgeleri (varsayılan konfig, tam koşuya girecek olanlar):**
+`prepare=6+b8ead68c`, `asr=2+aa02a9c5`, `align=3+788cdd77`,
+`boilerplate=1+7ff09cc9`, `segment=8+361135c3`, `clip_qc=2+1dba94f6`,
+`music=2+3b18374a`. (Doğrulama koşusu `--max-minutes 4` ile yapıldığı için
+onun kaydındaki dizgeler bunlardan farklıdır — tavan `prepare`in özetine
+giriyor ve zincir üzerinden hepsini kaydırıyor. Sürüm zincirinin çalıştığının
+yan kanıtı.)
+
+**sample-25b** (bugün 09:59–10:38, düzeltmelerden önce, 81 kaynak / 12.958
+klip / 25 saat) limitleyici açıkken ve eski kare adımıyla üretildi; içindeki
+`peak_dbfs`, `clip_ratio` ve damga sütunları makaleye taşınmaz. Örnek koşu
+düzeltmelerden sonra yeniden yapılacak.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -1130,6 +1539,13 @@ tamamlandığında yukarıya tarihli bir kayıt olarak taşınır.
     başlayan klip oluyor (sample-25'te 3); Whisper kaydın ilk kelimesini
     büyük harfe çevirmiyor (1). İlkine işaret, ikincisine `to_spoken`
     öncesi ilk harf düzeltmesi; test.
+12. **`clip_ratio` eşiği ölçülen büyüklüğe göre gevşek** — `clip_ratio max:
+    0.002` kuralı hiçbir yapılandırmada tek bir klip elemedi (sample-25b
+    0/12.958; limitleyicisiz koşu 0/102), çünkü gözlenen azami değer 7×10⁻⁵.
+    Tepe sınırlayıcı kalktıktan sonra bile ölü. Kırpık kliplerin gerçekten
+    hangi `clip_ratio` bandında olduğu dinlemeyle saptanıp eşik oraya
+    konmalı, ya da kural kaldırılmalı.
+
 10. **Şablon künye madenciliği** — kelimesi kelimesine n-gram, "<yazar>'ın
     <kitap> adlı kitabından" gibi değişken yuvalı kalıpları bulamıyor
     (sample-15'te 5 kanalda 0 ifade). Sabit iskelet + yuva madenciliği ya da

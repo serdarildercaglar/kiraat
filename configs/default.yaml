@@ -12,11 +12,15 @@ paths:
 
 runtime:
   device: cuda:0
-  gpu_batch_size: 32
-  source_workers: 6
-  gpu_stage_concurrency: 1
-  lease_sec: 900
-  max_job_attempts: 3
+  # Dağıtıcı (kiraat/scheduler.py): CPU işleri (prepare, segment, clip_qc)
+  # ve GPU işleri (asr, align, music) ayrı havuzlarda üst üste biner. false:
+  # tek süreçli sıralı yol; çıktı aynıdır, karşılaştırma ölçütü olarak durur.
+  parallel: true
+  source_workers: 6          # CPU havuzu işçi sayısı
+  gpu_stage_concurrency: 1   # GPU havuzu işçi sayısı (her işçi bütün GPU modellerini yükler)
+  gpu_batch_size: 32         # GPU klip aşamalarında iş başına klip (paketleme; ölçümü değiştirmez)
+  cpu_batch_size: 64         # CPU klip aşamalarında iş başına klip
+  clip_prefetch_threads: 4   # GPU klip aşamasında çözme/yeniden örnekleme ön-yükleme iş parçacığı
   log_level: INFO
   # Örnek koşu sınırları. Tam korpus koşusu ancak hattın tamamı küçük
   # örnekte doğrulandıktan sonra ve açık onayla yapılır; varsayılan bu
@@ -48,7 +52,13 @@ sources:
 prepare:
   target_sr: 24000        # v1 16 kHz'di; modern TTS için 24 kHz taban alınıyor
   highpass_hz: 40.0
-  peak_ceiling_db: -1.0
+  # Tepe sınırlayıcı kapalı (null = uygulanmaz). Açıkken `peak_dbfs` ve
+  # `clip_ratio` kaynağın değil hattın kendi tavanının ölçüsü oluyordu:
+  # sınırlayıcı çıkışı 0,8913'te tuttuğu için `|x| ≥ 0,99` eşiği hiç
+  # tetiklenmiyor, `clip_ratio` sıfıra çakılıyor ve aşağıdaki politika kuralı
+  # hiçbir klibi elemiyordu (30 Ağu 2026, sentetik kırpık sinyalle ölçüldü).
+  # Seviye klip başına sütun olarak yayımlanıyor; normalizasyon kullanıcının.
+  peak_ceiling_db: null
   target_lufs: null       # klip başına normalizasyon yok, doğal seviye korunur
   ffmpeg_threads: 2
   # Çözülen ses kapsayıcı süresinin bu oranından kısaysa kayıt
@@ -109,14 +119,24 @@ segment:
 clip_qc:
   enabled: true
 
+# AŞAĞIDAKİ ÜÇ BÖLÜM HENÜZ BAĞLANMADI: bunları okuyan bir aşama yok
+# (`kiraat/stages/` içinde prepare, asr, align, segment, clip_qc, music var).
+# Ayarlar planlanan aşamaların yerini tutuyor; hiçbir sütun üretmiyorlar.
+# Bağlanana kadar `recommended_subset` içinde de kural olarak kullanılamazlar.
+
 dnsmos:
-  enabled: true
+  enabled: true          # bağlanmadı — `dnsmos_ovrl` sütunu üretilmiyor
 
 speaker:
+  # Bağlanmadı. `dedupe.speaker_field: speaker_id` bu aşamayı bekliyor;
+  # sütun yokken dışa aktarım uyarı basıp kanala düşüyor, yani "aynı metin +
+  # farklı ses korunur" kuralı fiilen "farklı kanal korunur" olarak çalışıyor.
   model: pyannote/wespeaker-voxceleb-resnet34-LM
   cluster_cosine: 0.75
 
 events:
+  # Bağlanmadı. Müzik aşaması AudioSet skorunu kendi içinde üretiyor;
+  # bu bölüm olay etiketlerinin ayrı yayımı için ayrılmış durumda.
   model: MIT/ast-finetuned-audioset-10-10-0.4593
   # v1'de bu modelin "Speech synthesizer" başlığı kapı olarak kullanıldı ve
   # 981 saati sildi; kör denetimde 131 işaretli klipte sıfır doğru pozitif
@@ -192,7 +212,12 @@ recommended_subset:
   # v3 (29 Ağu 2026): müzik kuralı dB sütunundan `background_music` işaretine
   # taşındı (dB VE AudioSet ≥ 0,3); dB tek başına bir kanalda müziksiz
   # klipleri eliyordu. Eşikler dinleme denetimiyle kesinleşene kadar geçici.
-  version: "3"
+  # v4 (29 Ağu 2026): `dnsmos_ovrl` kuralı kaldırıldı — DNSMOS aşaması
+  # bağlanmadığı için sütun hiç üretilmiyordu ve kural `allow_missing: true`
+  # ile 12.958 klibin hepsinde sessizce geçiyordu; politika "DNSMOS ≥ 3,0
+  # uygulandı" gibi okunuyor ama hiçbir klibi etkilemiyordu. Hiçbir klibin
+  # `recommended` değeri değişmez. Aşama bağlanınca ölçülüp geri konur.
+  version: "4"
   rules:
     - metric: speech_ratio
       min: 0.60
@@ -202,9 +227,9 @@ recommended_subset:
       max: 1.0
     - metric: word_confidence
       min: 0.60
-    - metric: dnsmos_ovrl
-      min: 3.0
-      allow_missing: true
+    # DNSMOS aşaması bağlanınca geri konur (v4'te kaldırıldı, yukarıya bak):
+    # - metric: dnsmos_ovrl
+    #   min: 3.0
     - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate, background_music]
 
 export:

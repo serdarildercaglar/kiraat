@@ -31,23 +31,39 @@ def ffprobe(path: str) -> dict[str, Any]:
 
 
 def ffmpeg_filters(opts: Mapping[str, Any]) -> list[str]:
-    """Yüksek geçiren + tepe sınırlayıcı. `alimiter`'ın varsayılan `level=true`
-    seçeneği çıkışı otomatik tam ölçeğe yükseltir ve tavanı boşa çıkarır
-    (5 kayıtlık örnekte bir kaynak 0,00 dBFS'e çıkıp kırpılmıştı); kapalı
-    tutulur ki kaydın doğal seviyesi korunsun."""
-    limit = 10 ** (float(opts.get("peak_ceiling_db", -1.0)) / 20)
-    return [f"highpass=f={float(opts.get('highpass_hz', 40.0))}",
-            f"alimiter=limit={limit:.4f}:level=false"]
+    """Yüksek geçiren süzgeç; tepe sınırlayıcı yalnızca istenirse.
+
+    Sınırlayıcı 30 Ağu 2026'da varsayılan olarak kapatıldı, çünkü ölçümü
+    maskeliyordu: `clip_qc` tepeyi ve kırpılmayı sınırlanmış sesten kesilen
+    klipte ölçüyor, dolayısıyla sütun kaynağın kırpılmasını değil hattın
+    kendi tavanını gösteriyordu. Ölçüldü — %57,5'i sert kırpılmış bir sinüs
+    zincirden geçirildiğinde çıkışta tepe tam −1,000 dBFS ve `clip_ratio`
+    0,000000; `|x| ≥ 0,99` eşiği 0,8913 tavanının üstünde kaldığı için sütun
+    sıfırdan başka değer alamıyordu ve politikadaki `clip_ratio` kuralı
+    hiçbir klibi elemiyordu. Sınırlama zaten veriyi değiştiren tek aşamaydı;
+    "aşamalar karar vermez, ölçer" değişmezine de aykırıydı.
+
+    `peak_ceiling_db` verilirse sınırlayıcı geri gelir. O durumda `level`
+    kapalı tutulmalı: `alimiter`'ın varsayılan `level=true` seçeneği çıkışı
+    otomatik tam ölçeğe yükseltip tavanı boşa çıkarıyor (5 kayıtlık örnekte
+    bir kaynak 0,00 dBFS'e çıkıp kırpılmıştı).
+    """
+    filters = [f"highpass=f={float(opts.get('highpass_hz', 40.0))}"]
+    ceiling = opts.get("peak_ceiling_db")
+    if ceiling is not None:
+        filters.append(f"alimiter=limit={10 ** (float(ceiling) / 20):.4f}:level=false")
+    return filters
 
 
 @register
 class PrepareStage(SourceStage):
     name = "prepare"
-    version = "4"   # v4: `max_minutes` tavanı (ffmpeg -t); tavan altındaki kayıtlar v3 ile aynı
+    version_ignore = ("ffmpeg_threads",)   # yalnızca başarım
+    version = "6"   # v6: tepe sınırlayıcı varsayılan kapalı (ölçümü maskeliyordu); v5: FLAC
 
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
         work = Path(self.cfg.get("paths.work_root"))
-        out = work / "audio" / f"src{source['id']:05d}.wav"
+        out = work / "audio" / f"src{source['id']:05d}.flac"
         out.parent.mkdir(parents=True, exist_ok=True)
         info = ffprobe(source["path"])
         target = int(self.opts.get("target_sr", 24000))
@@ -59,10 +75,18 @@ class PrepareStage(SourceStage):
         # yazılır; kesik-indirme işareti tavana göre değil, tavanla
         # kapsayıcının küçüğüne göre verilir.
         cap_sec = float(self.opts.get("max_minutes", 0) or 0) * 60.0
+        # Ara ses kayıpsız FLAC: 24 kHz mono konuşmada PCM16'nın %48'i. Tam
+        # korpusta (~2.100 saat) ara sesin 366 GB yerine ~160 GB tutması,
+        # klipler ve ham kayıtlarla birlikte diske sığmasının şartı.
+        # `-sample_fmt s16` zorunlu: ffmpeg'in FLAC kodlayıcısı varsayılan
+        # olarak s32/24 bit seçiyor, o zaman hem örnekler PCM16 yolundakiyle
+        # aynı olmuyor hem de dosya %93'e çıkıp sıkışmıyor. s16 ile
+        # soundfile ve faster-whisper aynı örnekleri bit bazında okuyor.
         cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-threads",
                str(int(self.opts.get("ffmpeg_threads", 2))), "-i", source["path"],
                *(["-t", f"{cap_sec:.3f}"] if cap_sec else []),
-               "-ac", "1", "-ar", str(sr), "-af", ",".join(filters), "-c:a", "pcm_s16le", str(out)]
+               "-ac", "1", "-ar", str(sr), "-af", ",".join(filters),
+               "-c:a", "flac", "-sample_fmt", "s16", str(out)]
         if subprocess.run(cmd).returncode != 0 or not out.exists():
             raise RuntimeError(f"ffmpeg basarisiz: {source['path']}")
         # Süre kapsayıcıdan değil çözülen sesten alınır: kesik dosyalarda

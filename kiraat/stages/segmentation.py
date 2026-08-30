@@ -33,6 +33,7 @@ def cut(mono: np.ndarray, sr: int, dst: Path, start: float, end: float) -> None:
 @register
 class SegmentStage(SourceStage):
     name = "segment"
+    config_sections = ("align", "text")   # align.enabled/confidence_source, text.emit_*
     version = "8"
     depends_on = ("asr", "align", "boilerplate")
 

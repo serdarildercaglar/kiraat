@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT))
 from kiraat import schema  # noqa: E402
 from kiraat.config import Config  # noqa: E402
 from kiraat.segment import Word, attach_clitics  # noqa: E402
+from kiraat.boundaries import RefineConfig  # noqa: E402
 from kiraat.stages.clip_qc import level_metrics  # noqa: E402
 from kiraat.text.turkish import is_lower_start  # noqa: E402
 
@@ -148,6 +149,20 @@ check("word_confidence ∈ [0,1], min ≤ mean",
       rng_bad("word_confidence", 0, 1) + [(r["id"],) for r in manifest if r["word_confidence"] is not None and r["word_confidence"] > r["word_confidence_mean"] + 1e-6], len(manifest))
 check("align_score ∈ [0,1], min ≤ mean",
       rng_bad("align_score_min", 0, 1) + [(r["id"],) for r in manifest if r.get("align_score_min") is not None and r["align_score_min"] > r["align_score_mean"] + 1e-6], len(manifest))
+# Tavan denetimi: emisyona fazladan bir `log_softmax` uygulanırsa (star sütunu
+# olasılığın yarısını alır) bütün skorlar yarıya iner ve korpus tavanı tam 0,5
+# olur — sample-25'in ilk koşusunda olan buydu, hiçbir aralık denetimine
+# takılmadan. Düzgün hizalanan bir korpusta en az bir klip 0,9'u geçer.
+_asc = [r["align_score_mean"] for r in manifest if r.get("align_score_mean") is not None]
+_align_on = bool(cfg.get("align.enabled", True))
+if not _asc:
+    # Hizalayıcı açıkken skor yokluğu ölü bir aşama demektir; kapalıyken normal.
+    check("align_score tavanı normalize edilmemiş (korpus azamisi > 0,9)",
+          [("align.enabled true ama hiç align_score yok",)] if _align_on else [], len(manifest))
+else:
+    check("align_score tavanı normalize edilmemiş (korpus azamisi > 0,9)",
+          [] if max(_asc) > 0.9 else [("korpus azamisi", round(max(_asc), 4))], len(_asc),
+          note=f"azami {max(_asc):.4f}")
 spoken = [r for r in manifest if r["speech_ratio"] > 0]   # konuşma yoksa baş = son = süre (tanım)
 check("sessizlikler ≤ duration (konuşmalı kliplerde)",
       [(r["id"],) for r in spoken if max(r["internal_silence_sec"], r["leading_silence_sec"], r["trailing_silence_sec"]) > r["duration"] + 1e-3
@@ -216,6 +231,20 @@ from kiraat.dedupe import dedupe_key  # noqa: E402
 check("duplicate_of geçerli bir klip ve aynı metin (dedupe anahtarıyla: noktalama/boşluk/büyük-küçük harf sayılmaz)",
       [(r["id"], r["duplicate_of"]) for r in manifest if r["duplicate_of"] and (r["duplicate_of"] not in by_id or dedupe_key(by_id[r["duplicate_of"]]["text"]) != dedupe_key(r["text"]))], len(manifest))
 check(f"oversize → duration > {seg_max}", [(r["id"], r["duration"]) for r in manifest if "oversize" in r["flags"] and r["duration"] <= seg_max], len(manifest))
+# Ters yön denetim değil bilgidir: işaret paylar eklenmeden verildiği için
+# baş+son payı kadar (0,4 s) tavanı aşan klipler işaretsiz kalır ve önerilen
+# alt kümeye girer. Aşım payı geçerse kural bozulmuş demektir.
+# İşaret paylar eklenmeden verilir, süre paylardan sonra ölçülür; üstelik
+# sınır iyileştirme sessizliği damganın `after_sec` kadar ötesinde arayabilir.
+# Tolerans bu yüzden konfigden ve `RefineConfig`ten türetilir — sabit 0,4
+# sample-25'teki azami aşımın (0,378 s) hemen üstündeydi ve 140 kat daha çok
+# klipte yanlış FAIL verirdi.
+_seg_cfg = cfg.segment_config()
+over_tol = round(_seg_cfg.lead_pad_sec + _seg_cfg.trail_pad_sec + RefineConfig().after_sec, 3)
+unflag_over = [r for r in manifest if "oversize" not in r["flags"] and r["duration"] > seg_max]
+check(f"oversize işaretsiz klip tavanı en çok pay kadar aşıyor (≤ {seg_max} + {over_tol})",
+      [(r["id"], r["duration"]) for r in unflag_over if r["duration"] > seg_max + over_tol + 1e-6], len(manifest),
+      note=f"{len(unflag_over)} klip {seg_max}–{seg_max + over_tol} s aralığında, önerilen alt kümeye girebilir")
 shorts = [r for r in manifest if "short" in r["flags"]]
 check(f"short → kelime süresi < {seg_min} (pay eklenmeden)", [(r["id"], r["duration"]) for r in shorts if r["duration"] - 0.4 >= seg_min], len(shorts))
 unflag_short = [r for r in manifest if "short" not in r["flags"] and r["duration"] < seg_min]
@@ -231,6 +260,20 @@ for r in manifest:
     if ok != r["recommended"] or sorted(reasons) != sorted(r["exclusion_reasons"]) or r["policy_version"] != policy.version:
         bad.append((r["id"], r["recommended"], ok, r["exclusion_reasons"], list(reasons)))
 check(f"recommended/exclusion_reasons = politika v{policy.version} ile yeniden hesap", bad, len(manifest))
+# Sınıf denetimi: politikanın baktığı bir ölçüm korpus boyunca tek bir değere
+# çakılıysa o kural hiçbir klibi elemez ve politika uygulanmayan bir eşiği
+# uygulanıyormuş gibi gösterir. `dnsmos_ovrl` (sütun hiç üretilmiyordu) ve
+# `clip_ratio` (tepe sınırlayıcının arkasında kalıyordu) tam olarak buydu.
+_dead = []
+for _rule in cfg.policy().rules:
+    if not _rule.metric:
+        continue
+    _vals = {r.get(_rule.metric) for r in manifest}
+    if len(_vals) <= 1:
+        _dead.append((_rule.metric, _vals.pop() if _vals else None))
+check("politikadaki her ölçüm korpusta değişkenlik gösteriyor (ölü kural yok)", _dead, len(manifest),
+      note="tek değere çakılı ölçüme konan kural hiçbir klibi elemez")
+
 check("recommended → exclusion_reasons boş", [(r["id"],) for r in manifest if r["recommended"] and r["exclusion_reasons"]], len(manifest))
 
 # ---------------------------------------------------------------- I. kaynak düzeyi

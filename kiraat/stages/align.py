@@ -84,9 +84,12 @@ def romanize(tokens: Sequence[str], language: str = "tur") -> list[str | None]:
 @register
 class AlignStage(SourceStage):
     name = "align"
-    version = "1"
+    version = "3"   # v3: kare adımı modelden ölçülüyor (parça sonunda +20 ms sapma); v2: log_softmax
     gpu = True
     depends_on = ("asr",)
+    # `confidence_source` bu aşamada okunmuyor, `segment` kullanıyor; burada
+    # sürüme girseydi tercih değişince 3.400 saat yeniden hizalanırdı.
+    version_ignore = ("confidence_source",)
 
     def setup(self) -> None:
         import torch
@@ -98,6 +101,30 @@ class AlignStage(SourceStage):
         self.dictionary = bundle.get_dict(star="<star>")
         self.sr = bundle.sample_rate
         self.torch = torch
+        self.sec_per_frame = self._probe_frame_stride()
+
+    def _probe_frame_stride(self) -> float:
+        """Modelin kare adımını (s) iki ileri geçişle çöz.
+
+        Kare süresini `(len(audio)/sr)/T` diye hesaplamak sistematik olarak
+        sapıyordu: evrişim yığınının alıcı alanı (400 örnek) yüzünden T,
+        uzunluğun adıma tam bölümünden bir eksik ve oran adımı biraz büyük
+        çıkarıyor. Sapma parça sonunda tam +20 ms'ye ulaşıp her parça başında
+        sıfırlanıyordu — gürültü değil, kelimenin parça içindeki konumuyla
+        orantılı bir eğim. Adım burada ölçülür ki sabit sayı olmasın ve
+        bundle değişirse kendiliğinden doğru kalsın.
+        """
+        torch = self.torch
+        lengths = (self.sr * 10, self.sr * 20)
+        frames = []
+        with torch.inference_mode():
+            for n in lengths:
+                em, _ = self.model(torch.zeros(1, n, device=self.device))
+                frames.append(em.shape[1])
+        stride = (lengths[1] - lengths[0]) / (frames[1] - frames[0]) / self.sr
+        if not 0.005 < stride < 0.1:
+            raise RuntimeError(f"hizalayici kare adimi beklenmedik: {stride:.6f} s")
+        return stride
 
     def teardown(self) -> None:
         self.model = None
@@ -121,8 +148,15 @@ class AlignStage(SourceStage):
             ids += toks
             spans_per_word.append(len(toks))
         with torch.inference_mode():
+            # MMS_FA çıktısı zaten log-olasılıktır ve `with_star=True` sonuna
+            # 0 değerli (olasılık 1,0) bir `<star>` sütunu ekler — kasıtlı
+            # olarak normalize edilmemiş. Buraya bir `log_softmax` daha
+            # koymak toplamı 2'ye böler: star tam 0,5'e oturur, gerçek
+            # belirteçlerin hepsi yarıya iner ve skor tavanı 0,5 olur.
+            # Kayma her karede tekdüze olduğu için CTC yolu ve damgalar
+            # değişmez, yalnızca yayımlanan skor yanlış çıkar; sample-25'te
+            # 12.938 klibin 11.362'si 0,5 kovasındaydı. Normalize etme.
             em, _ = self.model(torch.from_numpy(audio).unsqueeze(0).to(self.device))
-            em = torch.log_softmax(em, dim=-1)
         T = em.shape[1]
         if T < len(ids) + 2:
             return [None] * (chunk.b - chunk.a)
@@ -132,7 +166,7 @@ class AlignStage(SourceStage):
         except Exception:
             return [None] * (chunk.b - chunk.a)
         spans = F.merge_tokens(aligned[0], scores[0].exp())
-        sec_per_frame = (len(audio) / self.sr) / T
+        sec_per_frame = self.sec_per_frame
         out: list[dict[str, Any] | None] = []
         k = 0
         for n in spans_per_word:

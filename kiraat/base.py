@@ -21,7 +21,25 @@ class Stage(ABC):
     name: str = ""
     version: str = "1"
     gpu: bool = False
+    #: Çıktısını besleyen aşamalar. İki iş görür: belge ve sürüm zinciri —
+    #: üst akıştaki bir aşamanın sürümü değişince bu aşamanınki de değişir.
+    #: Bu olmadan `align` kod sürümü 2'ye çıkarken `align_score_*` sütunlarını
+    #: yazan `segment` atlanıyordu ve düzeltme manifestoya hiç ulaşmıyordu.
     depends_on: tuple[str, ...] = ()
+    #: Aşamanın KENDİ bölümü dışında okuduğu konfig bölümleri; kendi adı her
+    #: zaman katılır. `asr` ve `clip_qc` `vad` bölümünü okuyordu ama sürümleri
+    #: görmüyordu: eşik değişince hiçbir şey yeniden koşmuyor, konuşma ve
+    #: sessizlik sütunları iki ayrı VAD ayarının karışımı oluyordu.
+    config_sections: tuple[str, ...] = ()
+    #: Kendi bölümünde sürümü etkilemeyen anahtarlar — yalnızca başarım
+    #: ayarları. Unutulması güvenlidir: fazladan yeniden koşu olur, sessiz
+    #: eskime olmaz. Tersi doğru değil, o yüzden varsayılan bölümün tamamıdır.
+    version_ignore: tuple[str, ...] = ()
+
+    @classmethod
+    def hashed_sections(cls) -> tuple[str, ...]:
+        """Sürüm özetine giren konfig bölümleri."""
+        return tuple(sorted({cls.name, *cls.config_sections}))
 
     def __init__(self, cfg: Any):
         self.cfg = cfg
@@ -40,6 +58,16 @@ class SourceStage(Stage):
     @abstractmethod
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
         raise NotImplementedError
+
+
+class ChannelStage(Stage):
+    """Kanal düzeyinde çalışır.
+
+    Şimdilik tek örneği künye madenciliği ve yürütmesi
+    `Pipeline.run_boilerplate` içinde duruyor; buradaki sınıf, aşamanın
+    sürüm ve bağımlılık defterine girmesi için var — `segment` ona bağlı ve
+    sürüm zincirinin onu çözebilmesi gerekiyor.
+    """
 
 
 class ClipStage(Stage):
@@ -76,13 +104,17 @@ class ClipStage(Stage):
                 )
 
 
-def register(cls: type[Stage]) -> type[Stage]:
-    if not cls.name:
-        raise ValueError("Stage.name bos olamaz")
-    if cls.name in _REGISTRY:
-        raise ValueError(f"Tekrarlanan stage adi: {cls.name}")
-    _REGISTRY[cls.name] = cls
-    return cls
+def register(cls: type[Stage] | None = None, *, override: bool = False):
+    """Aşamayı adıyla kaydet. `override=True` mevcut adın yerine geçer; yalnızca
+    testlerde, gerçek aşamanın yerine sahtesini koymak için."""
+    def _do(c: type[Stage]) -> type[Stage]:
+        if not c.name:
+            raise ValueError("Stage.name bos olamaz")
+        if c.name in _REGISTRY and not override:
+            raise ValueError(f"Tekrarlanan stage adi: {c.name}")
+        _REGISTRY[c.name] = c
+        return c
+    return _do(cls) if cls is not None else _do
 
 
 def get_stage(name: str) -> type[Stage]:

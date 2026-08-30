@@ -24,8 +24,11 @@ yineleme işaretleme → politika ve dışa aktarma.
 ## 1. Kaynak hazırlama (`prepare`)
 
 Her kaynak kayıt (`.m4a`, `.mp3`, `.wav`, `.flac`, `.opus`, `.webm`) ffmpeg
-ile tek kanala indirilir, 24 kHz'e yeniden örneklenir ve PCM 16 bit WAV
-olarak çözülür. Kaynağın kendi hızı 24 kHz'in altındaysa yükseltme yapılmaz;
+ile tek kanala indirilir, 24 kHz'e yeniden örneklenir ve 16 bit kayıpsız
+FLAC olarak çözülür (`-sample_fmt s16`; örnekler PCM 16 bit WAV yolundakiyle
+bit bazında aynıdır, dosya onun yarısı kadardır — 2.100 saatlik tam koşuda
+ara sesin 366 GB yerine ~160 GB tutmasının şartı).
+Kaynağın kendi hızı 24 kHz'in altındaysa yükseltme yapılmaz;
 bu durumda çıktı kaynağın gerçek hızındadır ve o hız `source_sample_rate`
 sütununda yayımlanır ki kullanıcı üst-örneklenmiş kaynakları ayırt edebilsin.
 Filtre zinciri iki adımdır: 40 Hz yüksek geçiren süzgeç (uğultu ve DC
@@ -96,7 +99,12 @@ hizalama yapılır ve `merge_tokens` ile belirteç aralıkları birleştirilir.
 Kelime başına üç alan üretilir. `align_start`/`align_end`, kelimenin
 romanize karakterlerinin ilk ve son karesinin zamanıdır (parça ekseninden
 kayıt eksenine taşınmış). `align_score`, kelimenin karakter belirteçlerinin
-kare olasılıklarının ortalamasıdır (0–1). Hizalanamayan parça ya da kelime
+kare olasılıklarının ortalamasıdır (0–1). Model çıktısı zaten
+log-olasılıktır ve `with_star=True` sonuna normalize edilmemiş bir `<star>`
+sütunu ekler; emisyon **yeniden normalize edilmez** — bir `log_softmax`
+daha uygulamak star'a olasılığın yarısını verir ve bütün skorları 0,5
+tavanına sıkıştırır (29 Ağu 2026'da düzeltildi, defterdeki kayda bakınız).
+Hizalanamayan parça ya da kelime
 (çok kısa ses, sözlükte karşılığı olmayan belirteç, kafesin sığmaması)
 boş kalır. Beş kayıtlık örnekte 31.982 kelimenin %99,6'sı hizalandı.
 
@@ -287,12 +295,16 @@ grubunda en uzun süreli klip korunur (`duplicate_of` boş), diğerleri
 ## 11. Politika ve karar sütunları (`recommended_subset`)
 
 `recommended`, `exclusion_reasons` ve `policy_version` üçlüsü, konfigdeki
-sürümlü kural listesinin ürünüdür. Sürüm 2'nin kuralları: `speech_ratio`
+sürümlü kural listesinin ürünüdür. Sürüm 4'ün kuralları: `speech_ratio`
 ≥ 0,60; `clip_ratio` ≤ 0,002; `internal_silence_sec` ≤ 1,0 s;
-`word_confidence` ≥ 0,60; `dnsmos_ovrl` ≥ 3,0 (ölçüm yoksa geçilir);
-`music_to_speech_db` ≤ −40 dB (ölçüm yoksa geçilir); ve `oversize`,
-`forced_split`, `gap_split`, `short`, `duplicate`, `boilerplate`
-işaretlerinden hiçbirinin bulunmaması. Sağlanmayan her kural gerekçe olarak
+`word_confidence` ≥ 0,60; ve `oversize`, `forced_split`, `gap_split`,
+`short`, `duplicate`, `boilerplate`, `background_music` işaretlerinden
+hiçbirinin bulunmaması. Müzik kuralı v3'te `music_to_speech_db` sütunundan
+`background_music` işaretine taşındı (dB VE AudioSet ≥ 0,3), çünkü dB tek
+başına bir kanalda müziksiz klipleri eliyordu. `dnsmos_ovrl` ≥ 3,0 kuralı
+v4'te kaldırıldı: DNSMOS aşaması bağlı değil, sütun hiç üretilmiyor ve
+kural `allow_missing` ile her klipte sessizce geçiyordu — politika
+uygulanmayan bir eşiği uygulanıyormuş gibi gösteriyordu. Sağlanmayan her kural gerekçe olarak
 yazılır: `metrik<eşik`, `metrik>eşik`, `isaret:ad[,ad]`, ölçüm eksikse ve
 kural eksikliğe izin vermiyorsa `eksik_olcum:metrik`. Politika değişince
 veri yeniden üretilmez, yalnızca bu üç sütun yeniden hesaplanır.

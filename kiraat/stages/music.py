@@ -159,10 +159,13 @@ class MusicMeasurer:
         self._ast = self._sep = self._ext = None
 
     # --------------------------------------------------------------- ölçümler
-    def audioset_music_score(self, wave, sr: int) -> float:
-        """Pencereler üzerinde azami müzik skoru (çok etiketli, sigmoid)."""
-        import torch
+    def prepare(self, wave, sr: int) -> dict[str, Any]:
+        """Bir klibin CPU tarafı: 16 kHz dalga ve AST öznitelikleri (log-mel).
 
+        GPU'ya dokunmaz, iş parçacığında koşabilir; `MusicStage` GPU bir
+        klibi ölçerken sonrakileri böyle hazırlar. Sonuç yalnızca klibin
+        kendisine bağlıdır — hangi iş parçacığında, hangi sırada
+        hazırlandığı ölçümü değiştirmez."""
         wave16 = self._resample(wave, sr, 16000)
         window = int(self.window_sec * 16000)
         hop = int(self.hop_sec * 16000)
@@ -172,6 +175,15 @@ class MusicMeasurer:
         inputs = self._ast_fx(
             [c.cpu().numpy() for c in chunks], sampling_rate=16000, return_tensors="pt"
         )
+        return {"wave": wave, "sr": sr, "wave16": wave16, "ast_inputs": inputs}
+
+    def audioset_music_score(self, wave, sr: int) -> float:
+        """Pencereler üzerinde azami müzik skoru (çok etiketli, sigmoid)."""
+        return self._audioset_score(self.prepare(wave, sr)["ast_inputs"])
+
+    def _audioset_score(self, inputs) -> float:
+        import torch
+
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         with torch.inference_mode():
             logits = self._ast(**inputs).logits
@@ -204,9 +216,11 @@ class MusicMeasurer:
         return music_to_speech_db(vocals, accompaniment), energies
 
     def external_music_prob(self, wave, sr: int) -> float:
+        return self._external_prob(self._resample(wave, sr, 16000))
+
+    def _external_prob(self, wave16) -> float:
         import torch
 
-        wave16 = self._resample(wave, sr, 16000)
         inputs = self._ext_fx(wave16.cpu().numpy(), sampling_rate=16000, return_tensors="pt")
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         with torch.inference_mode():
@@ -215,19 +229,23 @@ class MusicMeasurer:
 
     def measure(self, wave, sr: int) -> dict[str, Any]:
         """Bir klibin bütün müzik ölçümleri."""
-        score = self.audioset_music_score(wave, sr)
+        return self.measure_prepared(self.prepare(wave, sr))
+
+    def measure_prepared(self, prepared: Mapping[str, Any]) -> dict[str, Any]:
+        """`prepare` çıktısından GPU tarafı ölçümler."""
+        score = self._audioset_score(prepared["ast_inputs"])
         out: dict[str, Any] = {
             "music_score_audioset": round(score, 4),
             "music_to_speech_db": FLOOR_DB,
             "music_db_separated": False,
         }
         if score >= self.separator_screen:
-            db, stems = self.separate_db(wave, sr)
+            db, stems = self.separate_db(prepared["wave"], prepared["sr"])
             out["music_to_speech_db"] = round(db, 2)
             out["music_db_separated"] = True
             out["music_stem_db"] = stems
         if self._ext is not None:
-            out["music_prob_external"] = round(self.external_music_prob(wave, sr), 4)
+            out["music_prob_external"] = round(self._external_prob(prepared["wave16"]), 4)
         return out
 
     # ------------------------------------------------------------- yardımcılar
@@ -245,6 +263,7 @@ class MusicStage(ClipStage):
     """Klip başına müzik ölçümlerini üretir. Karar vermez."""
 
     name = "music"
+    depends_on = ("segment",)
     version = "2"   # v2: sahipli anahtarlar bildirildi (yeniden koşuda hayalet sütun kalmaz)
     gpu = True
     produces_metrics = ("music_score_audioset", "music_to_speech_db", "music_db_separated",
@@ -252,24 +271,34 @@ class MusicStage(ClipStage):
     produces_flags = ("background_music",)
 
     def setup(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
         self.measurer = MusicMeasurer(
             device=self.cfg.get("runtime.device", "cuda:0"),
             external_model=self.opts.get("external_model"),
             separator_screen=float(self.opts.get("separator_screen", SEPARATOR_SCREEN)),
         )
         self.measurer.setup()
+        # Ön-yükleme: çözme, yeniden örnekleme ve log-mel CPU işidir ve GPU
+        # ölçerken boş bekliyordu; iş parçacıkları sonraki klipleri hazırlar.
+        # Sıra `map` ile korunur, her satır kendi klibinin kimliğini taşır.
+        self.prefetch = ThreadPoolExecutor(max(1, int(self.cfg.get("runtime.clip_prefetch_threads", 4))))
 
     def teardown(self) -> None:
+        self.prefetch.shutdown(wait=True)
         self.measurer.teardown()
+
+    def _prepare(self, clip: Mapping[str, Any]) -> dict[str, Any]:
+        wave, sr = load_audio(clip["audio"])
+        return self.measurer.prepare(wave, sr)
 
     def process_clips(self, clips: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:
         threshold = float(self.opts.get("inaudible_db", INAUDIBLE_DB))
         audioset_min = self.opts.get("audioset_min", AUDIOSET_MIN)
         audioset_min = None if audioset_min is None else float(audioset_min)
         rows: list[dict[str, Any]] = []
-        for clip in clips:
-            wave, sr = load_audio(clip["audio"])
-            metrics = self.measurer.measure(wave, sr)
+        for clip, prepared in zip(clips, self.prefetch.map(self._prepare, clips)):
+            metrics = self.measurer.measure_prepared(prepared)
             flags = ["background_music"] if has_background_music(
                 metrics["music_to_speech_db"], threshold,
                 audioset=metrics.get("music_score_audioset"), audioset_min=audioset_min,
