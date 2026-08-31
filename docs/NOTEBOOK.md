@@ -2373,6 +2373,56 @@ sayıyor: bu depoda üretilmemiş sayılar, eskimiş koşular, politikadan düş
 **Makaleye:** doğrudan malzeme değil; makaleyi yazarken ilk okunacak yer
 bu dizindir.
 
+## 2026-08-31 — Literatür taraması genişletildi: katmanlama pratiği, nihai kanıt standardı, venue haritası
+
+30 Ağustos'taki "Alanın yerleşik yöntemi" kaydı altı işin okumasına
+dayanıyordu; bugün tarama genişletildi (WenetSpeech4TTS, Hi-Fi TTS,
+AutoPrep, MLS/YODAS/SPGISpeech, kalite ölçüleri, metin normalizasyonu,
+KazakhTTS/KazakhTTS2, BibleTTS, eşik–çeşitlilik karşılaştırması
+arXiv:2510.03111) ve hatla madde madde karşılaştırıldı. Tam rapor ve
+künyeler [`docs/LITERATURE.md`](LITERATURE.md) dosyasında; doğrulanamayan
+künyeler orada işaretli ve makaleye girmeden tek tek açılacak.
+
+**Ayrılığımız sanıldığından küçük.** 30 Ağustos kaydı "yerleşik hatların
+hepsi kalite ölçüsünü kapı yapar" diyordu; bu, kendi modelini beslemek
+için veri üretenler (Emilia, AutoPrep, Hi-Fi TTS) için doğru. Paylaşılan
+korpus yayımlayan işlerin yerleşik biçimi ise bizimkine yakın:
+WenetSpeech4TTS DNSMOS'la Premium/Standard/Basic katmanlarını üçü birden
+yayımlar, LibriTTS clean/other'ı etiketli katman olarak sunar, LibriTTS-R
+eleme yerine onarım yapar. Bizim katkımız eşiksizlik değil, eşiğin kör
+dinlemeyle gerekçelendirilip sürümlü politika olarak ilan edilmesi —
+katkı cümlesi böyle kurulacak.
+
+**Nihai kanıt standardı.** Veri makalelerinde kalitenin kanıtı nesnel skor
+dağılımı değil, o veriyle TTS eğitip çıktıyı ölçmek: WenetSpeech4TTS her
+katmanla ayrı model eğitip CER/SECS/NMOS/SMOS raporlar; ManaTTS ve
+KazakhTTS2 MOS verir. Deney listemizde bu yoktu; 12. madde olarak eklendi.
+Hangi ölçümlerin üretileceğini geriye doğru belirlediği için düzeneği tam
+koşudan önce tasarlanmalı.
+
+**Zamanlama uyarısı: ara ses silinmeden konuşmacı kararı.** Diarization
+kayıt düzeyidir ve `work/audio` üzerinde koşar. Tam koşu sonrası ara sesin
+silinmesi gündemde; o karar, konuşmacı kümelemenin hatta girip
+girmeyeceği kararından önce verilmemeli — silinirse konuşmacı aşaması
+için 283 GB'lık prepare yeniden koşar.
+
+**Boşluk sıralaması literatüre göre.** (1) Algısal kalite/SNR sütunları
+(açık madde 11; Brouhaha tek geçişte VAD+SNR+C50 verir, tek aşamayla üç
+sütun olabilir); (2) konuşmacı bilgisi — standart tabloda konuşmacı sayısı
+ve cinsiyet dengesi var, bizde `speaker_id` yok ve `dedupe` kanala
+düşüyor; (3) held-out test (deney 5); (4) LUFS — ilkeye uygun asgari adım
+normalizasyon değil klip başına ölçüm sütunu. Kanal dengesizliği ise
+literatürde eleme sebebi değil; raporlanır, elenmez.
+
+**Emsal ve venue.** En yakın emsaller KazakhTTS2 (LREC 2022) ve ManaTTS
+(NAACL 2025); ikisi de "veri kümesi + tarif + eğitilmiş modelle kanıt"
+formatında. Venue ailesi Interspeech / LREC / ICASSP-SLT-ASRU / *ACL.
+
+**Makaleye:** §İlgili çalışmalar `docs/LITERATURE.md`'den kurulur (künyeler
+doğrulandıktan sonra); katkı cümleleri: gerekçelendirilmiş sürümlü politika,
+çok saatlik kaydın sabit bellekle işlenmesi, ayrıştırma tabanlı müzik
+ölçümü.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -2418,6 +2468,11 @@ tek satırlık kapanış notu durur.
 11. **Literatürden gelen üç sütun** — DNSMOS (`dnsmos_ovrl`), klip başına
     dil kimliği ve `duration / n_words` aykırılığının dinleme sınaması.
     Üçü de klip aşaması; tam koşudan sonra ASR tekrarlanmadan eklenebilir.
+12. **Korpusla TTS eğitip değerlendirme — nihai kanıt.** Alanın standardı
+    (31 Ağu kaydı): önerilen alt küme ve bütün korpusla ayrı ayrı model
+    eğitip MOS/CMOS, CER/WER ve konuşmacı benzerliği raporlamak; politika
+    ve katmanlamanın kanıtı aynı deneyden çıkar. Düzenek tam koşudan önce
+    tasarlanmalı.
 
 **Yöntem olarak yerleşmiş.**
 
