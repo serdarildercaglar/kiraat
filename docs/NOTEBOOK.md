@@ -34,10 +34,14 @@ satır içi `Düzeltme` / `Geçersiz` notu vardır.
 | ham korpus | 3.440,2 saat, 2.698 okunabilir kayıt, 27 kanal | envanter, 30 Ağu (`work/inventory.jsonl`) |
 | kayıt uzunluğu | medyan 41,4 dk, p99 517,7 dk, azami 14,92 saat; %30,7'si 4 saatten uzun | aynı |
 | kaynak biçimi | 44,1 kHz stereo AAC ~129 kb/s; bant kesimi medyan 15,7 kHz | aynı |
-| denetim örneklemi | `sample-25c`: 81 kaynak, 27 kanal, 13.637 klip / 23,17 saat | 30 Ağu koşusu |
-| önerilen alt küme | 11.291 klip (%82,8) / 18,98 saat, **politika v6** | aynı |
+| denetim örneklemi | `sample-25d`: 81 kaynak, 27 kanal, 13.628 klip / 23,18 saat | 31 Ağu koşusu, commit `afe1109` |
+| önerilen alt küme | 11.285 klip (%82,8) / 18,97 saat, **politika v6** | aynı |
+| ses yüksekliği | klip medyanı −21,5 LUFS; kanal medyanları −33,4 … −12,3 (21,1 LU) | aynı |
+| DNSMOS P.835 | OVRL medyan 3,28 (p5 2,67 – p95 3,48); SIG 3,56; BAK 4,10 | aynı |
+| müzik korelasyonu | Spearman(AudioSet, dB) +0,479, 3.097 ayrıştırılan klip | aynı |
 | uzun kayıt sınavı | `long-smoke`: 14,92 saatlik tek kayıt, 7.170 klip / 13,46 saat | 30 Ağu |
-| hız | 41,5× (dağıtıcılı, sample-25c); tek kaynak zincirinde 34,5× | aynı |
+| hız | 41,5× (dağıtıcılı, sample-25c, `dnsmos` aşaması öncesi); tek kaynak zincirinde 34,5× | 30 Ağu |
+| klip aşaması maliyeti | `dnsmos` 2,07 çekirdek-s/klip, `clip_qc` 0,10, `music` 0,11 | 31 Ağu, sample-25d logu |
 | tam koşu beklentisi | ~83 saat, ~557 GB, ~1,73 milyon klip | yukarıdakilerden |
 
 **Geçersiz sayılar — makaleye girmez.**
@@ -49,17 +53,22 @@ satır içi `Düzeltme` / `Geçersiz` notu vardır.
 - **Eskimiş örnek koşular.** `sample-5*`, `sample-15`, `sample-24`,
   `sample-25`, `sample-25b` koşularının klip sayıları ve önerilen oranları
   yalnızca o günün hattını anlatır; hepsi silindi ve düzeltilmiş hatla
-  `sample-25c` olarak yeniden koşuldu. Korpus sayısı olarak yalnızca
-  `sample-25c` ve `long-smoke` kullanılır. (Kör dinleme sonuçları
+  `sample-25c` olarak, 31 Ağustos'ta (metin kuralları, LUFS, DNSMOS) da
+  `sample-25d` olarak yeniden koşuldu. Korpus sayısı olarak yalnızca
+  `sample-25d` ve `long-smoke` kullanılır; `sample-25c` yalnızca hız
+  ölçümü (41,5×) ve ASR belirlenimciliği karşılaştırması için anılır. (Kör dinleme sonuçları
   koşudan bağımsızdır ve geçerliliğini korur.)
 - **Politikadan düşmüş kurallar.** `dnsmos_ovrl ≥ 3,0` (v4'te kaldırıldı,
-  hiç ölçülmüyordu), `clip_ratio ≤ 0,002` (v5, kör dinleme),
+  o gün hiç ölçülmüyordu; sütun 31 Ağu'dan beri var ama kural kör dinleme
+  olmadan geri konmadı), `clip_ratio ≤ 0,002` (v5, kör dinleme),
   `word_confidence ≥ 0,60` (v6, kör dinleme). Politika **v6**'dır ve üç
   kuralı vardır; bu üç eşik makalede yürürlükteymiş gibi anlatılamaz.
 - **Uygulanmamış ayarlar.** `export.max_hours_per_channel: 120` hiçbir
   zaman kod tarafından okunmadı ve kaldırıldı; kanal başına saat tavanı
   **yoktur**. Aynı şekilde müzik eşiğinin ilk tahmini −30 dB kör dinlemeyle
   çürütüldü, geçerli eşik **−40 dB**'dir.
+- **Müzik korelasyonunun v1 ölçümü** (+0,799, 28 Ağu, 70 v1 klibi) bu depoda
+  tekrarlandı ve yerine +0,479 geçti (31 Ağu, 3.097 klip).
 - **Dağıtıcı öncesi hız tahminleri** (10,9×, 27×, 31×, 38×) hattın o günkü
   hâlini anlatır; geçerli hız 41,5×'tir.
 
@@ -2423,6 +2432,113 @@ doğrulandıktan sonra); katkı cümleleri: gerekçelendirilmiş sürümlü poli
 çok saatlik kaydın sabit bellekle işlenmesi, ayrıştırma tabanlı müzik
 ölçümü.
 
+## 2026-08-31 — Uygulanabilir maddeler kapatıldı: eşikler konfige, metin kuralları, LUFS ve DNSMOS sütunları; `sample-25d`
+
+Literatür karşılaştırmasından çıkan boşlukların "şimdi, bu depoda, kulak
+gerektirmeden kapanabilir" olanları tek turda kapatıldı; her biri kod +
+test, sonra 2 kaynaklık duman koşusu, sonra denetim örnekleminin yeniden
+koşusu ile doğrulandı. Commit `75d4607` (kod), `afe1109` (analiz betiği);
+`sample-25d` bu temiz commit'ten üretildi.
+
+**Gömülü eşikler konfige taşındı, değerler değişmedi.** Sınır
+iyileştirmenin yedi eşiği (`RefineConfig`) yeni `boundaries` bölümüne,
+`asr.beam_size` (5) ve müzik AST penceresi (`window_sec` 10,24 /
+`hop_sec` 5,0) kendi bölümlerine geçti; `SegmentStage` `boundaries`
+bölümünü sürümüne katıyor. "Koddaki varsayılan = konfig" bekçileri
+(`tests/test_config.py`) eklendi. Konfigin `SECTIONS` listesindeki dört ölü
+bölüm adı (`speaker`, `events`, `export`, eski `dnsmos`) çıktı;
+`run_boilerplate`ın konfigden sapmış mükerrer varsayılanları (kodda 3/12,
+konfigde 2/24) kalktı, tek kaynak `mine` imzası. Koda gömülü BIRAKILANLAR
+ve gerekçesi: `INTERNAL_BREAKS`, `ABBREVIATIONS`, `ORDINAL_FOLLOWERS` dil
+verisidir, eşik değil; dağıtıcı öncelikleri ve 32 MB zarf bloğu başarım
+ayarıdır, çıktıyı değiştirmez (test altında).
+
+**Metin kuralları (açık madde 7/9).** Harf+rakam belirteçleri TDK harf
+adlarıyla okunuşa çevriliyor: "3G" → "üç ge", "F-16" → "fe on altı",
+"MI6" → "me ı altı" (ASCII I'nın adı "ı"). Kural bilinçli olarak dar —
+yalnızca BÜYÜK harfli, en çok 4 harf + 4 basamak; "mp3", "cm2" gibi küçük
+harfli karışımlara dokunulmaz, İngilizce okunan markalar Türkçe harf
+adıyla yaklaşıklanır (ASR metninden gerçek okunuş bilinemez, sözleşme bu).
+İkinci kural: 1–3 basamaklı sayı + nokta cümle sonu sayılmaz ("1. Naip",
+"3. Selim", "100. Yıl"); 4 basamaklı yıllar sınır olarak kalır.
+`to_spoken` da özel isim önündeki sıra sayısını okur ("birinci Naip").
+`segment` v9. `sentences.py` ve `normalize.py` için doğrudan test dosyaları
+yazıldı (daha önce yalnızca `test_segment` üzerinden dolaylıydı).
+
+**Yeni sütunlar.** `clip_qc` v3 klip başına `loudness_lufs` (BS.1770,
+pyloudnorm) üretiyor — DESIGN #9'un ölçüm yarısı; sese dokunulmuyor,
+normalizasyon kullanıcının. Yeni `dnsmos` aşaması (v1) P.835 SIG/BAK/OVRL
+üretiyor; hesap Microsoft'un `dnsmos_local.py` referansıyla birebir (9,01 s
+pencere, 1 s adım, kısa klip kendi üstüne yinelenir, ikinci derece polinom
+eşleme, pencere ortalaması). Model dosyası depoda (`models/dnsmos/`),
+sha256'sı konfigde ve kuruluşta doğrulanıyor; yol sürüme girmiyor, özet
+giriyor. **Politika kuralı konmadı** — kanıt yükü kapıdadır.
+
+**`sample-25d`: denetim örneklemi yeni hatla.** Aynı tarif (27 kanal × 3
+kayıt × ≤20 dk, 81 kaynak): **13.628 klip / 23,18 saat**, önerilen
+**11.285 (%82,8) / 18,97 saat**, politika v6. `verify_columns` HATA YOK
+(300 ses örneği). Koşu PC yeniden başlayınca yarıda kaldı ve `done`
+kayıtlarından kaldığı yerden sürdü (ASR tekrarlanmadı); bu yüzden bu
+koşudan hız ölçümü alınmadı, geçerli hız hâlâ `sample-25c`'nin 41,5×'i.
+
+*Belirlenimcilik.* `beam_size` koda gömülüyken de 5'ti; 81 kaydın ASR
+kelime dosyası `sample-25c` ile **bayt bayt aynı** (81/81). Kliplerin
+%91,4'ünün `text_raw`ı aynı; farkın tamamı cümle kuralının kaydırdığı klip
+sınırlarından.
+
+*Cümle kuralının etkisi (25c → 25d).* Tek belirteçlik "N." klipleri 5 → 0;
+0,5 s altı klip 3 → 1; `short` 165 → 158; klip sayısı 13.637 → 13.628.
+`text_spoken`da rakam kalan klip 5 → 4 — kalanlar "9x12", "cm2", "cm3"
+(küçük harfli birim üstleri, kuralın bilinçli dışında). Harf+rakam
+belirteci bu örneklemde hiç geçmedi; kural testle sınandı, veriyle henüz
+değil.
+
+*Müzik ölçümünün tekrarı (deney 2, kapandı).* Ayrıştırıcının koştuğu
+3.097 klipte Spearman(AudioSet, dB) = **+0,479**. 28 Ağustos'taki +0,799
+v1 kliplerinde ve beş banda yayılmış 70 klipte ölçülmüştü; burada evren
+eleme eşiğini (0,05) geçen kliplerle sınırlı olduğundan aralık daralması
+korelasyonu düşürür. Geçerli sayı budur; v1 sayısı makaleye girmez.
+`background_music` 1.774 klip (%13,0).
+
+*Madde 15'in girdisi.* İşaret kanala yığılıyor: `Peri_Mia` kliplerinin
+%92,6'sı (önerilen %6,6), `SESLİKİTAPEVİ` %68,4, `sesli-kitaplar` %58,8,
+`Pandoramedyaseslikitap` %43,8, `SesliKitaPodcast` %34,7, `kitaplar`
+%30,2; on beş kanalda %0–1. Kör dinleme sayfası hazır:
+`work/sample-25d/listen-music/index.html`, 36 klip (üç kanal × dört dB
+bandı × üç), kanal ve skor gizli, anahtar `key.json`. Karar dinlemeyi
+bekliyor.
+
+*`duration / n_words`.* Kelime başına süre medyan 0,506 s, p1 0,349,
+p99 0,820, azami 1,495. Kuyruk uyuşmazlık değil başlık/tek kelime
+("Shakespeare", "Bölüm 2 Göz Yaşı Havuzu"); hızlı uçta 0,28 s/kelime.
+Dağılım dar; LibriTTS'in bu sinyali kapı yaptığı türden bir kuyruk
+görünmüyor, dinleme sınaması düşük öncelik.
+
+*LUFS.* n 13.627, medyan −21,5, p5 −29,1, p95 −14,0 (klip düzeyi yayılım
+15,1 LU); **kanal medyanları −33,4 … −12,3 LUFS, aralık 21,1 LU** — v1'de
+18,4 LU idi. DESIGN #9'un teşhisi bu depoda doğrulandı; sütun artık
+yayımlanıyor, seviye kararı alıcının.
+
+*DNSMOS.* SIG medyan 3,56 (p5 3,25 – p95 3,70), BAK 4,10 (3,19 – 4,21),
+OVRL **3,28** (2,67 – 3,48). What-if: `dnsmos_ovrl ≥ 3,0` kuralı önerilen
+11.285 klipten 962'sini (%8,5) dışlardı ve dışlananlar kanala yığılıyor
+(`SESLİKİTAPEVİ` 157, `kitaplar` 99, `ses-arşiv` 95, `OkumaSaati` 87) —
+`clip_ratio` ve `word_confidence` turlarında düşen örüntünün aynısı. Kural
+konmadı; konacaksa önce bantlara dengeli kör dinleme. WenetSpeech4TTS
+katman eşikleri (≥4,0 / ≥3,8 / ≥3,6) burada anlamsız kalıyor: 3,6 üstü
+yalnızca 22 klip — o katmanlar P.808 MOS ölçeğinde, bizim OVRL P.835;
+doğrudan karşılaştırılmaz, makalede bu ayrım yazılır.
+
+*Maliyet.* Logdan: `dnsmos` **2,07 çekirdek-s/klip**, `clip_qc` 0,10,
+`music` 0,11 (GPU). Tam koşuda 1,73 milyon klip ≈ 1.000 çekirdek-saat,
+altı işçiyle ~bir hafta. Aşama klip düzeyi olduğu için tam koşuyu
+bekletmez ama bu hâliyle tam koşuya girmemeli; deney listesine düştü.
+
+**Makaleye:** §Veri (LUFS ve DNSMOS dağılımları, kanal medyanları
+aralığı), §Yöntem (metin normalizasyonu sözleşmesi; eşiklerin tamamının
+konfigde ve koşu kaydında olması), §Sınırlar (DNSMOS'un P.835 olduğu ve
+katman eşiklerinin taşınamayacağı; harf+rakam kuralının darlığı).
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -2435,9 +2551,7 @@ tek satırlık kapanış notu durur.
 1. **Bölütleme ablasyonu** — aynı ham kayıtlar üzerinde VAD tabanlı kesim ile
    cümle hizalı kesim; cümle bütünlüğü, süre dağılımı, hizalama güveni.
    Makalenin ana sonucu.
-2. **Müzik ölçümünün ölçekli tekrarı** — 28 Ağustos'ta küçük örneklemde
-   yapılan müzik ölçümü, bu depoda üretilmiş kliplerle ve daha büyük
-   örneklemle yeniden koşulmalı.
+2. ~~Müzik ölçümünün ölçekli tekrarı~~ — 31 Ağu 2026, kapandı (aşağıda).
 3. **Hizalama güveni geçerlemesi** — kelime başına hizalama olasılığının
    transcript doğruluğuyla ilişkisi; insan referanslı küçük bir örneklemde
    CER ile karşılaştırma.
@@ -2450,9 +2564,8 @@ tek satırlık kapanış notu durur.
    henüz hiç yok.
 6. **Kelime düzeyi damga ve kaynak tablosunun yayımı** — `words` sütunu
    (asr + align damgaları) ve kaynak düzeyi ölçümler; yayın paketiyle.
-7. **Metin normalizasyonu: harf+rakam belirteçleri** — "MI6", "M5", "3G"
-   okunuşa çevrilmiyor (`to_spoken`); tek başına sıra sayısı ("… 1. Naip …")
-   ayrı cümle sayılıp çok kısa klip oluyor. İkisi için kural ve test.
+7. ~~Metin normalizasyonu: harf+rakam belirteçleri~~ — 31 Ağu 2026,
+   kapandı (aşağıda).
 8. **Şablon künye madenciliği** — kelimesi kelimesine n-gram, "<yazar>'ın
    <kitap> adlı kitabından" gibi değişken yuvalı kalıpları bulamıyor. Sabit
    iskelet + yuva madenciliği ya da künye sözlüğüyle cümle düzeyinde işaret;
@@ -2464,15 +2577,26 @@ tek satırlık kapanış notu durur.
     `SESLİKİTAPEVİ`, `sesli-kitaplar` kliplerinden bantlara dengelenmiş
     30–40 kliplik kör dinleme turu: eşik gerçekten duyulur müziği mi
     yakalıyor, yoksa o kanalların tınısını mı? Politika yeniden
-    hesaplanabildiği için tam koşuyu bekletmez.
-11. **Literatürden gelen üç sütun** — DNSMOS (`dnsmos_ovrl`), klip başına
-    dil kimliği ve `duration / n_words` aykırılığının dinleme sınaması.
-    Üçü de klip aşaması; tam koşudan sonra ASR tekrarlanmadan eklenebilir.
+    hesaplanabildiği için tam koşuyu bekletmez. **Dinleme sayfası hazır**
+    (31 Ağu): `work/sample-25d/listen-music/index.html`, 36 klip; kapanış
+    dinlemeyi bekliyor.
+11. **Literatürden gelen sütunlar — kalanı.** DNSMOS ve LUFS sütunları
+    31 Ağu'da bağlandı. Kalan: klip başına dil kimliği (model seçimi
+    ister); `dnsmos_ovrl`in bantlara dengeli kör dinlemesi (what-if: ≥3,0
+    kuralı önerilenin %8,5'ini, kanala yığılarak dışlardı — kural ancak bu
+    dinlemeden sonra); `duration / n_words` dinlemesi düşük öncelik
+    (dağılım dar, kuyruk başlıklardan).
 12. **Korpusla TTS eğitip değerlendirme — nihai kanıt.** Alanın standardı
     (31 Ağu kaydı): önerilen alt küme ve bütün korpusla ayrı ayrı model
     eğitip MOS/CMOS, CER/WER ve konuşmacı benzerliği raporlamak; politika
     ve katmanlamanın kanıtı aynı deneyden çıkar. Düzenek tam koşudan önce
     tasarlanmalı.
+13. **DNSMOS maliyeti** — 2,07 çekirdek-s/klip (31 Ağu, sample-25d);
+    tam koşuda ~1.000 çekirdek-saat. Seçenekler: pencere sayısını azaltmak
+    (referans, kısa klibi yineleyip 1 s adımla gezdiriyor; 6 s'lik klipte
+    üç neredeyse özdeş pencere), klipler arası toplu çıkarım, onnxruntime
+    GPU sağlayıcısı. Hangisi seçilirse referansla sayısal fark ölçülüp
+    defterlenir; bu hâliyle tam koşuya girmez.
 
 **Yöntem olarak yerleşmiş.**
 
@@ -2483,6 +2607,11 @@ tek satırlık kapanış notu durur.
 
 **Kapandı.**
 
+- ~~Müzik ölçümünün ölçekli tekrarı~~ — 31 Ağu 2026; 3.097 depo klibinde
+  Spearman +0,479, v1 sayısı (+0,799) geçersiz.
+- ~~Metin normalizasyonu: harf+rakam ve tek başına sıra sayısı~~ — 31 Ağu
+  2026; TDK harf adlarıyla okunuş, 1–3 basamaklı sayı+nokta cümle sonu
+  değil; "N." klipleri 5 → 0.
 - ~~`word_confidence` kuralı için dinleme denetimi~~ — 30 Ağu 2026, politika
   v6; 30 klipte 29 metin birebir doğru, kural kaldırıldı.
 - ~~`clip_ratio` eşiği~~ — 30 Ağu 2026, politika v5; kör dinlemede 25/25

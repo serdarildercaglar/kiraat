@@ -378,9 +378,11 @@ değil makaleye malzemedir. VAD bölgeleri saklanmaz.
 
 ## 13. Tasarımda kararlaştırılmış, henüz üretilmeyen sütunlar
 
-Konuşmacı kümesi ve küme kenar payı, kaynak düzeyinde LUFS, DNSMOS
-(`dnsmos_ovrl`) ve isteğe bağlı dış müzik sınıflandırıcısı olasılığı
-(`music_prob_external`). Bu aşamaların konfig bölümleri **yazılana kadar
+Konuşmacı kümesi ve küme kenar payı ile isteğe bağlı dış müzik
+sınıflandırıcısı olasılığı (`music_prob_external`). DNSMOS
+(`dnsmos_sig/bak/ovrl`, P.835) ve klip başına `loudness_lufs` 31 Ağu
+2026'da bağlandı ve yayımlanıyor; ikisi de yalnızca sütundur, politikada
+kuralları yoktur. Kalan aşamaların konfig bölümleri **yazılana kadar
 konfige konmaz** (30 Ağu 2026): önceden konmuş ayarlar `dnsmos.enabled:
 true` gibi görünüp olmayan bir aşamayı açık gösteriyor ve politikada ölü
 bir kurala zemin hazırlıyordu. Planlar `docs/NOTEBOOK.md`'nin "Koşulacak

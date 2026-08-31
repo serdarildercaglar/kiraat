@@ -106,6 +106,7 @@ dengesizliği (`seslikitaplarmavi` %19,5, ilk iki kanal %35,2) tavanla
 değil, `channel` + `duration` sütunlarıyla yayımlanır — tavanı kesmek
 kullanıcının tercihidir.
 
-Henüz bağlanmayanlar: konuşmacı kümeleme, DNSMOS, kaynak düzeyi ses
-seviyesi, bölme (train/dev/test) ve yayın paketi. Tam korpus koşusu açık
-onay ister.
+Henüz bağlanmayanlar: konuşmacı kümeleme, ses seviyesi normalizasyonu
+(LUFS yalnızca ölçülüp sütun olarak yayımlanır), bölme (train/dev/test) ve
+yayın paketi. DNSMOS P.835 sütunları 31 Ağu 2026'dan beri üretiliyor ama
+politikada kural değil. Tam korpus koşusu açık onay ister.
