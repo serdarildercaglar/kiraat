@@ -13,7 +13,8 @@ import numpy as np
 
 from kiraat.config import Config
 from kiraat.stages.dnsmos import (INPUT_SEC, SR, _P_SIG, load_session,
-                                  resolve_model_path, score_windows, windows)
+                                  resolve_model_path, score_clips, score_windows,
+                                  windows)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -55,3 +56,24 @@ def test_gercek_modelle_skor_araligi_ve_belirlenimcilik():
     for v in out.values():
         assert 0.5 < v < 5.5, out
     assert out == score_windows(sess, windows(wave))
+
+
+def test_toplu_cikarim_tek_tek_ile_ayni():
+    """Klipler arası paketleme (v2, GPU için) ölçümü değiştirmemeli: her
+    klibin skoru tek başına çıkarılanla aynı; dilim sınırı (256 pencere)
+    da klip ortasına düşebilmeli."""
+    import kiraat.stages.dnsmos as d
+
+    cfg = _cfg()
+    sess = load_session(str(resolve_model_path(cfg.get("dnsmos.model_path"))))
+    rng = np.random.default_rng(1)
+    clips = [windows((rng.standard_normal(SR * s) * 0.05).astype("float32")) for s in (2, 5, 12)]
+    tek = [score_windows(sess, w) for w in clips]
+    assert score_clips(sess, clips) == tek
+    eski = d._RUN_WINDOWS
+    d._RUN_WINDOWS = 4          # 7 + 7 + 3 pencere → dilimler klip ortasından geçer
+    try:
+        assert score_clips(sess, clips) == tek
+    finally:
+        d._RUN_WINDOWS = eski
+    assert score_clips(sess, []) == []

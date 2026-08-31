@@ -32,5 +32,6 @@ pyyaml==6.0.3
 # Klip başına ses yüksekliği sütunu (BS.1770 LUFS, clip_qc).
 pyloudnorm==0.2.0
 
-# DNSMOS P.835 çıkarımı (models/dnsmos/sig_bak_ovr.onnx, CPU).
-onnxruntime==1.23.2
+# DNSMOS P.835 çıkarımı (models/dnsmos/sig_bak_ovr.onnx). GPU yapısı: CPU'da
+# 2,07 çekirdek-s/klip ölçüldü, CUDA'da 9 ms/pencere; cuDNN torch'la gelir.
+onnxruntime-gpu==1.23.2

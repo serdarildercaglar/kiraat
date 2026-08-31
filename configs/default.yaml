@@ -13,7 +13,7 @@ paths:
 runtime:
   device: cuda:0
   # Dağıtıcı (kiraat/scheduler.py): CPU işleri (prepare, segment, clip_qc)
-  # ve GPU işleri (asr, align, music) ayrı havuzlarda üst üste biner. false:
+  # ve GPU işleri (asr, align, music, dnsmos) ayrı havuzlarda üst üste biner. false:
   # tek süreçli sıralı yol; çıktı aynıdır, karşılaştırma ölçütü olarak durur.
   parallel: true
   source_workers: 6          # CPU havuzu işçi sayısı

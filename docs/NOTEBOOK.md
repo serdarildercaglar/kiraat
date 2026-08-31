@@ -41,7 +41,7 @@ satır içi `Düzeltme` / `Geçersiz` notu vardır.
 | müzik korelasyonu | Spearman(AudioSet, dB) +0,479, 3.097 ayrıştırılan klip | aynı |
 | uzun kayıt sınavı | `long-smoke`: 14,92 saatlik tek kayıt, 7.170 klip / 13,46 saat | 30 Ağu |
 | hız | 41,5× (dağıtıcılı, sample-25c, `dnsmos` aşaması öncesi); tek kaynak zincirinde 34,5× | 30 Ağu |
-| klip aşaması maliyeti | `dnsmos` 2,07 çekirdek-s/klip, `clip_qc` 0,10, `music` 0,11 | 31 Ağu, sample-25d logu |
+| klip aşaması maliyeti | `dnsmos` GPU'da ~13 ms/klip (CPU'daki 2,07 çekirdek-s geçersiz), `clip_qc` 0,10, `music` 0,11 çekirdek-s | 31 Ağu, sample-25d logu |
 | tam koşu beklentisi | ~83 saat, ~557 GB, ~1,73 milyon klip | yukarıdakilerden |
 
 **Geçersiz sayılar — makaleye girmez.**
@@ -2539,6 +2539,45 @@ aralığı), §Yöntem (metin normalizasyonu sözleşmesi; eşiklerin tamamını
 konfigde ve koşu kaydında olması), §Sınırlar (DNSMOS'un P.835 olduğu ve
 katman eşiklerinin taşınamayacağı; harf+rakam kuralının darlığı).
 
+## 2026-08-31 — DNSMOS GPU'ya taşındı (v2): 2,07 s/klip → 13 ms/klip, sayılar üç ondalıkta sabit
+
+Aynı gün açılan madde 13 kapandı: `dnsmos` aşaması onnxruntime'ın CUDA
+sağlayıcısına taşındı (`onnxruntime` → `onnxruntime-gpu` 1.23.2). `cuda`
+istenip sağlayıcı yoksa aşama HATA verir — sessizce CPU'ya düşmek 160
+katlık yavaşlamayı gizlerdi.
+
+**İki bellek çukuru ölçülerek bulundu.** 256 ve 128 pencerelik toplu girdi
+cuDNN Conv'da doğrudan reddedildi; 64'lük dilim ise koşunun ortasında
+(443. klip) OOM ile düştü — modelin Conv katmanları pencere başına ~73 MB
+ara bellek istiyor (64 pencerede tek tampon 4,7 GB) ve değişken dilim
+şekilleri BFC arenasını parçalıyor. Çözüm **sabit şekilli dilim**: her
+`run` çağrısı tam 16 pencere alır, son dilim sıfırla doldurulur ve çıktısı
+atılır — tek şekil, tek tahsis, parçalanma yok. 200 çağrılık değişken yük
+sınavı kararlı (2,6–3,6 ms/pencere); arena `kSameAsRequested` ile ~6 GB'da
+kalıyor. Tek GPU işçisiyle Whisper/HDemucs yanında sorunsuz; iki GPU
+işçisi kararı verilecekse bu 6 GB hesaba katılır.
+
+**Cihaz sıralaması tuzağı.** nvidia-smi'nin PCI sırasında 0 numaralı kart
+GTX 1650; CUDA'nın "en hızlı önce" sırasında 0 numara RTX 3090. torch ve
+onnxruntime aynı CUDA sırasını kullanıyor — `runtime.device: cuda:0` bu
+makinede 3090'dır; her ikisinin de aynı karta indiği bellek artışı
+izlenerek doğrulandı.
+
+**Sayısal denklik.** 13.628 klipte CPU (v1) ile GPU (v2) karşılaştırıldı:
+azami fark 0,020, kliplerin ~%70'inde tam sıfır, 0,005'i aşan 21–53 klip
+(sütuna göre); `recommended` hiçbir klipte değişmedi. Paketleme ölçümü
+değiştirmez: dilim sınırı klip ortasından geçerken bile skorlar tek tek
+hesaplananla aynı (test altında). Düşen 64'lük koşudan 443 klip "bitti"
+kaldı ve yeniden ölçülmedi — dilim boyutu değeri değiştirmiyor.
+
+**Hız.** 13.628 klip, dağıtıcıyla 172 s duvar saati ≈ **13 ms/klip**; tam
+koşu kestirimi ~1.000 çekirdek-saatten **~6 GPU-saate** indi. DNSMOS'un
+tam koşu engeli kalktı. `verify_columns` HATA YOK; manifest temiz
+commit'ten yeniden yazıldı.
+
+**Makaleye:** altyapı ayrıntısı makale malzemesi değil; §Yöntem'e yalnızca
+"DNSMOS P.835, referans uygulamayla birebir" cümlesi.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -2591,12 +2630,7 @@ tek satırlık kapanış notu durur.
     eğitip MOS/CMOS, CER/WER ve konuşmacı benzerliği raporlamak; politika
     ve katmanlamanın kanıtı aynı deneyden çıkar. Düzenek tam koşudan önce
     tasarlanmalı.
-13. **DNSMOS maliyeti** — 2,07 çekirdek-s/klip (31 Ağu, sample-25d);
-    tam koşuda ~1.000 çekirdek-saat. Seçenekler: pencere sayısını azaltmak
-    (referans, kısa klibi yineleyip 1 s adımla gezdiriyor; 6 s'lik klipte
-    üç neredeyse özdeş pencere), klipler arası toplu çıkarım, onnxruntime
-    GPU sağlayıcısı. Hangisi seçilirse referansla sayısal fark ölçülüp
-    defterlenir; bu hâliyle tam koşuya girmez.
+13. ~~DNSMOS maliyeti~~ — 31 Ağu 2026, kapandı (GPU'ya taşındı, aşağıda).
 
 **Yöntem olarak yerleşmiş.**
 
@@ -2607,6 +2641,9 @@ tek satırlık kapanış notu durur.
 
 **Kapandı.**
 
+- ~~DNSMOS maliyeti~~ — 31 Ağu 2026; GPU'da sabit şekilli 16'lık dilim,
+  13 ms/klip, sayılar üç ondalıkta CPU ile aynı, tam koşu kestirimi
+  ~6 GPU-saat.
 - ~~Müzik ölçümünün ölçekli tekrarı~~ — 31 Ağu 2026; 3.097 depo klibinde
   Spearman +0,479, v1 sayısı (+0,799) geçersiz.
 - ~~Metin normalizasyonu: harf+rakam ve tek başına sıra sayısı~~ — 31 Ağu

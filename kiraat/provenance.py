@@ -24,7 +24,7 @@ from typing import Any, Mapping
 #: silero-vad ağırlığı wheel'in içinde gelir.
 PACKAGES = ("torch", "torchaudio", "faster-whisper", "ctranslate2", "transformers",
             "silero-vad", "ctc-forced-aligner", "soundfile", "numpy", "pyyaml",
-            "pyloudnorm", "onnxruntime")
+            "pyloudnorm", "onnxruntime-gpu")
 
 
 def package_versions() -> dict[str, str | None]:
