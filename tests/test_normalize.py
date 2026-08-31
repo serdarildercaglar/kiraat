@@ -78,5 +78,14 @@ def test_sira_sayisi_ozel_isim_onunde():
     assert to_spoken("Savaş bitti 1918. Yeni dönem") == "Savaş bitti bin dokuz yüz on sekiz. Yeni dönem"
 
 
+def test_sayac_sonrasi_sayi_kardinal_kalir():
+    """'Bölüm 5. Ali...' → 'Bölüm beş. Ali...' — sıra sayısına dönmez
+    (31 Ağu incelemesi: 'Bölüm beşinci Ali' okunuyordu)."""
+    assert to_spoken("Bölüm 5. Ali eve gitti.") == "Bölüm beş. Ali eve gitti."
+    assert to_spoken("Madde 12. Yeni fıkra eklendi.") == "Madde on iki. Yeni fıkra eklendi."
+    # Sayaç yoksa sıra sayısı kuralı aynen çalışır.
+    assert to_spoken("Sonra 1. Naip geldi") == "Sonra birinci Naip geldi"
+
+
 def test_light_clean_sayiya_dokunmaz():
     assert light_clean("1923'te  doğdu..") == "1923'te doğdu."

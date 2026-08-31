@@ -22,7 +22,7 @@ import logging
 import random
 import time
 from pathlib import Path
-from typing import Callable, Any, Sequence
+from typing import Callable, Any, Mapping, Sequence
 
 from . import base, provenance
 from .boilerplate import mine
@@ -163,6 +163,24 @@ def stage_version(cfg: Config, stage: base.Stage | type[base.Stage],
     return f"{cls.version}+{hashlib.sha1(payload.encode('utf-8')).hexdigest()[:8]}"
 
 
+def _mine_kwargs(opts: Mapping[str, Any]) -> dict[str, Any]:
+    """`boilerplate` bölümünü `mine` çağrı argümanlarına çevir.
+
+    Varsayılanlar yalnızca `mine` imzasında durur — buradaki mükerrer
+    kopyalar konfigden sapmıştı (min_recordings kodda 3 konfigde 2,
+    31 Ağu 2026). `null` değer olduğu gibi geçer: `min_ratio: null` oran
+    eşiğini, `head_words: null` baş/son bölge sınırını kapatır; eski
+    `float(opts["min_ratio"])` hâli null'da çöküyordu (inceleme bulgusu).
+    """
+    out: dict[str, Any] = {}
+    for k in ("min_recordings", "min_words", "max_words", "head_words", "tail_words"):
+        if k in opts:
+            out[k] = None if opts[k] is None else int(opts[k])
+    if "min_ratio" in opts:
+        out["min_ratio"] = None if opts["min_ratio"] is None else float(opts["min_ratio"])
+    return out
+
+
 class Pipeline:
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -218,14 +236,7 @@ class Pipeline:
             words_path = s.get("meta", {}).get("words")
             if words_path and Path(words_path).exists():
                 by_channel.setdefault(s["channel"], {})[str(s["id"])] = [w["text"] for w in load_words(words_path)]
-        # Varsayılanlar yalnızca `mine` imzasında durur; burada yinelenmiş
-        # (ve konfigden sapabilen) kopyaları vardı — min_recordings kodda 3
-        # konfigde 2, max_words kodda 12 konfigde 24 kalmıştı (31 Ağu 2026).
-        kwargs: dict[str, Any] = {k: int(opts[k]) for k in
-                                  ("min_recordings", "min_words", "max_words", "head_words", "tail_words")
-                                  if k in opts}
-        if "min_ratio" in opts:
-            kwargs["min_ratio"] = float(opts["min_ratio"])
+        kwargs = _mine_kwargs(opts)
         for channel, recs in by_channel.items():
             mined = mine(recs, **kwargs)
             phrases = [list(p) for p, _ in mined]

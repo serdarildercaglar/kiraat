@@ -122,9 +122,12 @@ lufs = [r["loudness_lufs"] for r in rows if r.get("loudness_lufs") is not None]
 ch_med = {ch: med([r["loudness_lufs"] for r in rs if r.get("loudness_lufs") is not None])
           for ch, rs in by_ch.items()}
 ch_med = {k: v for k, v in ch_med.items() if v is not None}
-print(f"   loudness_lufs: n={len(lufs)}, med {med(lufs):.1f}, p5 {q(lufs,.05):.1f}, p95 {q(lufs,.95):.1f}"
-      f"  → klip düzeyi yayılım (p95-p5) {q(lufs,.95)-q(lufs,.05):.1f} LU")
-if len(ch_med) > 1:
+if not lufs:
+    print("   loudness_lufs yok (clip_qc v3 öncesi manifest)")
+if lufs:
+    print(f"   loudness_lufs: n={len(lufs)}, med {med(lufs):.1f}, p5 {q(lufs,.05):.1f}, p95 {q(lufs,.95):.1f}"
+          f"  → klip düzeyi yayılım (p95-p5) {q(lufs,.95)-q(lufs,.05):.1f} LU")
+if lufs and len(ch_med) > 1:
     print(f"   kanal medyanları: {min(ch_med.values()):.1f} … {max(ch_med.values()):.1f} LUFS"
           f" (aralık {max(ch_med.values())-min(ch_med.values()):.1f} LU; v1'de 18,4 LU idi — DESIGN #9)")
 for k in ("dnsmos_sig", "dnsmos_bak", "dnsmos_ovrl"):
@@ -134,8 +137,9 @@ for k in ("dnsmos_sig", "dnsmos_bak", "dnsmos_ovrl"):
 ovrl = [(r["dnsmos_ovrl"], r) for r in rows if r.get("dnsmos_ovrl") is not None]
 if ovrl:
     would = [r for x, r in ovrl if x < 3.0 and r["recommended"]]
-    print(f"   what-if: dnsmos_ovrl ≥ 3,0 kuralı bugün önerilen {sum(1 for r in rows if r['recommended'])} klipten "
-          f"{len(would)} tanesini dışlardı ({100*len(would)/max(sum(1 for r in rows if r['recommended']),1):.1f}%) — kural KONMADI, sayım.")
+    rec_n = sum(1 for r in rows if r["recommended"])
+    print(f"   what-if: dnsmos_ovrl ≥ 3,0 kuralı bugün önerilen {rec_n} klipten "
+          f"{len(would)} tanesini dışlardı ({100*len(would)/max(rec_n,1):.1f}%) — kural KONMADI, sayım.")
     wch = collections.Counter(r["channel"] for r in would)
     if wch:
         print("   dışlananların kanal dağılımı (ilk 6): " +
@@ -152,15 +156,16 @@ if ovrl:
 if args.listen_out:
     rng = random.Random(args.seed)
     cands = [r for r in rows if r["channel"] in args.listen_channels]
-    bands = [(-80.1, -40.0), (-40.0, -33.0), (-33.0, -25.0), (-25.0, 0.1)]
+    # Üst bant açık uçlu: music_to_speech_db pozitif olabilir (müzik
+    # konuşmadan gürse); 0,1'de kesmek tam da dinlenmesi gereken en gür
+    # klipleri örneklemden düşürüyordu (31 Ağu incelemesi).
+    bands = [(-80.1, -40.0), (-40.0, -33.0), (-33.0, -25.0), (-25.0, float("inf"))]
     picked = []
     per = max(args.listen_n // (len(bands) * len(args.listen_channels)), 1)
     for ch in args.listen_channels:
         for lo, hi in bands:
             pool = [r for r in cands if r["channel"] == ch and lo < r.get("music_to_speech_db", -80) <= hi]
             picked += rng.sample(pool, min(per, len(pool)))
-    seen = set()
-    picked = [r for r in picked if not (r["id"] in seen or seen.add(r["id"]))]
     with open(args.listen_out, "w", encoding="utf-8") as fh:
         fh.write(" ".join(r["id"] for r in picked) + "\n")
     dist = collections.Counter(r["channel"] for r in picked)

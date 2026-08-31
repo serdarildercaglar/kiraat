@@ -196,7 +196,10 @@ with manifest.open("w", encoding="utf-8") as mf:
             import soundfile as sf
 
             audio, sr = sf.read(str(wav24), dtype="float32", always_2d=True)
-            clips = refine_boundaries(clips, words, envelope(audio.mean(axis=1), sr), seg_cfg)
+            # Sınır eşikleri konfigden (31 Ağu 2026): prob, hattın keseceği
+            # kliplerin aynısını göstermek zorunda; kod varsayılanı değil.
+            rc = cfg.refine_config()
+            clips = refine_boundaries(clips, words, envelope(audio.mean(axis=1), sr, rc), seg_cfg, rc)
 
         k_rows = []
         for i, c in enumerate(clips):

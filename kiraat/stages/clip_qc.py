@@ -10,6 +10,7 @@ Politikanın ilk üç kuralını besler; hiçbiri kapı değildir.
 
 from __future__ import annotations
 
+import functools
 import math
 from typing import Any, Mapping, Sequence
 
@@ -43,8 +44,11 @@ def speech_metrics(segments: Sequence[Mapping[str, float]], duration: float) -> 
     }
 
 
-#: Örnekleme hızına göre pyloudnorm ölçerleri; süreç başına bir kez kurulur.
-_METERS: dict[int, Any] = {}
+@functools.lru_cache(maxsize=None)
+def _meter(sr: int):
+    import pyloudnorm as pyln
+
+    return pyln.Meter(sr)
 
 
 def loudness_lufs(wave: np.ndarray, sr: int) -> float | None:
@@ -56,14 +60,9 @@ def loudness_lufs(wave: np.ndarray, sr: int) -> float | None:
     sütun üretilir. Ölçüm penceresi 0,4 s'den kısa kliplerde ve tümüyle
     sessiz kliplerde (−∞) tanımsızdır, None döner.
     """
-    import pyloudnorm as pyln
-
     if len(wave) <= int(0.4 * sr):
         return None
-    meter = _METERS.get(sr)
-    if meter is None:
-        meter = _METERS.setdefault(sr, pyln.Meter(sr))
-    val = float(meter.integrated_loudness(np.asarray(wave, dtype=np.float64)))
+    val = float(_meter(sr).integrated_loudness(np.asarray(wave, dtype=np.float64)))
     return round(val, 2) if math.isfinite(val) else None
 
 

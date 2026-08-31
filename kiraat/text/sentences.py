@@ -33,6 +33,19 @@ ORDINAL_FOLLOWERS = frozenset(
     {"bölüm", "kitap", "cilt", "kısım", "perde", "sayı", "baskı", "dünya"}
 )
 
+#: Sıra sayısı sayılan azami basamak; `normalize.to_spoken` ile ORTAK
+#: sözleşme — iki modül bu sabiti paylaşır, ayrışamaz.
+ORDINAL_MAX_DIGITS = 3
+
+#: Sayıdan ÖNCE gelip onu ada çeviren sayaç sözcükleri: "Bölüm 5.",
+#: "Madde 12." — buradaki sayı sıra sayısı değildir, noktası cümle sonu
+#: olabilir ve okunuşu kardinal kalır ("5. Bölüm"ün tersi; 31 Ağu 2026
+#: incelemesi: aksi hâlde "Bölüm 5. Ali..." tek klip olup "Bölüm beşinci
+#: Ali" okunuyordu).
+NUMBER_LABELS = frozenset(
+    {"bölüm", "madde", "sayfa", "kısım", "cilt", "fasıl", "bap", "ayet", "sure", "sayı", "no"}
+)
+
 
 def _strip_closers(token: str) -> str:
     out = token.rstrip()
@@ -81,11 +94,12 @@ def is_boundary(tokens: list[str], i: int) -> bool:
             # ("1. Naip", "3. Selim", "100. Yıl") — ardından özel isim geldiği
             # için büyük harf kuralı onu yakalayamıyor ve tek belirteçlik
             # 0,1 s'lik "1." klipleri doğuyordu (defter, açık madde 9).
-            # Cümlenin çıplak küçük bir sayıyla bitmesi okuma konuşmasında
-            # nadirdir; yıllar ("... bitti 1918. Yeni dönem...") 4 basamaklıdır
-            # ve sınır olarak kalır.
-            if len(core) <= 3:
-                return False
+            # İstisna: önceki sözcük bir sayaçsa ("Bölüm 5.") sayı addır ve
+            # cümle orada bitebilir. Yıllar 4 basamaklıdır, sınır kalır.
+            if len(core) <= ORDINAL_MAX_DIGITS:
+                prev = _core(tokens[i - 1]) if i > 0 else ""
+                if prev not in NUMBER_LABELS:
+                    return False
             nxt = tokens[i + 1] if i + 1 < len(tokens) else ""
             if not nxt or not _starts_new_sentence(nxt):
                 return False

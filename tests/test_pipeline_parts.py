@@ -38,6 +38,17 @@ def test_ses_yuksekligi_lufs():
     assert loudness_lufs(wave[: int(0.3 * sr)], sr) is None
 
 
+def test_boilerplate_null_ayarlar_mine_a_gecer():
+    """`min_ratio: null` oran eşiğini kapatır; float(None) diye çökmemeli
+    (31 Ağu incelemesi — eski davranış None'ı olduğu gibi geçiriyordu)."""
+    from kiraat.pipeline import _mine_kwargs
+
+    kw = _mine_kwargs({"min_recordings": 2, "min_ratio": None, "head_words": None, "max_words": 24})
+    assert kw == {"min_recordings": 2, "min_ratio": None, "head_words": None, "max_words": 24}
+    assert _mine_kwargs({}) == {}
+    assert _mine_kwargs({"min_ratio": 0.4})["min_ratio"] == 0.4
+
+
 def test_store_gidis_donus(tmp_path):
     st = Store(tmp_path / "db.sqlite")
     assert st.add_sources([{"path": "/a.m4a", "channel": "k", "ext": ".m4a", "bytes": 1}]) == 1

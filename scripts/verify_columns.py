@@ -31,7 +31,6 @@ sys.path.insert(0, str(ROOT))
 from kiraat import schema  # noqa: E402
 from kiraat.config import Config  # noqa: E402
 from kiraat.segment import Word, attach_clitics  # noqa: E402
-from kiraat.boundaries import RefineConfig  # noqa: E402
 from kiraat.stages.clip_qc import level_metrics  # noqa: E402
 from kiraat.text.turkish import is_lower_start  # noqa: E402
 
@@ -143,10 +142,25 @@ plain = [r for r in manifest if not re.search(r"\d|%|₺|\$|€", r["text"]) and
          and not re.search(r"\b(?:[A-ZÇĞİÖŞÜ]\.){1,3}", r["text"])]   # M.Ö., M.S., T.C. gibi harf kısaltmaları
 check("text_spoken = text (sayı/kısaltma yoksa)", [r["id"] for r in plain if r["text_spoken"] != r["text"]], len(plain))
 digits = [r for r in manifest if re.search(r"\d", r["text"])]
-alnum = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşü]\d|\d[A-Za-zÇĞİÖŞÜçğıöşü]")   # MI6, M5, 3G: normalizasyon kapsamı dışı (açık madde)
-pure = [r for r in digits if not alnum.search(r["text"])]
-check("text_spoken rakamsız (sayı varsa çevrilmiş; harf+rakam belirteçleri hariç)", [(r["id"], r["text_spoken"]) for r in pure if re.search(r"\d", r["text_spoken"] or "")], len(pure))
-results.append(("bilgi: harf+rakam belirteçli klip (MI6, M5 — okunuşa çevrilmiyor)", True, f"{len(digits) - len(pure)} klip"))
+# Harf+rakam belirteçleri okunuşa çevriliyor artık (segment v9, 31 Ağu 2026);
+# yalnızca kuralın bilinçli dışında kalanlar (küçük harfli karışım "cm2",
+# "9x12"; 4 harf/4 basamak üstü) muaftır. Muafiyet kuralın KENDİSİYLE
+# (`spell_alphanumeric` None dönüyor mu) hesaplanır ki doğrulayıcı ile hat
+# ayrışamasın — eski sabit muafiyet bütün belirteçleri kapsıyor ve yeni
+# kuralı denetimsiz bırakıyordu (31 Ağu incelemesi).
+from kiraat.text.normalize import spell_alphanumeric
+
+_alnum_re = re.compile(r"[A-Za-zÇĞİÖŞÜçğıöşü]\d|\d[A-Za-zÇĞİÖŞÜçğıöşü]")
+
+def _unspoken_alnum(text: str) -> bool:
+    return any(_alnum_re.search(tok) and spell_alphanumeric(tok.strip("'’\".,!?;:()")) is None
+               for tok in text.split())
+
+pure = [r for r in digits if not _unspoken_alnum(r["text"])]
+check("text_spoken rakamsız (sayı ve BÜYÜK harf+rakam belirteçleri çevrilmiş; çevrilemeyenler hariç)",
+      [(r["id"], r["text_spoken"]) for r in pure if re.search(r"\d", r["text_spoken"] or "")], len(pure))
+results.append(("bilgi: okunuşa çevrilemeyen harf+rakam belirteçli klip (cm2, 9x12 — kural bilinçli dar)", True,
+                f"{len(digits) - len(pure)} klip"))
 
 # ---------------------------------------------------------------- E. ölçüm aralıkları ve iç tutarlılık
 def rng_bad(key, lo, hi):
@@ -295,11 +309,11 @@ check(f"oversize → duration > {seg_max}", [(r["id"], r["duration"]) for r in m
 # alt kümeye girer. Aşım payı geçerse kural bozulmuş demektir.
 # İşaret paylar eklenmeden verilir, süre paylardan sonra ölçülür; üstelik
 # sınır iyileştirme sessizliği damganın `after_sec` kadar ötesinde arayabilir.
-# Tolerans bu yüzden konfigden ve `RefineConfig`ten türetilir — sabit 0,4
+# Tolerans bu yüzden konfigden (`boundaries.after_sec`) türetilir — sabit 0,4
 # sample-25'teki azami aşımın (0,378 s) hemen üstündeydi ve 140 kat daha çok
 # klipte yanlış FAIL verirdi.
 _seg_cfg = cfg.segment_config()
-over_tol = round(_seg_cfg.lead_pad_sec + _seg_cfg.trail_pad_sec + RefineConfig().after_sec, 3)
+over_tol = round(_seg_cfg.lead_pad_sec + _seg_cfg.trail_pad_sec + cfg.refine_config().after_sec, 3)
 unflag_over = [r for r in manifest if "oversize" not in r["flags"] and r["duration"] > seg_max]
 check(f"oversize işaretsiz klip tavanı en çok pay kadar aşıyor (≤ {seg_max} + {over_tol})",
       [(r["id"], r["duration"]) for r in unflag_over if r["duration"] > seg_max + over_tol + 1e-6], len(manifest),

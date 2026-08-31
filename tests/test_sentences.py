@@ -49,6 +49,13 @@ def test_sira_sayisi_ozel_isim_onunde_sinir_degil():
     assert not B("100. Yıl Marşı çalındı.", 0)
 
 
+def test_sayac_sozcugu_sonrasi_sayi_cumle_sonu_olabilir():
+    """'Bölüm 5.' bir addır: sayı kardinal, noktası cümle sonu (31 Ağu
+    incelemesi — aksi hâlde iki cümle tek klip oluyordu)."""
+    assert B("Bölüm 5. Ali eve gitti.", 1)
+    assert B("Madde 12. Yeni fıkra eklendi.", 1)
+
+
 def test_dort_basamakli_yil_sinir_kalir():
     assert B("Savaş bitti 1918. Yeni dönem başladı.", 2)
 

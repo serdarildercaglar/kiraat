@@ -2616,6 +2616,67 @@ zaman kesebilir.
 müzikle doğrulanması ve eşiğin dinlemeyle seçilmiş olması §Yöntem'e,
 yanlış pozitif payı ve kanal yoğunlaşması §Sınırlar'a.
 
+## 2026-08-31 — Tam koşu öncesi kod incelemesi (2. tur): yedi doğruluk düzeltmesi, muafiyetler belgelendi
+
+Günün bütün değişiklikleri (a437ea7..HEAD) sekiz açıdan incelendi
+(satır satır tarama, kaldırılan davranış, çapraz dosya izleme, yeniden
+kullanım, sadeleştirme, verimlilik, mimari, CLAUDE.md uyumu). Doğrulanan
+ve düzeltilen bulgular:
+
+1. **`boilerplate.min_ratio: null` çökmesi.** Sabahki temizlik
+   `float(opts["min_ratio"])` yazmıştı; null (oran eşiğini kapatmanın
+   meşru yolu) TypeError veriyordu. Null artık `mine`a olduğu gibi geçer
+   (`_mine_kwargs`, test altında).
+2. **Doğrulayıcı sınır payını konfigden okumuyordu.** `boundaries`
+   bölümü sabahki değişiklikle canlı konfig olunca `verify_columns`ın
+   `RefineConfig()` varsayılanından türettiği oversize toleransı ve
+   `probe_segment`in varsayılanla iyileştirmesi hattan ayrışabilir olmuştu;
+   ikisi de `cfg.refine_config()` okuyor artık.
+3. **"Bölüm 5. Ali..." yanlış okuması.** Yeni sıra sayısı kuralı, sayaç
+   sözcüğünden sonraki sayıyı da sıra sayısına çevirip cümleyi
+   birleştiriyordu ("Bölüm beşinci Ali"). `NUMBER_LABELS` istisnası
+   (bölüm, madde, sayfa, …) iki modüle de kondu; basamak sınırı ortak
+   sabit oldu (`ORDINAL_MAX_DIGITS`), iki paralel 3 sabiti kalktı.
+   Korpusta ölçülen etki şimdilik 0 klip; sınıf olarak gerçekti.
+4. **`dnsmos_*` şemada yanlışlıkla zorunluydu.** Okunamayan klipte boş
+   kalırlar; `loudness_lufs` gibi isteğe bağlı ilan edildi.
+5. **Doğrulayıcının harf+rakam muafiyeti bayattı.** Eski muafiyet bütün
+   belirteçleri kapsıyor ve yeni okunuş kuralını denetimsiz bırakıyordu;
+   muafiyet artık kuralın kendisiyle (`spell_alphanumeric` None mı)
+   hesaplanıyor — doğrulayıcı ile hat tanım gereği ayrışamaz.
+6. **Analiz betiği eski manifestte çöküyordu** (`loudness_lufs` yok →
+   None biçimleme) ve **dinleme bantlarının üst ucu 0,1 dB'de kapalıydı**
+   — müzik konuşmadan gürse klip hiçbir banda düşmüyordu. Üst bant açık
+   uçlu yapıldı. Altıncı turda üç kanalda bant dışı kalan yalnızca 2/1.529
+   klipti; turun sonucu etkilenmez, gelecek turlar tam kapsar.
+7. **Küçük sadeleşmeler.** `Config._dataclass_section` (segment/boundaries
+   tek yardımcıda), pyloudnorm ölçeri `lru_cache`, dnsmos'ta ölü pencere
+   dalları ve gereksiz kopya kalktı, `dnsmos.model_path` koda gömülü
+   mükerrer varsayılanını kaybetti (konfig zorunlu).
+
+**Bilinçli koda gömülü kalanlar (muafiyet listesi genişledi).**
+`INPUT_SEC = 9.01` ve 1 s adım DNSMOS **referans uygulama sözleşmesidir** —
+konfige almak referanstan sapmaya davet olurdu; harf+rakam kuralının
+4 harf / 4 basamak sınırı ile `ORDINAL_MAX_DIGITS = 3` dil kuralı
+sabitleridir (INTERNAL_BREAKS/ABBREVIATIONS ailesi). Eşik-konfig ilkesi
+ölçüm eşikleri içindir; bu üçü o sınıfta değildir.
+
+**Ertelenen bulgular (mühendislik borcu, davranışı bugün etkilemiyor).**
+(a) Aşama listeleri altı yerde elle (CLIP_STAGES, iki import satırı,
+PRIORITY, __main__ yardım metni, browse_ui) — kayıt defterinden türetilmeli;
+konuşmacı aşaması eklenirken yapılacak. (b) "Klibi çöz+mono+16k" üç
+aşamada üç kopya ve okunamayan seste üç farklı davranış (clip_qc işaretler,
+dnsmos boş bırakır, music HATA verip koşuyu durdurur) — ortak yardımcı ve
+tek sözleşme gerek; music'in davranışı bugünden beri değil, kayda geçti.
+(c) dnsmos'ta çözme ile GPU çıkarımı örtüşmüyor (music'teki desen); tam
+koşuda ~1–2 GPU-saat, dnsmos zaten ~6 GPU-saat olduğu için ertelendi.
+(d) `spearman`/`q` yardımcıları scripts altında kopya. (e) Büyük harf
+sınıfı `[A-ZÇĞİÖŞÜ]` inceltmeli harfleri (Â) kapsamıyor — nadir, kayda
+geçti. Tamamı 14. madde olarak listede.
+
+**Makaleye:** girmez; inceleme süreci §Yöntem'de tek cümle
+("her değişiklik testli, her koşu temiz commit'ten") olarak zaten var.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -2664,6 +2725,12 @@ tek satırlık kapanış notu durur.
     ve katmanlamanın kanıtı aynı deneyden çıkar. Düzenek tam koşudan önce
     tasarlanmalı.
 13. ~~DNSMOS maliyeti~~ — 31 Ağu 2026, kapandı (GPU'ya taşındı, aşağıda).
+14. **İnceleme artıkları (mühendislik borcu)** — 31 Ağu inceleme kaydındaki
+    ertelenenler: aşama listelerinin kayıt defterinden türetilmesi
+    (konuşmacı aşamasıyla birlikte), ortak klip çözücü + okunamayan ses
+    için tek sözleşme (music şu an koşuyu durduruyor), dnsmos önyükleme
+    örtüşmesi, scripts'teki kopya yardımcılar. Ölçüm üretmez, deney değil;
+    sıradaki aşama eklenirken kapatılır.
 
 **Yöntem olarak yerleşmiş.**
 

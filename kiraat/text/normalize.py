@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 
+from .sentences import NUMBER_LABELS, ORDINAL_MAX_DIGITS
 from .turkish import lower
 
 ONES = ("", "bir", "iki", "üç", "dört", "beş", "altı", "yedi", "sekiz", "dokuz")
@@ -111,9 +112,8 @@ def spell_alphanumeric(token: str) -> str | None:
     if len(letters) > 4 or any(len(r) > 4 for r in digit_runs):
         return None
     parts: list[str] = []
-    for piece in re.findall(r"\d+|[^\d-]|-", token):
-        if piece == "-":
-            continue
+    # findall eşleşmeyen karakterleri (tire) zaten atlar.
+    for piece in re.findall(r"\d+|[^\d-]", token):
         if piece.isdigit():
             parts.append(number_to_words(int(piece)))
         else:
@@ -193,12 +193,19 @@ def to_spoken(text: str) -> str:
     )
 
     # Sıra sayısı, özel isim önünde: '1. Naip' → 'birinci Naip'. Cümle sınırı
-    # kuralıyla aynı sözleşme (text/sentences.py): 1-3 basamaklı sayı + nokta
-    # sıra sayısıdır; 4 basamaklılar ('... bitti 1918. Yeni ...') cümle sonu
-    # olabilir, dokunulmaz.
+    # kuralıyla aynı sözleşme (text/sentences.py, ortak sabitler): 1-3
+    # basamak sıra sayısıdır; 4 basamak ('... bitti 1918. Yeni ...') cümle
+    # sonu olabilir. Sayaç sözcüğünden sonra gelen sayı ise addır ve
+    # kardinal kalır: 'Bölüm 5. Ali...' → 'Bölüm beş. Ali...'.
+    def _ordinal_caps(m: re.Match[str], text: str) -> str:
+        before = text[:m.start()].rstrip().rsplit(None, 1)
+        if before and lower(before[-1].strip("\"'«»“”’()[]")) in NUMBER_LABELS:
+            return m.group(0)
+        return ordinal_to_words(int(m.group(1)))
+
     out = re.sub(
-        r"\b(\d{1,3})\.(?=\s+[A-ZÇĞİÖŞÜ])",
-        lambda m: ordinal_to_words(int(m.group(1))),
+        rf"\b(\d{{1,{ORDINAL_MAX_DIGITS}}})\.(?=\s+[A-ZÇĞİÖŞÜ])",
+        lambda m, _t=out: _ordinal_caps(m, _t),
         out,
     )
 

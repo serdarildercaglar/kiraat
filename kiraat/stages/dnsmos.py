@@ -38,8 +38,6 @@ _P_SIG = (-0.08397278, 1.22083953, 0.0052439)
 _P_BAK = (-0.13166888, 1.60915514, -0.39604546)
 _P_OVR = (-0.06766283, 1.11546468, 0.04602535)
 
-DEFAULT_MODEL_PATH = "models/dnsmos/sig_bak_ovr.onnx"
-
 _ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -60,13 +58,10 @@ def windows(wave16: np.ndarray) -> np.ndarray:
     audio = np.asarray(wave16, dtype=np.float32).ravel()
     while len(audio) < need:
         audio = np.concatenate([audio, audio])
+    # Doldurmadan sonra her dilim tam `need` örnektir ve num_hops ≥ 1;
+    # eksik pencere dalı ölüydü, kaldırıldı (31 Ağu incelemesi).
     num_hops = int(np.floor(len(audio) / SR) - INPUT_SEC) + 1
-    out = []
-    for i in range(num_hops):
-        seg = audio[int(i * SR): int((i + INPUT_SEC) * SR)]
-        if len(seg) >= need:
-            out.append(seg[:need])
-    return np.stack(out if out else [audio[:need]])
+    return np.stack([audio[int(i * SR): int((i + INPUT_SEC) * SR)] for i in range(num_hops)])
 
 
 def load_session(model_path: str, device: str = "cpu"):
@@ -136,7 +131,7 @@ def score_clips(sess, per_clip: Sequence[np.ndarray]) -> list[dict[str, float]]:
     if not per_clip:
         return []
     sizes = [len(w) for w in per_clip]
-    allw = np.concatenate(per_clip).astype(np.float32)
+    allw = np.concatenate(per_clip)   # windows() float32 döndürür; kopyasız
     total = len(allw)
     pad = (-total) % _RUN_WINDOWS
     if pad:
@@ -186,7 +181,11 @@ class DnsmosStage(ClipStage):
     def setup(self) -> None:
         from concurrent.futures import ThreadPoolExecutor
 
-        path = resolve_model_path(str(self.opts.get("model_path", DEFAULT_MODEL_PATH)))
+        # Yol da özet de konfigden gelir; koda gömülü mükerrer varsayılan
+        # yok (run_boilerplate'in 31 Ağu'da temizlenen sapma sınıfı).
+        if not self.opts.get("model_path"):
+            raise RuntimeError("dnsmos.model_path konfigde yok")
+        path = resolve_model_path(str(self.opts["model_path"]))
         want = self.opts.get("model_sha256")
         if not want:
             raise RuntimeError("dnsmos.model_sha256 konfigde yok: ağırlık sabitlenmeden ölçüm koşmaz")

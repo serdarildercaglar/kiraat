@@ -57,23 +57,21 @@ class Config:
             raise ConfigError(f"{name}: sozluk olmali")
         return value
 
-    def segment_config(self) -> SegmentConfig:
-        opts = self.section("segment")
-        allowed = SegmentConfig.__dataclass_fields__
-        unknown = set(opts) - set(allowed)
+    def _dataclass_section(self, name: str, cls):
+        """Bölümü dataclass'a aç: bilinmeyen anahtar hatadır, değerler float."""
+        opts = self.section(name)
+        unknown = set(opts) - set(cls.__dataclass_fields__)
         if unknown:
-            raise ConfigError(f"segment: bilinmeyen anahtar(lar): {', '.join(sorted(unknown))}")
-        return SegmentConfig(**{k: float(v) for k, v in opts.items()})
+            raise ConfigError(f"{name}: bilinmeyen anahtar(lar): {', '.join(sorted(unknown))}")
+        return cls(**{k: float(v) for k, v in opts.items()})
+
+    def segment_config(self) -> SegmentConfig:
+        return self._dataclass_section("segment", SegmentConfig)
 
     def refine_config(self):
-        """`boundaries` bölümünü `RefineConfig`e aç; bilinmeyen anahtar hatadır."""
         from .boundaries import RefineConfig
 
-        opts = self.section("boundaries")
-        unknown = set(opts) - set(RefineConfig.__dataclass_fields__)
-        if unknown:
-            raise ConfigError(f"boundaries: bilinmeyen anahtar(lar): {', '.join(sorted(unknown))}")
-        return RefineConfig(**{k: float(v) for k, v in opts.items()})
+        return self._dataclass_section("boundaries", RefineConfig)
 
     def policy(self) -> Policy:
         return Policy.from_dict(self.section("recommended_subset"))
