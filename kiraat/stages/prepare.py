@@ -1,9 +1,9 @@
 """Kaynak kaydı çöz: tek kanal, hedef örnekleme hızı, yüksek geçiren, tepe sınırı.
 
 Kaynak hızı hedefin altındaysa yükseltme yapılmaz; gerçek hız
-`source_sample_rate` olarak yayımlanır. Klip başına ses seviyesi
-normalizasyonu yoktur (`prepare.target_lufs: null`); kaynak düzeyinde
-LUFS ileride ayrı bir aşamadır.
+`source_sample_rate` olarak yayımlanır. Ses seviyesi normalizasyonu yoktur:
+seviye klip başına sütun olarak yayımlanır (`clip_qc`), normalizasyon
+kullanıcının tercihidir.
 """
 
 from __future__ import annotations

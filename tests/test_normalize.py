@@ -55,5 +55,28 @@ def test_para():
     assert to_spoken("50₺ verdi") == "elli lira verdi"
 
 
+def test_harf_rakam_belirtecleri():
+    """Açık madde 9: 'MI6', 'M5', '3G' okunuşa çevrilmiyordu."""
+    assert to_spoken("3G çekmiyor") == "üç ge çekmiyor"
+    assert to_spoken("M5 otoyolu uzun") == "me beş otoyolu uzun"
+    # ASCII I'nın Türkçe adı 'ı'dır (İ → 'i'); "MI6" noktasız I ile yazılır.
+    assert to_spoken("MI6'ya girdi") == "me ı altı'ya girdi"
+    assert to_spoken("F-16 havalandı") == "fe on altı havalandı"
+    assert to_spoken("A380 indi") == "a üç yüz seksen indi"
+
+
+def test_harf_rakam_kurali_dar():
+    # Rakamsız kısaltma, küçük harfli karışım ve uzun kelime dokunulmaz.
+    assert to_spoken("TBMM açıldı") == "TBMM açıldı"
+    assert to_spoken("mp3 çalar bozuk") == "mp3 çalar bozuk"
+
+
+def test_sira_sayisi_ozel_isim_onunde():
+    assert to_spoken("Sonra 1. Naip geldi") == "Sonra birinci Naip geldi"
+    assert to_spoken("Sultan 3. Selim dönemi") == "Sultan üçüncü Selim dönemi"
+    # 4 basamak cümle sonu olabilir; sayı okunur ama nokta kalır.
+    assert to_spoken("Savaş bitti 1918. Yeni dönem") == "Savaş bitti bin dokuz yüz on sekiz. Yeni dönem"
+
+
 def test_light_clean_sayiya_dokunmaz():
     assert light_clean("1923'te  doğdu..") == "1923'te doğdu."

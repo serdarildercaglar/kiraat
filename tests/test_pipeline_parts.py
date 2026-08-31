@@ -22,6 +22,22 @@ def test_seviye_ve_konusma_olcumleri():
     assert s["internal_silence_sec"] == 1.5 and s["leading_silence_sec"] == 0.2 and s["trailing_silence_sec"] == 0.5
 
 
+def test_ses_yuksekligi_lufs():
+    from kiraat.stages.clip_qc import loudness_lufs
+
+    sr = 24000
+    rng = np.random.default_rng(0)
+    wave = (rng.standard_normal(2 * sr) * 0.1).astype("float32")
+    val = loudness_lufs(wave, sr)
+    assert val is not None and -30.0 < val < -10.0
+    # 20 dB kazanç farkı ≈ 20 LU (BS.1770 doğrusal kazançta LU kaydırır).
+    quiet = loudness_lufs((wave * 0.1).astype("float32"), sr)
+    assert quiet is not None and abs((val - quiet) - 20.0) < 1.0
+    # Tanımsız durumlar: sessizlik (−inf) ve 0,4 s bloğundan kısa klip.
+    assert loudness_lufs(np.zeros(2 * sr, dtype="float32"), sr) is None
+    assert loudness_lufs(wave[: int(0.3 * sr)], sr) is None
+
+
 def test_store_gidis_donus(tmp_path):
     st = Store(tmp_path / "db.sqlite")
     assert st.add_sources([{"path": "/a.m4a", "channel": "k", "ext": ".m4a", "bytes": 1}]) == 1

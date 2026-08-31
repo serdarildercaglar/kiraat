@@ -77,6 +77,15 @@ def is_boundary(tokens: list[str], i: int) -> bool:
         if "." in core and core.replace(".", "") in ABBREVIATIONS:
             return False
         if core.isdigit():
+            # 1-3 basamaklı sayı + nokta neredeyse her zaman sıra sayısıdır
+            # ("1. Naip", "3. Selim", "100. Yıl") — ardından özel isim geldiği
+            # için büyük harf kuralı onu yakalayamıyor ve tek belirteçlik
+            # 0,1 s'lik "1." klipleri doğuyordu (defter, açık madde 9).
+            # Cümlenin çıplak küçük bir sayıyla bitmesi okuma konuşmasında
+            # nadirdir; yıllar ("... bitti 1918. Yeni dönem...") 4 basamaklıdır
+            # ve sınır olarak kalır.
+            if len(core) <= 3:
+                return False
             nxt = tokens[i + 1] if i + 1 < len(tokens) else ""
             if not nxt or not _starts_new_sentence(nxt):
                 return False

@@ -24,6 +24,10 @@ from .segment import Clip, SegmentConfig, Word
 
 @dataclass(frozen=True)
 class RefineConfig:
+    """Sınır iyileştirme eşikleri. Konfigdeki `boundaries` bölümünden gelir
+    (`Config.refine_config`); buradaki değerler yalnızca aşamasız kullanımın
+    varsayılanıdır ve konfigle aynı olmaları test altındadır."""
+
     #: Damgadan ne kadar önce/sonra aranır (s). Öncesi kasıtlı olarak kısa:
     #: Whisper kelime bitişleri erken olduğu için sessizlik hep sonradadır.
     before_sec: float = 0.05

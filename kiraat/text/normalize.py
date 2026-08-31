@@ -43,6 +43,18 @@ ABBREVIATION_EXPANSIONS = {
 
 CURRENCY = {"₺": "lira", "$": "dolar", "€": "avro", "£": "sterlin"}
 
+#: Türk alfabesindeki harf adları (TDK okunuşu); yabancı kısaltmalarda geçen
+#: Q/W/X de eklidir. "MI6" → "me i altı", "3G" → "üç ge".
+LETTER_NAMES = {
+    "A": "a", "B": "be", "C": "ce", "Ç": "çe", "D": "de", "E": "e", "F": "fe",
+    "G": "ge", "Ğ": "yumuşak ge", "H": "he", "I": "ı", "İ": "i", "J": "je",
+    "K": "ke", "L": "le", "M": "me", "N": "ne", "O": "o", "Ö": "ö", "P": "pe",
+    "R": "re", "S": "se", "Ş": "şe", "T": "te", "U": "u", "Ü": "ü", "V": "ve",
+    "Y": "ye", "Z": "ze", "Q": "kü", "W": "çift ve", "X": "iks",
+}
+
+_ALNUM_TOKEN = re.compile(r"\b[0-9A-ZÇĞİÖŞÜ][0-9A-ZÇĞİÖŞÜ-]*\b")
+
 _NUM = r"\d{1,3}(?:\.\d{3})+|\d+"
 
 
@@ -80,6 +92,36 @@ def ordinal_to_words(n: int) -> str:
 
 def _int(token: str) -> int:
     return int(token.replace(".", ""))
+
+
+def spell_alphanumeric(token: str) -> str | None:
+    """Harf+rakam belirtecini okunuşa çevir: "3G" → "üç ge", "F-16" → "fe on altı".
+
+    Kural bilinçli olarak dar: yalnızca BÜYÜK harfler (kısaltma görünümü),
+    en çok 4 harf ve 4 basamak. "SAYI-5" gibi gerçek kelime + sayı bileşimleri
+    nadiren de olsa yanlış heceleyebilir; küçük harfli karışımlara ("mp3") ve
+    uzun kelimelere hiç dokunulmaz. İngilizce okunan markalar ("MI6" aslında
+    'em ay siks') Türkçe harf adlarıyla yaklaşıklanır — ASR metninden gerçek
+    okunuş bilinemez, sözleşme TDK harf adlarıdır.
+    """
+    letters = [c for c in token if c.isalpha()]
+    digit_runs = re.findall(r"\d+", token)
+    if not letters or not digit_runs:
+        return None
+    if len(letters) > 4 or any(len(r) > 4 for r in digit_runs):
+        return None
+    parts: list[str] = []
+    for piece in re.findall(r"\d+|[^\d-]|-", token):
+        if piece == "-":
+            continue
+        if piece.isdigit():
+            parts.append(number_to_words(int(piece)))
+        else:
+            name = LETTER_NAMES.get(piece)
+            if name is None:
+                return None
+            parts.append(name)
+    return " ".join(parts)
 
 
 def _collapse(text: str) -> str:
@@ -139,10 +181,24 @@ def to_spoken(text: str) -> str:
         out,
     )
 
+    # Harf+rakam belirteçleri: '3G' → 'üç ge', 'MI6' → 'me i altı'. Sayı
+    # kurallarından önce koşar ki 'F-16'nın 16'sı çıplak sayı sayılmasın.
+    out = _ALNUM_TOKEN.sub(lambda m: spell_alphanumeric(m.group(0)) or m.group(0), out)
+
     # Sıra sayısı: '3.' — ardından küçük harfli sözcük gelirse.
     out = re.sub(
         rf"\b({_NUM})\.(?=\s+[a-zçğıöşü])",
         lambda m: ordinal_to_words(_int(m.group(1))),
+        out,
+    )
+
+    # Sıra sayısı, özel isim önünde: '1. Naip' → 'birinci Naip'. Cümle sınırı
+    # kuralıyla aynı sözleşme (text/sentences.py): 1-3 basamaklı sayı + nokta
+    # sıra sayısıdır; 4 basamaklılar ('... bitti 1918. Yeni ...') cümle sonu
+    # olabilir, dokunulmaz.
+    out = re.sub(
+        r"\b(\d{1,3})\.(?=\s+[A-ZÇĞİÖŞÜ])",
+        lambda m: ordinal_to_words(int(m.group(1))),
         out,
     )
 

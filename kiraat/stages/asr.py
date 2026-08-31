@@ -55,7 +55,7 @@ class AsrStage(SourceStage):
         out.parent.mkdir(parents=True, exist_ok=True)
         common = dict(
             language=self.opts.get("language", "tr"),
-            beam_size=5,
+            beam_size=int(self.opts.get("beam_size", 5)),
             temperature=float(self.opts.get("temperature", 0.0)),
             word_timestamps=bool(self.opts.get("word_timestamps", True)),
             vad_filter=True,

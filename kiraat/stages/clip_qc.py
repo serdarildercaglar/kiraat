@@ -5,6 +5,7 @@ Politikanın ilk üç kuralını besler; hiçbiri kapı değildir.
   clip_ratio            tam ölçeğe dayanan örneklerin oranı (kırpma)
   internal_silence_sec  klip içindeki en uzun konuşmasız aralık
   peak_dbfs, rms_dbfs   seviye
+  loudness_lufs         BS.1770 tümleşik ses yüksekliği (pyloudnorm)
 """
 
 from __future__ import annotations
@@ -42,6 +43,30 @@ def speech_metrics(segments: Sequence[Mapping[str, float]], duration: float) -> 
     }
 
 
+#: Örnekleme hızına göre pyloudnorm ölçerleri; süreç başına bir kez kurulur.
+_METERS: dict[int, Any] = {}
+
+
+def loudness_lufs(wave: np.ndarray, sr: int) -> float | None:
+    """BS.1770 tümleşik ses yüksekliği (LUFS), pyloudnorm ile.
+
+    DESIGN #9'un ölçüm yarısı: v1'de seviye dağınıktı (kanal medyanları
+    arası 18,4 LU) ve karar "hedefli LUFS + sütun olarak yayım"dı. Sese
+    dokunulmaz — normalizasyon kullanıcının tercihidir; burada yalnızca
+    sütun üretilir. Ölçüm penceresi 0,4 s'den kısa kliplerde ve tümüyle
+    sessiz kliplerde (−∞) tanımsızdır, None döner.
+    """
+    import pyloudnorm as pyln
+
+    if len(wave) <= int(0.4 * sr):
+        return None
+    meter = _METERS.get(sr)
+    if meter is None:
+        meter = _METERS.setdefault(sr, pyln.Meter(sr))
+    val = float(meter.integrated_loudness(np.asarray(wave, dtype=np.float64)))
+    return round(val, 2) if math.isfinite(val) else None
+
+
 _VAD = None
 
 
@@ -65,6 +90,7 @@ def _measure_one(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
     if mono.size == 0:
         return {"id": clip_id, "metrics": {}, "flags": ["unreadable_audio"]}
     metrics = level_metrics(mono)
+    metrics["loudness_lufs"] = loudness_lufs(mono, sr)
     wave16 = torch.from_numpy(mono)
     if sr != 16000:
         wave16 = torchaudio.functional.resample(wave16, sr, 16000)
@@ -87,9 +113,9 @@ class ClipQcStage(ClipStage):
     name = "clip_qc"
     config_sections = ("vad",)
     depends_on = ("segment",)
-    version = "2"   # v2: VAD damgaları örnek tabanlı (ms çözünürlük), 0,1 s yuvarlama kalktı
-    produces_metrics = ("clip_ratio", "peak_dbfs", "rms_dbfs", "speech_ratio", "internal_silence_sec",
-                        "leading_silence_sec", "trailing_silence_sec")
+    version = "3"   # v3: loudness_lufs sütunu; v2: VAD damgaları örnek tabanlı, 0,1 s yuvarlama kalktı
+    produces_metrics = ("clip_ratio", "peak_dbfs", "rms_dbfs", "loudness_lufs", "speech_ratio",
+                        "internal_silence_sec", "leading_silence_sec", "trailing_silence_sec")
     produces_flags = ("unreadable_audio",)
 
     def setup(self) -> None:

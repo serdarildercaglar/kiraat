@@ -28,3 +28,9 @@ ctc-forced-aligner==1.0.2
 soundfile==0.13.1
 numpy==2.2.6
 pyyaml==6.0.3
+
+# Klip başına ses yüksekliği sütunu (BS.1770 LUFS, clip_qc).
+pyloudnorm==0.2.0
+
+# DNSMOS P.835 çıkarımı (models/dnsmos/sig_bak_ovr.onnx, CPU).
+onnxruntime==1.23.2

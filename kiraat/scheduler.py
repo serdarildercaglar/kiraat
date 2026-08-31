@@ -45,7 +45,7 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 from . import base
 from .config import Config
-from .stages import align, asr, clip_qc, music, prepare, segmentation  # noqa: F401  (kayıt için)
+from .stages import align, asr, clip_qc, dnsmos, music, prepare, segmentation  # noqa: F401  (kayıt için)
 
 if TYPE_CHECKING:
     from .pipeline import Pipeline
@@ -54,7 +54,7 @@ log = logging.getLogger("kiraat")
 
 #: Hazır işler arasında sıra: küçük önce. ASR alt akışı besler, müzik
 #: yalnızca kendini; ikisi aynı GPU kuyruğundayken ASR öne geçer.
-PRIORITY = {"prepare": 0, "asr": 0, "align": 1, "boilerplate": 1, "segment": 2, "clip_qc": 3, "music": 3}
+PRIORITY = {"prepare": 0, "asr": 0, "align": 1, "boilerplate": 1, "segment": 2, "clip_qc": 3, "music": 3, "dnsmos": 3}
 TERMINAL = frozenset({"ok", "failed", "skipped"})
 PROGRESS_EVERY_SEC = 60.0
 

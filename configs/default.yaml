@@ -100,6 +100,9 @@ asr:
   word_timestamps: true
   condition_on_previous_text: false   # halüsinasyon zincirini kırar
   temperature: 0.0
+  # Işın araması genişliği. Koda gömülüydü (31 Ağu 2026'da buraya taşındı);
+  # değer değişmedi, faster-whisper'ın varsayılanı da 5.
+  beam_size: 5
   # Toplu çıkarım (faster-whisper BatchedInferencePipeline): VAD bölgeleri
   # 30 s pencerelere toplanıp birlikte çözülür; pencereler bağımsız olduğu
   # için önceki metne koşullanma zaten yoktur. 0 = sıralı.
@@ -133,14 +136,44 @@ segment:
   lead_pad_sec: 0.15
   trail_pad_sec: 0.25
 
+# Sınır iyileştirme (kiraat/boundaries.py): komşu klipler arasındaki damga
+# çevresinde küçük bir pencerede ses enerjisine bakıp kesimi gerçek
+# sessizliğe çeker; yalnızca damgalar arası boşluk iki payı barındıramayınca
+# devreye girer. Bu eşikler kör dinleme turlarıyla oturdu (28–29 Ağu 2026)
+# ama koda gömülü kalmıştı; "hiçbir eşik koda gömülmez" ilkesi gereği
+# 31 Ağu 2026'da buraya taşındı, değerler değişmedi.
+boundaries:
+  # Damgadan ne kadar önce/sonra aranır (s). Öncesi kasıtlı kısa: Whisper
+  # kelime bitişleri erken olduğu için sessizlik hep sonradadır.
+  before_sec: 0.05
+  after_sec: 0.60
+  frame_ms: 20.0            # enerji zarfı kare genişliği
+  hop_ms: 10.0              # zarf adımı
+  silence_drop_db: 25.0     # yerel konuşma seviyesinin bu kadar altı sessizlik sayılır
+  min_silence_sec: 0.06     # sessizlik sayılması için asgari süre
+  # Bulunan sessizlik sonraki kelimenin damgasından bu kadar sonra
+  # başlıyorsa kelime çoktan başlamıştır; sınır damgayı geçemez.
+  silence_after_word_sec: 0.10
+
 clip_qc:
   # Bu aşamanın kapatma anahtarı yok: ürettiği sütunlar (speech_ratio,
   # sessizlikler, seviye) politikanın ve şemanın çekirdeği. VAD ayarları
   # `vad` bölümünden gelir ve aşamanın sürümüne dâhildir.
   {}
 
-# Planlanan ama henüz yazılmamış aşamaların (DNSMOS, konuşmacı kümeleme,
-# olay etiketleri) konfig bölümleri BURADA DEĞİL, yazıldıklarında eklenecek.
+# DNSMOS P.835 (algısal kalite kestirimi): klip başına SIG (konuşma
+# bozulması), BAK (arka plan gürültüsü), OVRL (genel) skorları. Aşama
+# yalnızca ölçüm üretir; politika kuralı YOK — v4'te kaldırılan
+# `dnsmos_ovrl ≥ 3,0` kuralı ancak skor kör dinlemeyle doğrulanırsa geri
+# konur. Model microsoft/DNS-Challenge deposundaki sig_bak_ovr.onnx; küçük
+# olduğu için depoya işlendi, içeriği aşağıdaki sha256 ile sabit ve aşama
+# kuruluşta doğrular. Yol depo köküne göredir ve sürüme girmez; özet girer.
+dnsmos:
+  model_path: models/dnsmos/sig_bak_ovr.onnx
+  model_sha256: 269fbebdb513aa23cddfbb593542ecc540284a91849ac50516870e1ac78f6edd
+
+# Planlanan ama henüz yazılmamış aşamaların (konuşmacı kümeleme, olay
+# etiketleri) konfig bölümleri BURADA DEĞİL, yazıldıklarında eklenecek.
 # Önceden konmuş ayarlar 30 Ağu 2026'da çıkarıldı: `dnsmos.enabled: true`
 # aşama olmadığı için "açık" görünüyordu ve politikada `dnsmos_ovrl ≥ 3,0`
 # kuralının 12.958 klipte sessizce geçmesine zemin olmuştu (politika v4'te
@@ -166,6 +199,11 @@ music:
   # Bu paketin ve hizalayıcının (MMS_FA) ağırlıkları torchaudio sürümüne
   # bağlıdır; ayrı revizyon alanı yok, requirements.txt sabitliyor.
   separator: hdemucs_high_musdb_plus
+  # AST penceresi: klip bu uzunlukta pencerelere bölünür (10,24 s modelin
+  # kendi girdi süresi), pencereler üzerinden azami skor alınır. Koda
+  # gömülüydü, 31 Ağu 2026'da taşındı; değerler değişmedi.
+  window_sec: 10.24
+  hop_sec: 5.0
   # Ayrıştırma pahalı; AudioSet skoru bu eşiğin altındaki kliplerde hiç
   # koşmaz ve sütuna taban değer (-80 dB) yazılır. Hangi kliplerde gerçekten
   # koştuğu `music_db_separated` sütununda yayımlanır.
@@ -256,7 +294,9 @@ recommended_subset:
     # ve şemanın dediği gibi sıralama sinyali olarak kalıyor, kapı olmuyor.
     # - metric: word_confidence
     #   min: 0.60
-    # DNSMOS aşaması bağlanınca geri konur (v4'te kaldırıldı, yukarıya bak):
+    # DNSMOS aşaması 31 Ağu 2026'da bağlandı, `dnsmos_ovrl` artık üretiliyor;
+    # kural yine de kör dinleme denetiminden geçmeden geri KONMAZ (v4'ün
+    # gerekçesi yukarıda; kanıt yükü kapıdadır, veride değil):
     # - metric: dnsmos_ovrl
     #   min: 3.0
     - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate, background_music]

@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     run = sub.add_parser("run", help="hattı koştur")
     run.add_argument("--config", default="configs/default.yaml")
     run.add_argument("--stages", nargs="+", default=None,
-                     help="yalnızca bu aşamalar (prepare asr boilerplate segment clip_qc music export)")
+                     help="yalnızca bu aşamalar (prepare asr boilerplate segment clip_qc music dnsmos export)")
     run.add_argument("--max-sources", type=int, default=None, help="runtime.max_sources'ı geçersiz kıl")
     run.add_argument("--max-channels", type=int, default=None, help="runtime.max_channels'ı geçersiz kıl")
     run.add_argument("--max-hours", type=float, default=None, help="runtime.max_hours'ı geçersiz kıl (saat bütçesi)")

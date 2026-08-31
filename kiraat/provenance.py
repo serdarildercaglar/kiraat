@@ -23,7 +23,8 @@ from typing import Any, Mapping
 #: ağırlığını da sabitler (pipelines.MMS_FA, pipelines.HDEMUCS_HIGH_MUSDB_PLUS);
 #: silero-vad ağırlığı wheel'in içinde gelir.
 PACKAGES = ("torch", "torchaudio", "faster-whisper", "ctranslate2", "transformers",
-            "silero-vad", "ctc-forced-aligner", "soundfile", "numpy", "pyyaml")
+            "silero-vad", "ctc-forced-aligner", "soundfile", "numpy", "pyyaml",
+            "pyloudnorm", "onnxruntime")
 
 
 def package_versions() -> dict[str, str | None]:
@@ -75,6 +76,9 @@ def model_ids(cfg: Any) -> dict[str, Any]:
         "separator": {"model": cfg.get("music.separator"), "revision": None,
                       "pinned_by": "torchaudio"},
         "vad": {"model": "silero-vad", "revision": None, "pinned_by": "silero-vad"},
+        # DNSMOS ağırlığı depoya işli; kimliği dosyanın sha256'sıdır.
+        "dnsmos": {"model": cfg.get("dnsmos.model_path"),
+                   "revision": cfg.get("dnsmos.model_sha256")},
     }
 
 

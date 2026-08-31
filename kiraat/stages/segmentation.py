@@ -38,8 +38,8 @@ def cut(src: str, sr: int, dst: Path, start: float, end: float) -> None:
 @register
 class SegmentStage(SourceStage):
     name = "segment"
-    config_sections = ("align", "text")   # align.enabled/confidence_source, text.emit_*
-    version = "8"
+    config_sections = ("align", "text", "boundaries")   # align.enabled/confidence_source, text.emit_*, sınır iyileştirme eşikleri
+    version = "9"   # v9: harf+rakam okunuşu (3G→üç ge) ve 1-3 basamaklı sayı+nokta cümle sonu sayılmaz
     depends_on = ("asr", "align", "boilerplate")
 
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
@@ -70,8 +70,9 @@ class SegmentStage(SourceStage):
         spans = find_spans([w.text for w in words], phrases)
         clips = segment(words, seg_cfg, boilerplate=spans)
 
-        env, sr, n_samples = envelope_of_file(source["audio"])
-        clips = refine_boundaries(clips, words, env, seg_cfg)
+        refine_cfg = self.cfg.refine_config()
+        env, sr, n_samples = envelope_of_file(source["audio"], refine_cfg)
+        clips = refine_boundaries(clips, words, env, seg_cfg, refine_cfg)
         clips = clamp_to_audio(clips, n_samples / sr)
 
         out_dir = work / "clips" / source["channel"] / f"src{source['id']:05d}"

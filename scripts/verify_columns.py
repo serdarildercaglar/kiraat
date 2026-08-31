@@ -314,7 +314,7 @@ check("flags şemadaki adlardan", [(r["id"], f) for r in manifest for f in r["fl
 policy = cfg.policy()
 bad = []
 for r in manifest:
-    metrics = {k: r.get(k) for k in schema.BY_NAME if schema.BY_NAME[k].stage in ("segment", "align", "clip_qc", "music") and k in r}
+    metrics = {k: r.get(k) for k in schema.BY_NAME if schema.BY_NAME[k].stage in ("segment", "align", "clip_qc", "music", "dnsmos") and k in r}
     ok, reasons = policy.evaluate(metrics, r["flags"])
     if ok != r["recommended"] or sorted(reasons) != sorted(r["exclusion_reasons"]) or r["policy_version"] != policy.version:
         bad.append((r["id"], r["recommended"], ok, r["exclusion_reasons"], list(reasons)))

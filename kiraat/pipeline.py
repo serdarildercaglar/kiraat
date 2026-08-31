@@ -29,14 +29,14 @@ from .boilerplate import mine
 from .config import Config
 from .dedupe import mark_duplicates
 from .scoring import annotate
-from .stages import align, asr, clip_qc, music, prepare, segmentation  # noqa: F401  (kayıt için)
+from .stages import align, asr, clip_qc, dnsmos, music, prepare, segmentation  # noqa: F401  (kayıt için)
 from .stages.asr import load_words
 from .store import Store
 
 log = logging.getLogger("kiraat")
 
 SOURCE_STAGES = ("prepare", "asr", "align", "segment")
-CLIP_STAGES = ("clip_qc", "music")
+CLIP_STAGES = ("clip_qc", "music", "dnsmos")
 
 
 def discover_sources(cfg: Config, duration_of: Callable[[str], float] | None = None) -> list[dict[str, Any]]:
@@ -218,11 +218,16 @@ class Pipeline:
             words_path = s.get("meta", {}).get("words")
             if words_path and Path(words_path).exists():
                 by_channel.setdefault(s["channel"], {})[str(s["id"])] = [w["text"] for w in load_words(words_path)]
+        # Varsayılanlar yalnızca `mine` imzasında durur; burada yinelenmiş
+        # (ve konfigden sapabilen) kopyaları vardı — min_recordings kodda 3
+        # konfigde 2, max_words kodda 12 konfigde 24 kalmıştı (31 Ağu 2026).
+        kwargs: dict[str, Any] = {k: int(opts[k]) for k in
+                                  ("min_recordings", "min_words", "max_words", "head_words", "tail_words")
+                                  if k in opts}
+        if "min_ratio" in opts:
+            kwargs["min_ratio"] = float(opts["min_ratio"])
         for channel, recs in by_channel.items():
-            mined = mine(recs, min_recordings=int(opts.get("min_recordings", 3)),
-                         min_words=int(opts.get("min_words", 3)), max_words=int(opts.get("max_words", 12)),
-                         head_words=int(opts.get("head_words", 80)), tail_words=int(opts.get("tail_words", 80)),
-                         min_ratio=opts.get("min_ratio"))
+            mined = mine(recs, **kwargs)
             phrases = [list(p) for p, _ in mined]
             json.dump(phrases, (out_dir / f"{channel}.json").open("w", encoding="utf-8"), ensure_ascii=False, indent=1)
             self.store.mark_done("channel", channel, "boilerplate", version)

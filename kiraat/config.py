@@ -20,8 +20,8 @@ from .segment import SegmentConfig
 #: yazım hatası olan bir bölüm sessizce yok sayılmasın diye.
 SECTIONS = frozenset(
     {"paths", "runtime", "sources", "prepare", "vad", "asr", "align", "segment",
-     "clip_qc", "dnsmos", "speaker", "events", "music", "boilerplate", "text", "dedupe",
-     "recommended_subset", "export"}
+     "boundaries", "clip_qc", "dnsmos", "music", "boilerplate", "text", "dedupe",
+     "recommended_subset"}
 )
 
 
@@ -64,6 +64,16 @@ class Config:
         if unknown:
             raise ConfigError(f"segment: bilinmeyen anahtar(lar): {', '.join(sorted(unknown))}")
         return SegmentConfig(**{k: float(v) for k, v in opts.items()})
+
+    def refine_config(self):
+        """`boundaries` bölümünü `RefineConfig`e aç; bilinmeyen anahtar hatadır."""
+        from .boundaries import RefineConfig
+
+        opts = self.section("boundaries")
+        unknown = set(opts) - set(RefineConfig.__dataclass_fields__)
+        if unknown:
+            raise ConfigError(f"boundaries: bilinmeyen anahtar(lar): {', '.join(sorted(unknown))}")
+        return RefineConfig(**{k: float(v) for k, v in opts.items()})
 
     def policy(self) -> Policy:
         return Policy.from_dict(self.section("recommended_subset"))

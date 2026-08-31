@@ -94,6 +94,9 @@ COLUMNS: tuple[Column, ...] = (
     Column("rms_dbfs", "float", "clip_qc", "Klibin RMS seviyesi (kazanç uygulanmamış, kaynağın kendi seviyesi).", unit="dBFS"),
     Column("clip_ratio", "float", "clip_qc",
            "Tam ölçeğe dayanan örneklerin (|x| ≥ 0,99) oranı; dijital kırpılma ölçüsü."),
+    Column("loudness_lufs", "float", "clip_qc",
+           "BS.1770 tümleşik ses yüksekliği (pyloudnorm). Sese kazanç uygulanmaz; seviye normalizasyonu kullanıcıya bırakılır, bu sütun onun girdisidir. 0,4 s'lik ölçüm bloğundan kısa ya da tümüyle sessiz kliplerde boş.",
+           unit="LUFS", optional=True),
     # ------------------------------------------------------------ arka plan müziği
     Column("music_score_audioset", "float", "music",
            "AudioSet AST sınıflandırıcısının müzik etiketleri (Music, Background music, Soundtrack…) üzerindeki azami skoru, klip pencereleri üzerinden en büyük değer. Ucuz eleme sinyali; konuşmayla birlikte var olabilir."),
@@ -105,6 +108,13 @@ COLUMNS: tuple[Column, ...] = (
     Column("music_stem_db", "dict[string,float]", "music",
            "Ayrıştırıcının dört bileşeninin (drums, bass, other, vocals) ayrı ayrı enerji seviyeleri; yalnızca ayrıştırıcının koştuğu kliplerde yazılır. `music_to_speech_db` bunlardan türetilir.",
            unit="dB", optional=True),
+    # ------------------------------------------------------------ algısal kalite (DNSMOS P.835)
+    Column("dnsmos_sig", "float", "dnsmos",
+           "DNSMOS P.835 konuşma kalitesi kestirimi (SIG, 1–5): konuşmanın kendi bozulması. Referans uygulamayla birebir: 9,01 s pencereler, polinom eşleme, pencere ortalaması."),
+    Column("dnsmos_bak", "float", "dnsmos",
+           "DNSMOS P.835 arka plan kestirimi (BAK, 1–5): arka plan gürültüsünün rahatsızlığı; yüksek değer temiz demektir."),
+    Column("dnsmos_ovrl", "float", "dnsmos",
+           "DNSMOS P.835 genel kalite kestirimi (OVRL, 1–5). Bir kapı değildir: politika kuralı ancak kör dinleme denetiminden sonra konabilir (politika v4 kaydı)."),
     # ------------------------------------------------------------ işaretler, yineleme, karar
     Column("flags", "list[string]", "export",
            "Klip işaretleri; hiçbiri klibi silmez. `forced_split`: tek başına süre tavanını aşan cümle iç noktalamasından bölündü; "

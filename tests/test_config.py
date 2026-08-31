@@ -28,6 +28,7 @@ def test_konfigde_okunmayan_anahtar_yok():
 
     import yaml
 
+    from kiraat.boundaries import RefineConfig
     from kiraat.segment import SegmentConfig
 
     root = Path(__file__).resolve().parents[1]
@@ -40,8 +41,10 @@ def test_konfigde_okunmayan_anahtar_yok():
         for key in body:
             if any(pat in src for pat in (f'"{key}"', f"'{key}'", f"{section}.{key}")):
                 continue
-            # `segment` bölümü SegmentConfig'e olduğu gibi açılır.
+            # `segment` ve `boundaries` bölümleri dataclass'a olduğu gibi açılır.
             if section == "segment" and key in SegmentConfig.__dataclass_fields__:
+                continue
+            if section == "boundaries" and key in RefineConfig.__dataclass_fields__:
                 continue
             okunmayan.append(f"{section}.{key}")
     assert not okunmayan, f"konfigde hiçbir kodun okumadığı anahtar(lar): {okunmayan}"
@@ -63,6 +66,43 @@ def test_politika_kurallari_okunuyor():
         [],
     )
     assert ok, reasons
+
+
+def test_boundaries_konfigi_dataclassa_donuyor():
+    rc = Config.load(DEFAULT).refine_config()
+    assert rc.silence_drop_db == 25.0 and rc.after_sec == 0.60
+
+
+def test_bilinmeyen_boundaries_anahtari_hata_verir(tmp_path):
+    import textwrap
+
+    p = tmp_path / "c.yaml"
+    p.write_text(textwrap.dedent("""
+        boundaries:
+          before_sec: 0.05
+          once_sn: 0.05
+    """), encoding="utf-8")
+    with pytest.raises(ConfigError, match="once_sn"):
+        Config.load(p).refine_config()
+
+
+def test_koddaki_varsayilanlar_konfigle_ayni():
+    """Eşikler konfige taşındı (31 Ağu 2026) ama dataclass/aşama varsayılanları
+    duruyor; konfig anahtarı silinirse kod eski değere sessizce dönmesin.
+    `music` bölümünün aynı bekçisi `tests/test_music.py`'de."""
+    from kiraat.boundaries import RefineConfig
+    from kiraat.stages.music import MusicMeasurer
+
+    cfg = Config.load(DEFAULT)
+    bnd = dict(cfg.section("boundaries"))
+    assert set(bnd) == set(RefineConfig.__dataclass_fields__)
+    rc = RefineConfig()
+    assert {k: float(v) for k, v in bnd.items()} == {k: getattr(rc, k) for k in bnd}
+    music = cfg.section("music")
+    assert MusicMeasurer.window_sec == music["window_sec"]
+    assert MusicMeasurer.hop_sec == music["hop_sec"]
+    # asr.beam_size'ın koddaki opts.get varsayılanı da 5'tir (kiraat/stages/asr.py).
+    assert cfg.get("asr.beam_size") == 5
 
 
 def test_bilinmeyen_bolum_hata_verir(tmp_path):

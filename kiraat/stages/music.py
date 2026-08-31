@@ -291,6 +291,8 @@ class MusicStage(ClipStage):
             audioset_labels=tuple(self.opts.get("audioset_labels", AUDIOSET_MUSIC_LABELS)),
             separator=str(self.opts.get("separator", MusicMeasurer.separator)),
             separator_screen=float(self.opts.get("separator_screen", SEPARATOR_SCREEN)),
+            window_sec=float(self.opts.get("window_sec", MusicMeasurer.window_sec)),
+            hop_sec=float(self.opts.get("hop_sec", MusicMeasurer.hop_sec)),
         )
         self.measurer.setup()
         # Ön-yükleme: çözme, yeniden örnekleme ve log-mel CPU işidir ve GPU

@@ -119,6 +119,19 @@ class FakeClipQc(ClipStage):
 
 
 @register(override=True)
+class FakeDnsmos(ClipStage):
+    name = "dnsmos"
+    version = "t1"
+    produces_metrics = ("dnsmos_ovrl",)
+
+    def process_clips(self, clips: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:
+        time.sleep(0.01)
+        log_event(self.cfg, "dnsmos", n=len(clips))
+        return [{"id": c["id"], "metrics": {"dnsmos_ovrl": round((sum(map(ord, c["id"])) % 40) / 10 + 1, 3)},
+                 "flags": []} for c in clips]
+
+
+@register(override=True)
 class FakeMusic(ClipStage):
     name = "music"
     version = "t1"

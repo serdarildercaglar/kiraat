@@ -51,7 +51,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from kiraat.text.turkish import lower  # noqa: E402
 
-STAGES = ["prepare", "asr", "align", "boilerplate", "segment", "clip_qc", "music", "export"]
+STAGES = ["prepare", "asr", "align", "boilerplate", "segment", "clip_qc", "music", "dnsmos", "export"]
 VERDICTS = ["temiz", "kusurlu", "kullanilmaz"]
 #: Kusur etiketleri: anahtar, sayfadaki ad, klavye harfi. Sıra sayfadaki sıradır.
 TAGS = [
