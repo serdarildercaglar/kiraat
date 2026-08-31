@@ -2578,6 +2578,44 @@ commit'ten yeniden yazıldı.
 **Makaleye:** altyapı ayrıntısı makale malzemesi değil; §Yöntem'e yalnızca
 "DNSMOS P.835, referans uygulamayla birebir" cümlesi.
 
+## 2026-08-31 — Kör dinleme: müzik işareti kanal tınısı değil, gerçekten müzik yakalıyor; eşik −40 dB kalır (madde 15 kapandı)
+
+Altıncı dinleme turu: işaretin yığıldığı üç kanaldan (`Peri_Mia`,
+`SESLİKİTAPEVİ`, `sesli-kitaplar`) dört dB bandına dengelenmiş 36 klip,
+kanal ve skor gizli (`work/sample-25d/listen-music/`). Soru, `clip_ratio`
+ve `word_confidence` kurallarını düşüren örüntünün burada da olup olmadığı
+idi — değilmiş.
+
+**İşaret ↔ kulak (36 klip).** İşaretli 22 klipte: 12 belirgin + 2 baskın,
+7 hafif, yalnız 3 "yok" — işaretlilerin %86'sında kulak da bir şey
+duyuyor. İşaretsiz 14 klipte: 11 "yok", 2 hafif, 1 belirgin (kaçan tek
+klip dB = −43,6, eşiğin hemen altında). dB bantları kulakla monoton:
+−40 altı bantta 7/9 "yok", −40 üstünde müzik oranı bantla artıyor. Sinyal
+kanal tınısı değil; işaretin kanala yığılması o kanallardaki müziğin
+gerçekten sürekli olmasından.
+
+**Eşik taraması** (kulak-pozitif = belirgin+baskın): −40 dB 13 pozitifin
+12'sini yakalıyor, −45 hepsini yakalıyor ama yanlış pozitif eklemeden
+değil (korpus genelinde −45…−40 bandını da işaretlerdi); −35 ve üstü
+kaçırmaya başlıyor. **Karar: eşik −40 dB'de kalır, kural değişmez** —
+politika sürümü aynı (v6).
+
+**Sınırları.** Yanlış pozitif payı %14 (3/22) ve üçü de yüksek AudioSet
+skorlu (0,54–0,66); ikisi `SESLİKİTAPEVİ`den — o kanalda dinleyici 12
+klibin 8'ine "yok" dedi, işaret payının en şüpheli olduğu kanal bu.
+Dinleyici notu: bazı kliplerde ayrımı güçleştiren şey müzik değil
+mikrofon/oda ekosu ("mikrofondan kaynaklı eko var, müzik değil").
+Kayıt kalitesi artık ayrı sütunlarda görünüyor: üç kanalın `dnsmos_bak`
+medyanları korpus medyanının (4,10) altında; eko/oda şüphesi müzik
+eşiğinin değil algısal kalite sütunlarının işi. "Hafif" verilen 9 klip
+gri bölgedir: işaret onları dışlıyor ve TTS eğitimi için temkinli taraf
+budur; sütunlar yayımlandığından kullanıcı −40 yerine kendi eşiğini her
+zaman kesebilir.
+
+**Makaleye:** kör dinleme protokolünün altıncı turu; işaretin duyulur
+müzikle doğrulanması ve eşiğin dinlemeyle seçilmiş olması §Yöntem'e,
+yanlış pozitif payı ve kanal yoğunlaşması §Sınırlar'a.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -2612,13 +2650,8 @@ tek satırlık kapanış notu durur.
 9. **Açık madde 13 — cümle başı kısa sözcüklerde çöp hizalama.** 245 kelime,
    289 klip (%2,12); sebep bilinmiyor, parça sınırı hipotezi elendi.
    `align_score` yayımlanacağı için ya açıklanmalı ya sınırı belgelenmeli.
-10. **Açık madde 15 — müzik işaretinin kanal yığılması.** `Peri_Mia`,
-    `SESLİKİTAPEVİ`, `sesli-kitaplar` kliplerinden bantlara dengelenmiş
-    30–40 kliplik kör dinleme turu: eşik gerçekten duyulur müziği mi
-    yakalıyor, yoksa o kanalların tınısını mı? Politika yeniden
-    hesaplanabildiği için tam koşuyu bekletmez. **Dinleme sayfası hazır**
-    (31 Ağu): `work/sample-25d/listen-music/index.html`, 36 klip; kapanış
-    dinlemeyi bekliyor.
+10. ~~Açık madde 15 — müzik işaretinin kanal yığılması~~ — 31 Ağu 2026,
+    kapandı (aşağıda): işaret gerçek müziği yakalıyor, eşik −40 kalır.
 11. **Literatürden gelen sütunlar — kalanı.** DNSMOS ve LUFS sütunları
     31 Ağu'da bağlandı. Kalan: klip başına dil kimliği (model seçimi
     ister); `dnsmos_ovrl`in bantlara dengeli kör dinlemesi (what-if: ≥3,0
@@ -2635,12 +2668,15 @@ tek satırlık kapanış notu durur.
 **Yöntem olarak yerleşmiş.**
 
 - **Kör dinleme protokolü** — kanalı ve skoru gizleyen dinleme sınaması
-  kuruldu ve beş tur koşuldu (müzik eşiği, sınır kesimi ×2, `clip_ratio`,
-  `word_confidence`). Politikaya girecek her yeni sinyal için tekrarlanır;
-  kanıt yükü kapıdadır, veride değil.
+  kuruldu ve altı tur koşuldu (müzik eşiği ×2, sınır kesimi ×2,
+  `clip_ratio`, `word_confidence`). Politikaya girecek her yeni sinyal
+  için tekrarlanır; kanıt yükü kapıdadır, veride değil.
 
 **Kapandı.**
 
+- ~~Müzik işaretinin kanal yığılması (madde 15)~~ — 31 Ağu 2026; 36 kliplik
+  kör dinlemede işaretlilerin %86'sında kulak da müzik duydu, işaretsizlerin
+  11/14'ü temiz; eşik −40 dB'de kaldı, politika v6 değişmedi.
 - ~~DNSMOS maliyeti~~ — 31 Ağu 2026; GPU'da sabit şekilli 16'lık dilim,
   13 ms/klip, sayılar üç ondalıkta CPU ile aynı, tam koşu kestirimi
   ~6 GPU-saat.
