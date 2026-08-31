@@ -70,3 +70,50 @@ def test_isaret_db_ve_audioset_birlikte_ister():
     assert not has_background_music(-45.0, audioset=0.9, audioset_min=0.3)
     # audioset_min=None yalnızca dB kuralı
     assert has_background_music(-10.0, audioset=0.0, audioset_min=None)
+
+
+def test_okunamayan_klip_kosuyu_durdurmaz(tmp_path):
+    """Okunamayan seste `music` koşuyu HATA ile düşürüyordu (31 Ağu incelemesi,
+    ertelenen b maddesi): clip_qc işaretler, dnsmos boş bırakır, music
+    durdururdu. Sözleşme artık dnsmos ile aynı — ölçümler boş kalır, işaret
+    verilmez (`unreadable_audio` sahibi clip_qc), koşu sürer."""
+    import math as _math
+    from concurrent.futures import ThreadPoolExecutor
+    from pathlib import Path
+
+    import numpy as np
+    import soundfile as sf
+
+    from kiraat.config import Config
+    from kiraat.stages.music import MusicStage
+
+    good = tmp_path / "good.flac"
+    sf.write(good, np.array([0.1 * _math.sin(i / 5.0) for i in range(2400)],
+                            dtype="float32"), 24000)
+    bad = tmp_path / "bad.flac"
+    bad.write_bytes(b"bu bir flac degil")
+
+    class FakeMeasurer:
+        def prepare(self, wave, sr):
+            return {"wave": wave, "sr": sr}
+
+        def measure_prepared(self, prepared):
+            return {"music_score_audioset": 0.0, "music_to_speech_db": -80.0,
+                    "music_db_separated": False}
+
+    cfg = Config.load(Path(__file__).resolve().parents[1] / "configs/default.yaml")
+    stage = MusicStage(cfg)
+    stage.measurer = FakeMeasurer()
+    stage.prefetch = ThreadPoolExecutor(2)
+    try:
+        rows = stage.process_clips([
+            {"id": "c1", "audio": str(bad)},
+            {"id": "c2", "audio": str(good)},
+        ])
+    finally:
+        stage.prefetch.shutdown(wait=True)
+
+    by_id = {row["id"]: row for row in rows}
+    assert by_id["c1"]["metrics"] == {}
+    assert by_id["c1"]["flags"] == []
+    assert by_id["c2"]["metrics"]["music_to_speech_db"] == -80.0

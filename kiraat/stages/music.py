@@ -274,7 +274,7 @@ class MusicStage(ClipStage):
 
     name = "music"
     depends_on = ("segment",)
-    version = "3"   # v3: AudioSet modeli ve ağırlık revizyonu konfigden; v2: sahipli anahtarlar
+    version = "4"   # v4: okunamayan klip koşuyu durdurmaz, ölçümler boş kalır; v3: AudioSet modeli ve ağırlık revizyonu konfigden
     gpu = True
     produces_metrics = ("music_score_audioset", "music_to_speech_db", "music_db_separated",
                         "music_stem_db", "music_prob_external")
@@ -304,8 +304,15 @@ class MusicStage(ClipStage):
         self.prefetch.shutdown(wait=True)
         self.measurer.teardown()
 
-    def _prepare(self, clip: Mapping[str, Any]) -> dict[str, Any]:
-        wave, sr = load_audio(clip["audio"])
+    def _prepare(self, clip: Mapping[str, Any]) -> dict[str, Any] | None:
+        """Okunamayan klipte None — ölçümler boş kalır, koşu durmaz;
+        `unreadable_audio` işaretinin sahibi `clip_qc` (dnsmos ile aynı sözleşme)."""
+        try:
+            wave, sr = load_audio(clip["audio"])
+        except Exception:
+            return None
+        if wave.numel() == 0:
+            return None
         return self.measurer.prepare(wave, sr)
 
     def process_clips(self, clips: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:
@@ -314,6 +321,9 @@ class MusicStage(ClipStage):
         audioset_min = None if audioset_min is None else float(audioset_min)
         rows: list[dict[str, Any]] = []
         for clip, prepared in zip(clips, self.prefetch.map(self._prepare, clips)):
+            if prepared is None:
+                rows.append({"id": clip["id"], "metrics": {}, "flags": []})
+                continue
             metrics = self.measurer.measure_prepared(prepared)
             flags = ["background_music"] if has_background_music(
                 metrics["music_to_speech_db"], threshold,

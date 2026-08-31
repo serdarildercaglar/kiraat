@@ -2677,6 +2677,64 @@ geçti. Tamamı 14. madde olarak listede.
 **Makaleye:** girmez; inceleme süreci §Yöntem'de tek cümle
 ("her değişiklik testli, her koşu temiz commit'ten") olarak zaten var.
 
+## 2026-08-31 — Karar: ara ses (`work/audio`) HF yayınına kadar saklanacak
+
+31 Ağustos'taki zamanlama uyarısı ("ara ses silinmeden konuşmacı kararı")
+kullanıcı kararıyla kapandı: tam koşunun `work/audio` çıktısı (~283 GB,
+prepare'in 24 kHz mono dönüşümleri) **veri kümesi Hugging Face'e
+yüklenene kadar silinmez**; silme ancak yayından sonra gündeme gelir.
+Böylece konuşmacı kümeleme aşaması (deney 4) eklenmeye karar verilirse
+girdisi hazır durur, prepare yeniden koşmaz. Deney 4'ün kendisi (aşamanın
+yazılıp yazılmayacağı) hâlâ açık; bu karar yalnızca sıralama riskini
+ortadan kaldırır. Disk planına etkisi: koşu sonrası ~283 GB geri
+alınmayacak, boş alan hesabı buna göre (bkz. tam koşu öncesi hazırlık).
+
+**Makaleye:** girmez; işletme kararı.
+
+## 2026-08-31 — `music` okunamayan seste koşuyu durdurmaz (v4); tam koşu öncesi son engel kapandı
+
+31 Ağustos incelemesinin ertelenen (b) maddesinin tam koşuyu ilgilendiren
+yarısı öne alındı: `music` aşaması okunamayan klipte `sf.read` hatasını
+yakalamıyordu ve tek bozuk dosya bütün koşuyu düşürüyordu. 3.440 saatlik
+koşuda bu kabul edilemez bir kırılganlık olduğu için sözleşme `dnsmos` ile
+eşitlendi: okunamayan (ya da boş) klipte ölçümler boş kalır, işaret
+verilmez — `unreadable_audio` işaretinin sahibi `clip_qc` — ve koşu sürer.
+`music` v4; şemada üç müzik sütunu (`music_score_audioset`,
+`music_to_speech_db`, `music_db_separated`) dnsmos emsalindeki gibi isteğe
+bağlı ilan edildi. Test: bozuk bayt dizisi + sağlam klip birlikte işlenir;
+düzeltme geri alınınca test LibsndfileError ile düşüyor (teşhis doğru).
+Sürüm zinciri gereği tam koşuda `music` zaten sıfırdan koşacağı için ek
+maliyet yok. Maddenin kalan yarısı (ortak klip çözücü, üç aşamada tek
+davranış) 14. maddede mühendislik borcu olarak duruyor.
+
+**Makaleye:** girmez.
+
+## 2026-08-31 — TAM KOŞU başlatıldı (`work/full-1`)
+
+Kullanıcı onayı alındı ("final koşu için engel yoksa koş"). Koşu öncesi
+son durum: music v4 düzeltmesi bu commit'te, bütün testler geçiyor
+(1 atlanan), `gpu_stage_concurrency: 1` (dnsmos'un ~6 GB arenası nedeniyle
+tek GPU işçisi güvenli taraf), disk 696 GB boş (~283 GB prepare + klipler
+sığar; `work/audio` HF yayınına kadar saklanacak, yukarıdaki karar).
+
+Kuru koşu doğrulaması (`--dry-run`): **2.699 kaynak, 27 kanal, 3.440,16
+saat** — envanterin ölçülmüş sınırlarıyla birebir. Okunamayan 1 dosya
+(seslimakalem, bozuk m4a) koşuda `error` işaretiyle kayda düşecek.
+
+Komut (bu kaydı içeren temiz commit'ten):
+
+    python -m kiraat run --max-sources 0 --work-root work/full-1
+
+Günlük `work/full-1.log`, pid `work/full-1.pid`. Beklenti: sample-25c'nin
+41,5× hızıyla ~83 saat duvar saati (≈3,5 gün); dnsmos GPU'da ~6 GPU-saat
+ekler. Kesintide `done` kayıtlarından kaldığı yerden sürer (sample-25d'de
+doğrulandı). Tam koşudan sonra sırada bekleyenler değişmedi: TTS
+değerlendirme düzeneği (deney 12), bölütleme ablasyonu (deney 1),
+konuşmacı kararı (deney 4), yayın paketi (deney 6).
+
+**Makaleye:** §Veri sayıları bu koşunun manifestinden gelecek; koşu
+bitince toplu kayıt buraya düşülecek.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
@@ -2727,9 +2785,10 @@ tek satırlık kapanış notu durur.
 13. ~~DNSMOS maliyeti~~ — 31 Ağu 2026, kapandı (GPU'ya taşındı, aşağıda).
 14. **İnceleme artıkları (mühendislik borcu)** — 31 Ağu inceleme kaydındaki
     ertelenenler: aşama listelerinin kayıt defterinden türetilmesi
-    (konuşmacı aşamasıyla birlikte), ortak klip çözücü + okunamayan ses
-    için tek sözleşme (music şu an koşuyu durduruyor), dnsmos önyükleme
-    örtüşmesi, scripts'teki kopya yardımcılar. Ölçüm üretmez, deney değil;
+    (konuşmacı aşamasıyla birlikte), ortak klip çözücü (okunamayan ses
+    sözleşmesi 31 Ağu'da eşitlendi: üç aşama da işaretle/boş bırak-geç,
+    music v4 artık koşuyu durdurmuyor; ortak çözücü yardımcısı hâlâ yok),
+    dnsmos önyükleme örtüşmesi, scripts'teki kopya yardımcılar. Ölçüm üretmez, deney değil;
     sıradaki aşama eklenirken kapatılır.
 
 **Yöntem olarak yerleşmiş.**
