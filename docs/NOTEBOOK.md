@@ -2735,6 +2735,199 @@ konuşmacı kararı (deney 4), yayın paketi (deney 6).
 **Makaleye:** §Veri sayıları bu koşunun manifestinden gelecek; koşu
 bitince toplu kayıt buraya düşülecek.
 
+## 2026-09-03 — TAM KOŞU kullanıcı kararıyla durduruldu (`work/full-1`, 19:22)
+
+Durdurma anında hat: align 811/2391, segment 804/2395, clip_qc
+356.268/516.619, music ve dnsmos henüz başlamadı; veritabanında 746.108
+klip, bütünlük denetimi temiz. Ana sürece SIGINT gönderildi; işçiler yetim
+kaldığı için pid listesiyle tek tek kapatıldı (desenle öldürme yok), GPU
+boşaldı, pid dosyası silindi. `done` kayıtları duruyor, koşu kaldığı
+yerden sürdürülebilir.
+
+Sebep, aynı gün ölçülen iki bölütleme bulgusu: (1) Whisper yedek
+damgalarının geriye atlaması dört uzun kaydı (20,1 saat) çökertiyor —
+hizalanmayan rakamlar kabul edilmiş sınırdır, romanizasyona dokunulmayacak,
+düzeltme `segment`'e monotonluk kelepçesi ve boş dilim korumasıdır; (2)
+künye kesimi cümle ortasında biten/başlayan işaretsiz parçalar bırakıyor
+(699 bin klipte 209, %0,03). İkisi de yalnızca `segment` sürümünü taşır;
+`align` kayıtları korunur. Bu düzeltmeler ve testleri yazıldıktan sonra koşu
+sürdürüldü (aşağıdaki kayıt). Bölütleme tüm kaynaklarda yeniden
+üretilmedi: kullanıcı kararıyla `segment` sürümü 9'da bırakıldı ve
+yalnızca sınırı gerçekten değişen 30 kaynak yeniden bölütlendi.
+
+## 2026-09-03 — Bölütleme: bozuk kelime damgası artık kaydın tamamını düşürmüyor (iki düzeltme, dört kayıt geri kazanıldı)
+
+Tam koşu 20,1 saat kaybetmişti. Dört kayıt bölütlemede çöküyordu ve ikisi
+birbirinden ayrı görünen iki hata mesajı veriyordu; kökleri aynı çıktı.
+
+**Kök.** Rakamlar hizalanmaz — bu 30 Ağustos'ta karara bağlanmış, kabul
+edilmiş bir sınırdır ve hizalamayı okunuş metni üzerinden kurmak açıkça
+reddedilmiştir (kelime aralığı ile `text_raw` arasındaki birebir karşılık
+bozulur, damgalar normalizasyonun doğruluğuna bağlanır). Bu kararın
+dokunulmadığı yerde kalan sonuç şudur: hizalanmayan kelimenin damgası
+Whisper yedeğine düşer ve Whisper'ın rakam damgaları **geriye atlayabilir**.
+1.107 hizalanmış kaynakta ölçüldü: 9.328.387 kelimenin 31.068'i (%0,333)
+hizalanmamış ve hepsi sayısal belirteç ("13", "-4", "%100"); geriye atlayan
+kelime 644 (%0,0069) ve bunlar **307 kaynağa (%27,7) yayılmış**. Atlamanın
+medyanı 0,03 s, p90 0,43 s, en büyüğü 18,4 s.
+
+**İki çökme noktası.**
+
+1. `segment` klibin uçlarını ilk ve son kelimeden okuyordu. Aradaki bir
+   kelime geriye atladığında klip ters uzunluk alıyordu ve muhafız
+   `sifir/eksi sureli klip` hatası veriyordu. En küçük gerçek örüntü iki
+   kelime: `Anna` 15736,19'da başlıyor, `13` 15734,81'de bitiyor →
+   `Clip(start=15736.04, end=15735.06)`. Düşen kayıtlar src00249, src00558.
+2. `boundaries.find_boundary_ex` bağlam penceresini `t_next + 1.0` ile
+   kuruyordu. `t_next` önceki klibin bitişinden önce olduğunda `ctx_hi <
+   ctx_lo` olup dilim boşalıyor ve `np.percentile` "index -1 is out of
+   bounds for axis 0 with size 0" veriyordu. Düşen kayıtlar src00613,
+   src00891. İlginç olan şu: aynı fonksiyonun bir üst satırı (`hi`) bu
+   durumu `max(t_next, t_end)` ile zaten hesaba katıyordu, bağlam penceresi
+   atlanmıştı.
+
+**Düzeltme.** `segment.py`'de yeni `_extent(words, a, b)` yardımcısı klip ve
+cümle uçlarını kelime aralığının tamamından alıyor (en küçük başlangıç, en
+büyük bitiş); sıralı girdide davranış birebir aynı. `boundaries.py`'de
+bağlam penceresi de `hi` gibi `max(t_next, t_end)`e dayanıyor ve dilimin boş
+kalmaması güvenceye alındı. Rakam sözleşmesine, hizalamaya ve eşiklere
+dokunulmadı.
+
+**Testler (`tests/test_nonmonotonic_words.py`).** İlk yazdığım bölütleme
+testi düzeltme geri alındığında **düşmedi**, yani senaryoyu üretmiyordu;
+28 Ağustos'ta öğrenilen kural burada bir kez daha işe yaradı (düzeltmenin
+testi geri alınca düşmüyorsa teşhis kanıtlanmamıştır). Test, gerçek veriden
+çıkarılan iki kelimelik en küçük örüntüyle yeniden yazıldı. Son durum:
+`_extent` geri alınınca bölütleme testi düşüyor, bağlam penceresi düzeltmesi
+geri alınınca sınır testi `IndexError` ile düşüyor. Tüm takım 160 geçti.
+
+**Gerçek veride doğrulama.** Çöken dört kayıt düzeltmeli kodla temiz
+bölütleniyor ve sınır düzeltmesinden geçiyor: 2.094 + 3.124 + 3.003 + 3.121
+= **11.342 klip geri geliyor**. Sağlam veride düzeltme etkisiz: yayımlanmış
+11 kaynak (2.292 klip) birebir aynı üretildi. Korpus geneli: 746.108
+yayımlanmış klipten yalnızca **41'inin sınırı değişiyor**, 30 kaynakta
+(%0,006). O 41 klipte bir kelimenin sesi klip penceresinin dışında kalmış,
+metni içindeydi.
+
+**Sürüm kararı.** `segment` sürümü 9'da bırakıldı ve bunun yerine etkilenen
+30 kaynağın `segment` 'bitti' kaydı silindi; sürüm yükseltmek 1.107 kaynağı
+ve 746 bin klibi yeniden ölçtürürdü, bu yol aynı veri durumunu 55.749 klip
+yeniden ölçümüyle (%7,5) veriyor. `replace_clips` eski klip kimliklerinin
+'bitti' kayıtlarını kendisi sildiği için bayat ölçüm riski yok (kod bu
+tuzağı zaten belgeliyor). Çöken dört kaydın `error` alanı temizlendi; bozuk
+m4a dosyası (src01754) dokunulmadan `error` ile kaldı.
+
+**Yeniden başlatma (19:41).** Veritabanının yedeği alındıktan sonra koşu
+aynı komutla ve iki GPU işçisiyle sürdürüldü. Devam doğru: `prepare` ve
+`asr` "yapılacak kaynak yok", `align` 1.579 kaynak (2.698 − 1.119),
+`segment` 1.621 kaynak (2.698 − 1.077, içinde geri kazanılan 4 ve yeniden
+bölütlenecek 30). Aşama sürüm dizgeleri değişmedi (`segment=9+d7dc4baa`),
+yani hiçbir biten iş eskimedi.
+
+**Beklenen kazanç.** Çökme yalnızca uzun kayıtlarda görülüyordu: 3,9 saatten
+uzun 174 kaydın bölütlenen 73'ünde 4 çökme (%5,5). Kalan 105 uzun kayıtta
+aynı oranla ≈6 çökme ve ≈35 saat kayıp bekleniyordu; düzeltme bunu kesiyor.
+
+### Aynı gün ölçülen, henüz kapanmayan iki madde
+
+**Açık madde 16 — künye kesimi işaretsiz parça bırakıyor.**
+`_cut_at_boilerplate` künye aralığı bir cümlenin içine düştüğünde cümleyi
+üçe bölüyor; yalnızca ortadaki parça `boilerplate` işareti alıyor, baş ve
+kuyruk parçaları işaretsiz kalıyor ve `recommended_subset`'in işaret
+kuralından geçiyor. Politikayı geçen 699.334 klipte ölçüldü: küçük harfle
+başlayan 75 kuyruk parçası ve cümle sonu noktalaması olmayıp ardından künye
+klibi gelen 134 baş parçası, toplam **209 klip (%0,03)**; tam korpusta ~550
+beklenir. Karşılaştırma: `forced_split` işaretli 11.220 klip de küçük harfle
+başlıyor ama politika onları eliyor, o muafiyet belgeli. v1'in aynı kusuru
+%9,4'tü. `tests/test_segment.py` bunu yakalayamıyor, çünkü dosyada künyeli
+yol hiç kurulmuyor ve sınama yalnız klip BAŞINA bakıyor — cümle ortasında
+BİTEN klipler sınamanın kör noktası. Düzeltme önerisi: künye kesiminden
+doğan parçalara ayrı bir işaret (ör. `boilerplate_split`) ve politikanın
+`flag_absent` listesine eklenmesi; `segment` sürümünü taşır.
+
+**Açık madde 13 hâlâ açık ve ölçeklendi — cümle başı çöp hizalama.**
+Tam koşuda `align_score_min < 0,01` olan klip 16.590 (%2,24) ve bunların
+15.684'ü önerilen alt kümede. Ölçülen sonucu var: bu kliplerin %17,2'sinde
+baş sessizliği 0,5 s'yi aşıyor (2.061 klip), normal kliplerde bu oran
+%0,30 — yani sınır gerçekten kayıyor, 57 kat zenginleşme. Sebep hâlâ
+bilinmiyor; rakamlarla ilgisi yok (defterdeki ölçümde çöp hizalamaların
+yalnız %4'ü parça başındaydı).
+
+### Rakam sınırının yayımlanan veriye etkisi (ölçüldü, sorun değil)
+
+Rakamın ucunda olduğu klip, politikayı geçenlerin %0,72'si (5.083 klip).
+İlk kelimesi rakam olan klipte baş sessizliği medyanı 0,220 s (normal
+0,060), p99 2,556 s (normal 0,380); son kelimesi rakam olanlarda son
+sessizlik p90 0,336 s (normal 0,000) ve `speech_ratio` medyanı 0,889
+(normal 0,980). Yani sınır kesilmiyor, gevşiyor: zarf düzeltmesi kaymanın
+çoğunu emiyor, kalan aykırılıkları `speech_ratio ≥ 0,60` kuralı yakalıyor.
+Yayımlanmış veride üst üste binen klip 0, `end <= start` klip 0 — muhafız
+klip üretmek yerine koşuyu kestiği için bozuk klip dışarı çıkmamıştı.
+
+## 2026-09-03 — Dağıtıcı: ikinci GPU işçisi ve align'ın işçi içi darboğazı
+
+Tam koşuda align darboğazdı. Tek GPU işçisiyle ölçüm (kesintiden önceki
+3 saat): 69 kaynak/saat, **94 ses-saati/saat**, işçi %100 dolu. İkinci GPU
+işçisiyle (`--gpu-workers 2`): 8 saatlik pencerede **91 ses-saati/saat**,
+yani kazanç ~1,3×, beklenen 1,8× değil. Sebep nvidia-smi örneklemesinde
+görünüyor: iki işçiyle GPU kullanımı 20 örnekte ortalama ~%25.
+
+Darboğaz işçi içi. Bir kaynakta (src00003, 19 dk, işçi ayarıyla OMP 3)
+ölçülen dağılım: model ileri geçişi %56, **`F.merge_tokens` %28**,
+`forced_align` %10, pencere okuma+yeniden örnekleme %5. `merge_tokens`
+skor tensörü GPU'da kaldığı için her belirteç aralığında ayrı senkron
+yapıyor; skorları önce CPU'ya alınca aynı kaynak 109× yerine **188× gerçek
+zamanda** hizalanıyor ve aralık/skor çıktısı özdeş çıkıyor. Bu düzeltme
+uygulanmadı (koşu ortasında kod değişikliği yapılmadı, deney listesine
+yazıldı); uygulanırsa `align` sürümü değişmez, çünkü çıktı aynıdır.
+
+İkinci gözlem: iki align işçisinin tuttuğu GPU belleği 10,5 saatte işçi
+başına ~7 GB'dan ~9,7 GB'a tırmandı (toplam 19,5 GB / 24 GB). Yeniden
+başlatma bunu sıfırladı (11,1 GB). Klip aşamaları (demucs + DNSMOS) aynı
+işçilerde başlayınca 24 GB'a sığmaması olası; klip işi hatası dağıtıcıda
+koşuyu durdurduğu için o noktada `--gpu-workers 1`e dönmek gerekebilir.
+
+Disk: ham veri NTFS üzerinde bir SATA SSD'de ve %90 doluluğu geçmişti;
+I/O bekleme %27 ölçüldü ama bekleyenler CPU işçileri (segment, clip_qc),
+GPU işçileri değil. 3 Eylül'de kök diskte 138 GB (Docker yapı önbelleği,
+kullanılmayan imajlar, altı conda ortamı, HF önbelleği) boşaltıldı.
+
+## 2026-09-04 — Tam koşu: kaynak aşamaları bitti, klip aşamaları koştu; ölçülen hızlar ve disk
+
+Kaynak tarafı 4 Eylül 22:11'de kapandı: `align` 1579/1579, `segment`
+1621/1621, veritabanında **1.840.404 klip** (2.699 kaynak, 3.431 ses-saati).
+Yeniden başlatmadan (3 Eyl 19:41) bu yana tek hata satırı yok; 3 Eylül'de
+yazılan monotonluk kelepçesi ve boş dilim koruması, daha önce dört uzun
+kaydı düşüren durumu tekrarlatmadı.
+
+Klip aşamalarının ilk ölçülen hızları (22:11–23:31 penceresi, 12 CPU + 2 GPU
+işçisi):
+
+| aşama | havuz | hız | 1,84 M klip için |
+|---|---|---|---|
+| `clip_qc` | CPU | 153 bin klip/saat | ~7 sa (kalan 1,05 M) |
+| `music` | GPU | 88 bin klip/saat (24,5 klip/s) | ~18 sa |
+| `dnsmos` | GPU | 284 bin klip/saat (v2 ölçümünden) | ~6,5 sa |
+
+`music` ve `dnsmos` aynı GPU kuyruğunda seri gittiği için klip tarafının
+GPU kolu ~25 saat; CPU kolu ondan önce boşalır. `music` v4'ün iki GPU
+işçisiyle hızı, tek işçili `sample-25d` ölçümünden (9,3 klip/s) beklenenin
+üstünde çıktı.
+
+3 Eylül kaydındaki iki endişe ölçülerek kapandı. (1) GPU belleği: klip
+aşamaları align işçileriyle aynı süreçlerde başladı ve toplam **22,9 / 24,6
+GB**'da durdu — `--gpu-workers 1`e dönmek gerekmedi, ama pay dar. (2) Disk:
+bölütlemenin son partisi 32 GB yazdı (168 → 136 GB boş), tahminle birebir.
+`work/full-1` şimdi 535 GB: ara ses 284, klipler 246 (1,64 M klipte ortalama
+159 KB), align 2,7, asr 1,5, veritabanı 1,4 GB. Kalan üç aşama ses yazmıyor,
+`export` de yalnızca manifest yazıyor; koşunun geri kalanı diskte birkaç GB
+tutar.
+
+Bütünlük denetimi: `done` tablosunda öksüz satır yok, `clip_qc` ve `music`
+için "bitti" işaretli her klibin metriği yerinde (sırasıyla 797.488 ve
+237.155 satır, eşleşmeyen sıfır). Aşama sürümleri üç oturumda da aynı
+kaldı, dolayısıyla kesintiler hiçbir klibi yeniden ölçtürmedi.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri

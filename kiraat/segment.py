@@ -100,9 +100,25 @@ class _Sentence:
         return self.end - self.start
 
 
+def _extent(words: list[Word], a: int, b: int) -> tuple[float, float]:
+    """`words[a:b]` aralığının gerçek uçları: (en küçük başlangıç, en büyük bitiş).
+
+    Tek tek `words[a].start` / `words[b-1].end` okumak, damgalar sıralıyken
+    aynı sonucu verir ama sıra bozulduğunda ters uzunluk üretir: rakamlar
+    hizalanmadığı için (kabul edilmiş sınır, defter 30 Ağu 2026) o kelimeler
+    Whisper damgasına düşer ve Whisper'ın damgası geriye atlayabilir. 3 Eyl
+    2026'da tam koşuda dört uzun kayıt böyle düştü ('Anna 13': başlangıç
+    15736,04 > bitiş 15735,06). Uçları aralığın tamamından almak, bozuk tek
+    bir damganın klibi ters çevirmesini engeller; sıralı girdide davranış
+    birebir aynıdır (746.108 yayımlanmış klipte 41 klip değişti, %0,006).
+    """
+    return min(w.start for w in words[a:b]), max(w.end for w in words[a:b])
+
 def _sentences(words: list[Word]) -> list[_Sentence]:
     spans = sentence_spans([w.text for w in words])
-    return [_Sentence(a, b, words[a].start, words[b - 1].end) for a, b in spans]
+    return [_Sentence(a, b, *_extent(words, a, b)) for a, b in spans]
+
+
 
 
 def _text(words: list[Word], a: int, b: int) -> str:
@@ -203,7 +219,7 @@ def _cut_at_boilerplate(
         cuts = [sent.a] + [m for m in marks if sent.a < m < sent.b] + [sent.b]
         for a, b in zip(cuts, cuts[1:]):
             is_bp = any(x <= a and b <= y for x, y in spans)
-            out.append((_Sentence(a, b, words[a].start, words[b - 1].end), is_bp))
+            out.append((_Sentence(a, b, *_extent(words, a, b)), is_bp))
     return out
 
 
@@ -251,7 +267,7 @@ def segment(
         hard = "boilerplate" in flags or "boilerplate" in cur_flags
         if too_long or long_pause or overshoot or hard:
             clips.append(
-                Clip(words[cur_a].start, words[cur_b - 1].end,
+                Clip(*_extent(words, cur_a, cur_b),
                      _text(words, cur_a, cur_b), (cur_a, cur_b),
                      tuple(sorted(cur_flags)))
             )
@@ -261,7 +277,7 @@ def segment(
             cur_flags |= set(flags)
     if cur_a is not None:
         clips.append(
-            Clip(words[cur_a].start, words[cur_b - 1].end,
+            Clip(*_extent(words, cur_a, cur_b),
                  _text(words, cur_a, cur_b), (cur_a, cur_b), tuple(sorted(cur_flags)))
         )
 
@@ -278,7 +294,7 @@ def segment(
         ):
             prev = merged.pop()
             merged.append(
-                Clip(prev.start, clip.end,
+                Clip(*_extent(words, prev.word_span[0], clip.word_span[1]),
                      _text(words, prev.word_span[0], clip.word_span[1]),
                      (prev.word_span[0], clip.word_span[1]),
                      tuple(sorted(set(prev.flags) | set(clip.flags))))

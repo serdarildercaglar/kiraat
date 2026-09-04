@@ -174,8 +174,16 @@ def find_boundary_ex(
     if hi <= lo:
         t = env.t(lo)
         return t, t
-    ctx_lo, ctx_hi = env.index(t_end - 1.0), env.index(t_next + 1.0) + 1
-    level = float(np.percentile(env.db[ctx_lo:ctx_hi], 90))
+    # Bağlam penceresi de `hi` gibi `max(t_next, t_end)`e dayanır. `t_next`
+    # önceki klibin bitişinden ÖNCE olabiliyor: rakamlar hizalanmadığı için
+    # (kabul edilmiş sınır, defter 30 Ağu 2026) damga Whisper yedeğine düşer
+    # ve geriye atlayabilir — 3 Eyl 2026'da 1.107 kaynağın %27,7'sinde en az
+    # bir atlama ölçüldü, en büyüğü 18,4 s. O durumda `ctx_hi < ctx_lo` olup
+    # dilim boşalıyor ve `np.percentile` "index -1 is out of bounds for axis
+    # 0 with size 0" ile kaydın tamamını düşürüyordu (src00613, src00891).
+    ctx_lo = env.index(t_end - 1.0)
+    ctx_hi = env.index(max(t_next, t_end) + 1.0) + 1
+    level = float(np.percentile(env.db[ctx_lo:max(ctx_hi, ctx_lo + 1)], 90))
     window = env.db[lo:hi + 1]
     quiet = window < (level - cfg.silence_drop_db)
     min_frames = max(int(round(cfg.min_silence_sec / env.hop)), 1)
