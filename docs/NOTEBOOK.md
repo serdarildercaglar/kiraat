@@ -3075,6 +3075,18 @@ uygulamayla özdeş kaldığını (göçün dayanağı),
 paysız ve eşiğinin kuyruk payından kısa olmasını sınıyor. Üçü de
 düzeltmeler geri konduğunda düşüyor; bütün paket (165 test) geçiyor.
 
+**CPU'lu ve GPU'lu klip aşamaları aynı anda koşmamalı (12 çekirdekte).**
+Düzeltmelerden sonra koşu üç aşamayı birden açtı ve ikisi de yavaşladı:
+`clip_qc` yalnızken 50,8 klip/s, `music` yalnızken 23,2 klip/s, birlikte
+28,9 ve 8,1 (yük ortalaması 28, çekirdek 12). Sebep `music`in GPU'yu
+besleyen ön-yükleme iş parçacıklarının (çözme, yeniden örnekleme, log-mel)
+`clip_qc` işçileriyle aynı çekirdekleri paylaşması. Birlikte tahmini
+duvar saati ~38 saat, sıralı ~24 saat; koşu `--stages music dnsmos` ile
+yeniden başlatıldı, `clip_qc` onlar bitince ayrı koşacak. Dağıtıcı
+aşamaları CPU/GPU havuzlarına ayırıyor ama havuzların çekirdek rekabetini
+modellemiyor — sample-25'te görünmemişti, çünkü orada `clip_qc` `music`
+başlamadan bitiyordu.
+
 **Açık kalan.** Künye kesiminin bıraktığı 137 işaretsiz cümle-ortası klip
 düzeltilmedi: kesimi onarmak `segment`i ve 2.698 kaynağın hepsini yeniden
 koşturur, 137 klip için orantısız. Karar, dışa aktarım yazılırken metni
