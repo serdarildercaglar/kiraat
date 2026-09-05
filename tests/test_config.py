@@ -137,3 +137,20 @@ def test_politikanin_her_kurali_uretilen_bir_sutuna_bakiyor():
     policy = Config.load(DEFAULT).policy()
     unknown = [r.metric for r in policy.rules if r.metric and r.metric not in known]
     assert not unknown, f"şemada olmayan ölçüme kural: {unknown}"
+
+
+def test_uc_sessizlik_gecisi_kuyruk_payini_olcebilir():
+    """5 Eyl 2026 gerilemesi: `trailing_silence_sec` kliplerin %99,7'sinde
+    0,000 çıkıyordu. Sebep ayarlardaydı — politika geçişinin sessizlik eşiği
+    (300 ms) bölütlemenin kuyruk payından (250 ms) uzun olduğu için silero
+    son konuşma bölgesini hiç kapatamıyor, bölgeyi sesin sonuna kadar
+    uzatıyordu. Uç sessizlik geçişi paysız olmalı ve eşiği kuyruk payından
+    kısa kalmalı; aksi hâlde sütun yapısal olarak sıfırdır."""
+    from kiraat.config import Config
+
+    cfg = Config.load("configs/default.yaml")
+    trail_pad_ms = float(cfg.get("segment.trail_pad_sec")) * 1000.0
+    lead_pad_ms = float(cfg.get("segment.lead_pad_sec")) * 1000.0
+    assert int(cfg.get("clip_qc.edge_speech_pad_ms")) == 0
+    esik = float(cfg.get("clip_qc.edge_min_silence_duration_ms"))
+    assert esik < min(trail_pad_ms, lead_pad_ms)

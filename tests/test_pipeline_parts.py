@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 from kiraat.stages.asr import whisper_name
-from kiraat.stages.clip_qc import level_metrics, speech_metrics
+from kiraat.stages.clip_qc import edge_silence, level_metrics, speech_metrics
 from kiraat.store import Store
 
 
@@ -17,9 +17,17 @@ def test_seviye_ve_konusma_olcumleri():
     wave[1000:2000] = 1.0
     m = level_metrics(wave)
     assert abs(m["clip_ratio"] - 1000 / 24000) < 1e-4 and m["peak_dbfs"] == 0.0
-    s = speech_metrics([{"start": 0.2, "end": 1.0}, {"start": 2.5, "end": 3.0}], 3.5)
+    segments = [{"start": 0.2, "end": 1.0}, {"start": 2.5, "end": 3.0}]
+    s = speech_metrics(segments, 3.5)
     assert abs(s["speech_ratio"] - 1.3 / 3.5) < 1e-3
-    assert s["internal_silence_sec"] == 1.5 and s["leading_silence_sec"] == 0.2 and s["trailing_silence_sec"] == 0.5
+    assert s["internal_silence_sec"] == 1.5
+    # Uç sessizlikler kendi (paysız) geçişinden gelir; `speech_metrics` artık
+    # üretmez, bkz. test_uc_sessizlik_ayri_gecisten.
+    assert "leading_silence_sec" not in s and "trailing_silence_sec" not in s
+    e = edge_silence(segments, 3.5)
+    assert e["leading_silence_sec"] == 0.2 and e["trailing_silence_sec"] == 0.5
+    bos = edge_silence([], 3.5)
+    assert bos["leading_silence_sec"] == 3.5 and bos["trailing_silence_sec"] == 3.5
 
 
 def test_ses_yuksekligi_lufs():

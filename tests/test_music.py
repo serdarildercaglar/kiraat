@@ -117,3 +117,35 @@ def test_okunamayan_klip_kosuyu_durdurmaz(tmp_path):
     assert by_id["c1"]["metrics"] == {}
     assert by_id["c1"]["flags"] == []
     assert by_id["c2"]["metrics"]["music_to_speech_db"] == -80.0
+
+
+def test_pencereler_klibin_kuyrugunu_da_olcer():
+    """5 Eyl 2026 gerilemesi: `range(0, n - window + 1, hop)` klibin sonunu
+    dışarıda bırakıyordu. 15 s'lik klipte tek pencere çıkıyor (76.161 <
+    80.000) ve son 4,76 s hiç ölçülmüyordu; skor pencereler üzerinden azami
+    alındığı için yalnızca kuyrukta duyulan müzik görünmez oluyordu."""
+    from kiraat.stages.music import MusicMeasurer
+
+    m = MusicMeasurer()
+    window = int(m.window_sec * 16000)
+    for saniye in (10.5, 12.0, 15.0, 17.3, 30.0, 121.0):
+        n = int(saniye * 16000)
+        starts = m.window_starts(n)
+        assert starts[0] == 0
+        assert all(0 <= s <= n - window for s in starts)
+        assert starts == sorted(set(starts))
+        # Kuyruk dışarıda kalmaz: son pencere sesin sonuna dayanır.
+        assert starts[-1] + window == n, f"{saniye} s: kuyruk ölçülmüyor"
+
+
+def test_pencereden_kisa_klipte_dizi_degismedi():
+    """Kliplerin %93,4'ü penceresinden kısa; onlarda eski ve yeni dilimleme
+    örnek örnek özdeş olmalı, yoksa v4 kayıtlarının sürüm göçü geçersizdir."""
+    from kiraat.stages.music import MusicMeasurer
+
+    m = MusicMeasurer()
+    window, hop = int(m.window_sec * 16000), int(m.hop_sec * 16000)
+    for saniye in (0.5, 1.5, 5.0, 7.0, 10.24):
+        n = int(saniye * 16000)
+        eski = list(range(0, max(n - window, 0) + 1, hop))
+        assert m.window_starts(n) == eski == [0]

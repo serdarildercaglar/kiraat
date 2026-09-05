@@ -176,6 +176,27 @@ class MusicMeasurer:
         self._ast = self._sep = self._ext = None
 
     # --------------------------------------------------------------- ölçümler
+    def window_starts(self, n_samples: int) -> list[int]:
+        """AST pencerelerinin başlangıç örnekleri; kuyruk dışarıda kalmaz.
+
+        `range(0, n - window + 1, hop)` tek başına klibin sonunu ölçmüyordu:
+        15 s'lik bir klipte 76.161 < 80.000 olduğu için yalnızca [0] üretiyor
+        ve son 4,76 s hiç pencereye girmiyordu. Skor pencereler üzerinden
+        azami alındığı için yalnızca kuyrukta duyulan müzik görünmez oluyordu
+        (5 Eyl 2026 ölçümü: depodaki kliplerin %6,6'sında ölçülmeyen kuyruk,
+        ortanca 1,64 s). Son pencere sesin sonuna yaslanarak eklenir.
+
+        Klip pencereden kısaysa (kliplerin %93,4'ü) tek pencere çıkar ve
+        dizi eski uygulamayla örnek örnek özdeştir — o kliplerin ölçümü
+        değişmez, bu yüzden v4 kayıtları sürüm göçüyle korunabilir.
+        """
+        window = int(self.window_sec * 16000)
+        hop = int(self.hop_sec * 16000)
+        starts = list(range(0, max(n_samples - window, 0) + 1, hop))
+        if starts[-1] + window < n_samples:
+            starts.append(n_samples - window)
+        return starts
+
     def prepare(self, wave, sr: int) -> dict[str, Any]:
         """Bir klibin CPU tarafı: 16 kHz dalga ve AST öznitelikleri (log-mel).
 
@@ -184,11 +205,7 @@ class MusicMeasurer:
         kendisine bağlıdır — hangi iş parçacığında, hangi sırada
         hazırlandığı ölçümü değiştirmez."""
         wave16 = self._resample(wave, sr, 16000)
-        window = int(self.window_sec * 16000)
-        hop = int(self.hop_sec * 16000)
-        chunks = [wave16[i:i + window] for i in range(0, max(len(wave16) - window, 0) + 1, hop)]
-        if not chunks:
-            chunks = [wave16]
+        chunks = [wave16[i:i + int(self.window_sec * 16000)] for i in self.window_starts(len(wave16))]
         inputs = self._ast_fx(
             [c.cpu().numpy() for c in chunks], sampling_rate=16000, return_tensors="pt"
         )
@@ -274,7 +291,7 @@ class MusicStage(ClipStage):
 
     name = "music"
     depends_on = ("segment",)
-    version = "4"   # v4: okunamayan klip koşuyu durdurmaz, ölçümler boş kalır; v3: AudioSet modeli ve ağırlık revizyonu konfigden
+    version = "5"   # v5: AST penceresi klibin kuyruğunu da ölçüyor; v4: okunamayan klip koşuyu durdurmaz, ölçümler boş kalır; v3: AudioSet modeli ve ağırlık revizyonu konfigden
     gpu = True
     produces_metrics = ("music_score_audioset", "music_to_speech_db", "music_db_separated",
                         "music_stem_db", "music_prob_external")

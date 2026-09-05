@@ -2953,6 +2953,136 @@ saniyelik seste pencere sayısı 1 s adımını izlemeli ve her pencere tam
 144.160 örnek olmalı. Eski dilimleme geri konduğunda test tam da koşudaki
 hatayla düşüyor.
 
+## 2026-09-05 — Tam koşu sağlık denetimi (music %43'te): iki ölçüm kusuru
+
+Koşu `work/full-1` 05:18'de yeniden başlatıldıktan sonra hattın durumu ve
+o ana kadar üretilen veri denetlendi. Depoda 2.699 kaynaktan 1.840.404 klip
+(3.105,7 saat) var; `prepare`/`asr`/`align`/`segment` 2.698 kaynakta,
+`clip_qc` 1.840.404 klibin hepsinde bitti, `music` 790.911 klipte (%43,0)
+koşuyor, `dnsmos` henüz başlamadı — dağıtıcı klip işlerini aşama-öncelikli
+sıraya koyduğu için bütün `music` işleri `dnsmos`tan önce gidiyor. Son bir
+saatlik ölçülen hız 22,4 klip/s; kalan `music` ~13 saat, ardından `dnsmos`
+13 ms/klip ile ~3,3 saat. Diskte 136 GB boş, 162 test geçiyor.
+
+**Müzik ölçümü kanal düzeyinde doğru davranıyor.** Ayrıştırıcı ve işaret
+oranları kanala göre beklendiği gibi ayrışıyor: müziksiz kanallarda
+(dinleyiniz 102.418 klip, kitapdinle, OkumaSaati) işaret %0,0; müzikli
+kanallarda Peri_Mia %59,6, SESLİKİTAPEVİ %56,4, Pandoramedyaseslikitap
+%49,0. Madde 15'te yanlış pozitif üreten MuratKaraOfficial2021'de kliplerin
+%16,1'i ayrıştırıcıya girmiş ama yalnızca %1,0'ı işaretlenmiş — AudioSet
+eşiği (0,3) tam da konması istenen işi yapıyor. Biten 784.393 klibin
+hepsinde `background_music` işareti yayımlanan iki sütundan yeniden
+hesaplandı, sıfır tutarsızlık. Biten kısımda işaret oranı %11,55.
+
+**Kusur 1 — `music`in AudioSet penceresi klibin kuyruğunu ölçmüyor.**
+`MusicMeasurer.prepare` pencereleri `range(0, len - window + 1, hop)` ile
+üretiyor; `window = 10,24 s`, `hop = 5 s`. 15 s'lik bir klipte bu tek bir
+pencere veriyor (76.161 < 80.000), yani son 4,76 s hiç ölçülmüyor ve skor
+pencereler üzerinden azami alındığı için yalnızca kuyrukta duyulan müzik
+görünmez oluyor. Depoda 121.049 klip (%6,6) pencereden uzun; ölçülmeyen
+kuyruk etkilenen kliplerde ortanca 1,64 s, p90 4,01 s, en çok 5,0 s —
+toplam 62,9 saat (korpusun %2,02'si). 10,3 s'den uzun 300 kliplik
+örneklemde son pencereyi ekleyip ölçtüm: skor 16 klipte (%5,3) 0,05'ten
+fazla yükseliyor, en çok +0,304; `background_music` işareti 1 klipte
+(0,233 → 0,444) dönüyor. Uzun kliplere oranlanınca ~400 klipte işaret
+değişimi demek. Bu, 5 Eyl'de `dnsmos`ta kapatılan pencere kusurunun aynı
+sınıfı; `music` payı daha büyük çünkü adım 1 s değil 5 s. Düzeltme
+`prepare`e son pencereyi (`len - window`) eklemek; ölçüm değişeceği için
+aşama sürümü 4 → 5 olmalı, bu da biten 790 bin klibin yeniden koşması
+demek (~23 saat). Karar kullanıcının.
+
+**Kusur 2 — `trailing_silence_sec` yapısal olarak sıfır.** Sütun
+kliplerin %99,7'sinde 0,000. Sebep VAD ayarı: `min_silence_duration_ms`
+300 ms, oysa bölütlemenin kuyruk payı `trail_pad_sec` 250 ms. Silero son
+konuşma bölgesini kapatacak kadar uzun bir sessizlik bulamayınca bölgeyi
+sesin sonuna kadar uzatıyor, `duration - segments[-1]["end"]` de sıfır
+çıkıyor. Sessizlik gerçekte orada: 15 kliplik örneklemde çerçeve
+enerjisiyle ölçülen kuyruk sessizliği 0,14–0,24 s (ortanca 0,20 s), ve
+`min_silence_duration_ms=100` ile koşulan VAD 0,044–0,080 s buluyor
+(pay çıkınca kalan). `leading_silence_sec` de 100 ms'lik `speech_pad_ms`
+kadar eksik ölçüyor (ortanca 0,06 s; enerjiyle 0,12 s) ama sıfıra
+çökmüyor. Sütun politikada kural değil, yalnızca yayımlanıyor — yine de
+yayımlandığı hâliyle yanlış. `clip_qc` CPU aşaması olduğu için yeniden
+koşması ucuz.
+
+**Bilinen açık madde doğrulandı:** künye kesiminin bıraktığı işaretsiz
+cümle-ortası parçalar tam depoda 137 klip (küçük harfle başlayan 27.483
+klibin geri kalanı `forced_split`/`gap_split`/`boilerplate` işaretli,
+yani önerilen alt kümenin dışında). 116'sı Peri_Mia kanalında.
+
+**Kayıp kaynaklar:** `prepare` 1 kaydı ffprobe hatasıyla (seslimakalem),
+`segment` 4 kaydı düşürdü — ikisi boş kelime dizisi, ikisi sıfır/eksi
+süreli klip. 2.699 kaynağın 5'i, %0,19.
+
+## 2026-09-05 — İki ölçüm kusuru kapatıldı: `music` v5, `clip_qc` v4; koşu 06:53'te durduruldu, göçle sürdü
+
+Sabahki sağlık denetiminin bulduğu iki kusur da düzeltildi. Koşu 06:53'te
+`SIGINT` ile durduruldu (`music` 796.583 klipte), düzeltmeler yazıldı,
+sürüm göçü uygulandı ve koşu yeniden başlatıldı.
+
+**`music` v4 → v5: AST penceresi klibin kuyruğunu da ölçüyor.**
+`MusicMeasurer.prepare` pencereleri `range(0, n - window + 1, hop)` ile
+üretiyordu (`window` 10,24 s, `hop` 5 s). 15 s'lik bir klipte bu tek
+pencere veriyor (76.161 < 80.000) ve son 4,76 s hiç ölçülmüyordu; skor
+pencereler üzerinden azami alındığı için yalnızca kuyrukta duyulan müzik
+görünmez oluyordu. Dilim seçimi `window_starts` yardımcısına taşındı ve
+son pencere sesin sonuna yaslanarak ekleniyor.
+
+Ölçülen etki (aynı gün, 10,3 s'den uzun 300 klip, iki dilimleme yan yana):
+skor 16 klipte (%5,3) 0,05'ten fazla yükseliyor, en çok +0,304;
+`background_music` işareti 1 klipte (0,233 → 0,444) dönüyor. Depodaki
+121.049 uzun klibe oranlanınca ~400 klipte işaret değişimi.
+
+**Sürüm göçü, çünkü kliplerin %93,4'ünde ölçüm değişmiyor.** Klip
+penceresinden kısaysa iki uygulama da tek ve aynı pencereyi üretiyor
+(`range(0, 1, hop) == [0]`, son pencere koşulu tutmuyor). Bu, dnsmos
+kaydındaki muhakemenin aynısı; ama orada olduğu gibi iddiaya güvenilmedi,
+ölçüldü: 200 kısa klip yeni kodla yeniden ölçüldü, `music_score_audioset`,
+`music_to_speech_db` ve `music_db_separated` **200/200 birebir aynı**
+çıktı. `scripts/migrate_music_v5.py` bunun üzerine süresi 10,19 s'den kısa
+(pencere − 0,05 s güvenlik payı) 743.696 klibin `done` satırını v5'e
+taşıdı; yeniden ölçülecek 52.887 klip kaldı — 22,4 klip/s'de ~40 dakika,
+tam yeniden koşunun ~23 saati yerine.
+
+**`clip_qc` v3 → v4: uç sessizlikler kendi paysız VAD geçişinden.**
+`trailing_silence_sec` kliplerin %99,7'sinde 0,000 çıkıyordu. Sebep
+sütunun kendisinde değil, hangi VAD geçişinden okunduğundaydı: politika
+geçişi `speech_pad_ms: 100` ile bölgeleri iki yandan uzatıyor ve
+`min_silence_duration_ms: 300`, bölütlemenin kuyruk payından
+(`segment.trail_pad_sec: 0,25`) uzun olduğu için silero son konuşma
+bölgesini kapatacak sessizliği hiç bulamayıp bölgeyi sesin sonuna kadar
+uzatıyordu. Sessizlik gerçekte oradaydı: 15 kliplik örneklemde çerçeve
+enerjisiyle (20 ms çerçeve, tepe − 35 dB) ölçülen kuyruk sessizliği
+0,14–0,24 s.
+
+`vad` bölümüne dokunulmadı — o bölümü `prepare` ve `asr` de okuyor,
+eşiğini oynatmak ASR bölgelerini değiştirir ve bütün kaynak aşamalarının
+sürümünü eskitirdi. Bunun yerine uç sessizlikler `clip_qc` bölümündeki
+`edge_speech_pad_ms: 0` ve `edge_min_silence_duration_ms: 50` ile koşulan
+ikinci bir geçişten okunuyor. Aynı 15 klipte yeni sütunlar: baş 0,032–0,512
+(enerjiyle 0,00–0,50), son 0,096–0,180 (enerjiyle 0,14–0,24). `speech_ratio`
+ve `internal_silence_sec` politikada kapı olduğu için eski geçişten
+gelmeye devam ediyor; 15 klibin 15'inde ikisi de bit-bit aynı kaldı.
+Maliyet ikinci VAD geçişi, yani `clip_qc`in 1.840.404 klipte yeniden
+koşması (50,8 klip/s, ~16 CPU-saat) — CPU havuzu `music`/`dnsmos` GPU
+işiyle paralel çalıştığı için duvar saatine yansıması küçük.
+
+**Gerileme testleri.** `test_pencereler_klibin_kuyrugunu_da_olcer` altı
+klip boyunda son pencerenin sesin sonuna dayanmasını,
+`test_pencereden_kisa_klipte_dizi_degismedi` kısa klipte dizinin eski
+uygulamayla özdeş kaldığını (göçün dayanağı),
+`test_uc_sessizlik_gecisi_kuyruk_payini_olcebilir` konfigde uç geçişin
+paysız ve eşiğinin kuyruk payından kısa olmasını sınıyor. Üçü de
+düzeltmeler geri konduğunda düşüyor; bütün paket (165 test) geçiyor.
+
+**Açık kalan.** Künye kesiminin bıraktığı 137 işaretsiz cümle-ortası klip
+düzeltilmedi: kesimi onarmak `segment`i ve 2.698 kaynağın hepsini yeniden
+koşturur, 137 klip için orantısız. Karar, dışa aktarım yazılırken metni
+küçük harfle başlayan kliplere `mid_sentence` işareti koymak ve işareti
+politikanın `flag_absent` listesine eklemek — tespit metinden yapılıyor,
+yeniden üretim gerektirmiyor ve gelecekteki kesim kusurlarına karşı da ağ
+oluyor.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri

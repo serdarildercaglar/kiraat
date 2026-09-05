@@ -84,8 +84,10 @@ COLUMNS: tuple[Column, ...] = (
            "Klibin son kelimesiyle kayıttaki bir sonraki kelime arasındaki boşluk; kaydın son kelimesiyse boş.",
            unit="s", optional=True),
     Column("leading_silence_sec", "float", "clip_qc",
-           "Klip başından VAD'ın (Silero) bulduğu ilk konuşmaya kadar geçen süre.", unit="s"),
-    Column("trailing_silence_sec", "float", "clip_qc", "VAD'ın son konuşmasından klip sonuna kadar geçen süre.", unit="s"),
+           "Klip başından VAD'ın (Silero) bulduğu ilk konuşmaya kadar geçen süre; "
+           "paysız, kısa sessizlik eşikli ayrı VAD geçişinden.", unit="s"),
+    Column("trailing_silence_sec", "float", "clip_qc",
+           "VAD'ın son konuşmasından klip sonuna kadar geçen süre; aynı paysız geçişten.", unit="s"),
     Column("internal_silence_sec", "float", "clip_qc",
            "Klip içindeki en uzun konuşmasız aralık (VAD bölgeleri arasındaki en büyük boşluk).", unit="s"),
     Column("speech_ratio", "float", "clip_qc", "VAD'ın konuşma saydığı sürenin klip süresine oranı (0–1)."),

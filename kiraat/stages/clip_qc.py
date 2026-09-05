@@ -39,8 +39,31 @@ def speech_metrics(segments: Sequence[Mapping[str, float]], duration: float) -> 
     return {
         "speech_ratio": round(min(speech / duration, 1.0), 4) if duration > 0 else 0.0,
         "internal_silence_sec": round(max(gaps), 3) if gaps else 0.0,
-        "leading_silence_sec": round(segments[0]["start"], 3) if segments else round(duration, 3),
-        "trailing_silence_sec": round(duration - segments[-1]["end"], 3) if segments else round(duration, 3),
+    }
+
+
+def edge_silence(segments: Sequence[Mapping[str, float]], duration: float) -> dict[str, float]:
+    """Klibin baş ve son sessizliği; kendi VAD geçişinden.
+
+    Politikayı besleyen geçişten (`vad` bölümü) ölçülemiyor. O geçiş
+    `speech_pad_ms: 100` ile bölgeleri iki yandan uzatıyor, ve
+    `min_silence_duration_ms: 300` bölütlemenin kuyruk payından
+    (`segment.trail_pad_sec: 0,25`) uzun olduğu için silero son konuşma
+    bölgesini kapatacak sessizliği hiç bulamayıp bölgeyi sesin sonuna kadar
+    uzatıyor. Sonuç: `trailing_silence_sec` kliplerin **%99,7'sinde** 0,000
+    çıkıyordu (5 Eyl 2026 ölçümü), oysa sessizlik orada — 15 kliplik
+    örneklemde çerçeve enerjisiyle 0,14–0,24 s.
+
+    Bu yüzden uç sessizlikleri paysız (`edge_speech_pad_ms: 0`) ve kısa
+    sessizlik eşiğiyle (`edge_min_silence_duration_ms: 50`) koşulan ikinci
+    bir geçiş ölçer. `speech_ratio` ve `internal_silence_sec` politikada
+    kapıdır, ölçüm tabanları değişmedi; bu iki sütun kapı değil.
+    """
+    if not segments:
+        return {"leading_silence_sec": round(duration, 3), "trailing_silence_sec": round(duration, 3)}
+    return {
+        "leading_silence_sec": round(max(segments[0]["start"], 0.0), 3),
+        "trailing_silence_sec": round(max(duration - segments[-1]["end"], 0.0), 3),
     }
 
 
@@ -69,7 +92,7 @@ def loudness_lufs(wave: np.ndarray, sr: int) -> float | None:
 _VAD = None
 
 
-def _measure_one(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
+def _measure_one(args: tuple[str, str, dict[str, Any], dict[str, Any]]) -> dict[str, Any]:
     """Tek klip; işçi süreçlerinde çalışır, silero modelini süreç başına bir kez yükler."""
     import soundfile as sf
     import torch
@@ -80,7 +103,7 @@ def _measure_one(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
     if _VAD is None:
         torch.set_num_threads(1)
         _VAD = load_silero_vad()
-    clip_id, path, vad_opts = args
+    clip_id, path, vad_opts, qc_opts = args
     try:
         data, sr = sf.read(path, dtype="float32", always_2d=True)
     except Exception:
@@ -95,24 +118,32 @@ def _measure_one(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
         wave16 = torchaudio.functional.resample(wave16, sr, 16000)
     # return_seconds=True zamanı 0,1 s'ye yuvarlıyor; sessizlik sütunları o
     # çözünürlükte kalıyordu. Örnek indeksinden ms çözünürlükle çevrilir.
-    ts = get_speech_timestamps(
-        wave16, _VAD, sampling_rate=16000, return_seconds=False,
-        threshold=float(vad_opts.get("threshold", 0.5)),
-        min_speech_duration_ms=int(vad_opts.get("min_speech_duration_ms", 250)),
-        min_silence_duration_ms=int(vad_opts.get("min_silence_duration_ms", 300)),
-        speech_pad_ms=int(vad_opts.get("speech_pad_ms", 100)),
-    )
-    ts = [{"start": t["start"] / 16000, "end": t["end"] / 16000} for t in ts]
-    metrics.update(speech_metrics(ts, len(mono) / sr))
+    def timestamps(min_silence_ms: int, pad_ms: int) -> list[dict[str, float]]:
+        ts = get_speech_timestamps(
+            wave16, _VAD, sampling_rate=16000, return_seconds=False,
+            threshold=float(vad_opts.get("threshold", 0.5)),
+            min_speech_duration_ms=int(vad_opts.get("min_speech_duration_ms", 250)),
+            min_silence_duration_ms=min_silence_ms,
+            speech_pad_ms=pad_ms,
+        )
+        return [{"start": t["start"] / 16000, "end": t["end"] / 16000} for t in ts]
+
+    duration = len(mono) / sr
+    metrics.update(speech_metrics(
+        timestamps(int(vad_opts.get("min_silence_duration_ms", 300)),
+                   int(vad_opts.get("speech_pad_ms", 100))), duration))
+    metrics.update(edge_silence(
+        timestamps(int(qc_opts.get("edge_min_silence_duration_ms", 50)),
+                   int(qc_opts.get("edge_speech_pad_ms", 0))), duration))
     return {"id": clip_id, "metrics": metrics, "flags": []}
 
 
 @register
 class ClipQcStage(ClipStage):
     name = "clip_qc"
-    config_sections = ("vad",)
+    config_sections = ("vad", "clip_qc")
     depends_on = ("segment",)
-    version = "3"   # v3: loudness_lufs sütunu; v2: VAD damgaları örnek tabanlı, 0,1 s yuvarlama kalktı
+    version = "4"   # v4: uç sessizlikler kendi paysız VAD geçişinden; v3: loudness_lufs sütunu; v2: VAD damgaları örnek tabanlı, 0,1 s yuvarlama kalktı
     produces_metrics = ("clip_ratio", "peak_dbfs", "rms_dbfs", "loudness_lufs", "speech_ratio",
                         "internal_silence_sec", "leading_silence_sec", "trailing_silence_sec")
     produces_flags = ("unreadable_audio",)
@@ -131,7 +162,8 @@ class ClipQcStage(ClipStage):
 
     def process_clips(self, clips: Sequence[Mapping[str, Any]]) -> Sequence[Mapping[str, Any]]:
         vad_opts = dict(self.cfg.section("vad"))
-        jobs = [(c["id"], c["audio"], vad_opts) for c in clips]
+        qc_opts = dict(self.cfg.section("clip_qc"))
+        jobs = [(c["id"], c["audio"], vad_opts, qc_opts) for c in clips]
         rows = list(self.pool.imap(_measure_one, jobs, chunksize=8)) if self.pool else [_measure_one(j) for j in jobs]
         self.validate_output(rows)
         return rows

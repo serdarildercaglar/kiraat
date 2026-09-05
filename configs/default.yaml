@@ -159,7 +159,20 @@ clip_qc:
   # Bu aşamanın kapatma anahtarı yok: ürettiği sütunlar (speech_ratio,
   # sessizlikler, seviye) politikanın ve şemanın çekirdeği. VAD ayarları
   # `vad` bölümünden gelir ve aşamanın sürümüne dâhildir.
-  {}
+  #
+  # Uç sessizlikler (`leading_silence_sec`, `trailing_silence_sec`) ayrı bir
+  # VAD geçişinden ölçülür. Politika geçişinin ayarları onları ölçemiyor:
+  # `speech_pad_ms: 100` bölgeleri iki yandan uzatıyor ve
+  # `min_silence_duration_ms: 300`, bölütlemenin kuyruk payından
+  # (`segment.trail_pad_sec: 0,25`) uzun olduğu için silero son bölgeyi
+  # kapatamayıp sesin sonuna kadar uzatıyordu; `trailing_silence_sec`
+  # kliplerin %99,7'sinde 0,000 çıkıyordu (5 Eyl 2026). Paysız ve kısa
+  # eşikli geçişte aynı 15 klipte 0,096–0,180 s ölçülüyor, çerçeve
+  # enerjisiyle ölçülen 0,14–0,24 s ile uyumlu. Bu iki sütun politikada
+  # kapı değildir; kapı olan `speech_ratio` ve `internal_silence_sec`
+  # eski geçişten gelmeye devam eder, ölçüm tabanları değişmedi.
+  edge_speech_pad_ms: 0
+  edge_min_silence_duration_ms: 50
 
 # DNSMOS P.835 (algısal kalite kestirimi): klip başına SIG (konuşma
 # bozulması), BAK (arka plan gürültüsü), OVRL (genel) skorları. Aşama

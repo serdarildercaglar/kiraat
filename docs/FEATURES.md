@@ -226,11 +226,16 @@ Her klip FLAC dosyasından okunur (okunamazsa `unreadable_audio` işareti,
 klip 16 kHz'e indirilir ve §2'deki parametrelerle Silero VAD koşulur;
 bölge sınırları örnek indeksinden alınıp saniyeye çevrilir (ms çözünürlük):
 `speech_ratio` konuşma sayılan toplam sürenin klip süresine oranı,
-`internal_silence_sec` ardışık konuşma bölgeleri arasındaki en büyük boşluk,
-`leading_silence_sec` ilk konuşma bölgesine kadar geçen süre,
-`trailing_silence_sec` son bölgeden klip sonuna kalan süre. Klipte hiç
-konuşma bulunmazsa baş/son sessizlik klip süresine eşitlenir. clip_qc CPU
-işçi havuzunda koşar.
+`internal_silence_sec` ardışık konuşma bölgeleri arasındaki en büyük boşluk.
+Uç sessizlikler — `leading_silence_sec` ilk konuşma bölgesine kadar geçen
+süre, `trailing_silence_sec` son bölgeden klip sonuna kalan süre — **ikinci
+bir VAD geçişinden** gelir (`clip_qc.edge_speech_pad_ms: 0`,
+`clip_qc.edge_min_silence_duration_ms: 50`): §2'nin payı bölgeleri iki
+yandan uzattığı ve 300 ms'lik sessizlik eşiği bölütlemenin 250 ms'lik
+kuyruk payından uzun olduğu için birinci geçiş son bölgeyi sesin sonuna
+kadar uzatıyor ve kuyruk sessizliğini ölçemiyordu. Klipte hiç konuşma
+bulunmazsa baş/son sessizlik klip süresine eşitlenir. clip_qc CPU işçi
+havuzunda koşar.
 
 ## 8. Arka plan müziği (`music`)
 
