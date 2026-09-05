@@ -42,6 +42,21 @@ def test_pencereleme_referansla_ayni():
     assert windows(np.zeros(need, dtype="float32")).shape == (1, need)
 
 
+def test_uzun_klipte_pencereler_tam_boy():
+    """17 s'den uzun kliplerde pencereleme düşmemeli.
+
+    `int((i + 9,01) * SR)` çarpımı i = 7'den başlayarak kimi indislerde bir
+    örnek aşağı yuvarlanıyor, 144.159'luk pencere üretiyor ve np.stack
+    "all input arrays must have the same shape" ile düşüyordu (5 Eyl 2026,
+    tam koşu). Her pencere tam `need` örnek olmalı ve sayı 1 s adımı
+    izlemeli.
+    """
+    need = int(INPUT_SEC * SR)
+    for saniye in (17, 30, 60, 121):
+        w = windows(np.zeros(SR * saniye, dtype="float32"))
+        assert w.shape == (saniye - 9, need), (saniye, w.shape)
+
+
 def test_polinom_eslemesi_referans_katsayilarla():
     assert abs(float(np.polyval(_P_SIG, 1.0)) - (-0.08397278 + 1.22083953 + 0.0052439)) < 1e-9
 

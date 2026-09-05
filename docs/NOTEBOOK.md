@@ -2928,6 +2928,31 @@ için "bitti" işaretli her klibin metriği yerinde (sırasıyla 797.488 ve
 237.155 satır, eşleşmeyen sıfır). Aşama sürümleri üç oturumda da aynı
 kaldı, dolayısıyla kesintiler hiçbir klibi yeniden ölçtürmedi.
 
+## 2026-09-05 — `dnsmos` 17 s'den uzun klipte düşüyordu: pencere diliminde kayan nokta
+
+Tam koşuda `dnsmos` aşaması `ValueError: all input arrays must have the same
+shape` ile durdu. Sebep pencerelemedeki dilim sonu: referans uygulamadan
+alınan `int((i + 9,01) * SR)` ifadesi, 9,01 ikilik tabanda tam durmadığı
+için `i = 7`'den başlayarak yirmi bir indiste bir örnek aşağı yuvarlanıyor
+ve 144.160 yerine 144.159 örneklik bir pencere üretiyor; `np.stack` de
+farklı boydaki pencereleri yığamıyor. Sekizinci pencere ancak 17 s'den uzun
+kliplerde çıktığı için hata daha önce görünmedi: `sample-25d` örneklemi de
+`tests/test_dnsmos.py`'nin 2/12 saniyelik durumları da eşiğin altındaydı.
+Depodaki 1.840.404 klibin **3.876'sı (%0,21)** 17 s'den uzun, en uzunu
+159,2 s; ilkine denk gelene kadar koşu ilerledi ve orada düştü.
+
+Düzeltme, dilimi `audio[i * SR : i * SR + need]` ile almak. Referans
+uygulama bu kısa pencereleri sessizce atıyordu (`continue`); burada tam
+boy alınıp ölçüme giriyorlar. 17 s'den kısa klipte iki yol örnek örnek
+özdeş olduğu için daha önce yazılmış hiçbir dnsmos sütunu değişmez —
+zaten `done` tablosunda `dnsmos` satırı yok, aşama hiç klip
+tamamlamamıştı — ve aşama sürümü 2'de kalır.
+
+Gerileme testi `test_uzun_klipte_pencereler_tam_boy`: 17, 30, 60 ve 121
+saniyelik seste pencere sayısı 1 s adımını izlemeli ve her pencere tam
+144.160 örnek olmalı. Eski dilimleme geri konduğunda test tam da koşudaki
+hatayla düşüyor.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri

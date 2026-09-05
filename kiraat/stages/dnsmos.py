@@ -60,8 +60,16 @@ def windows(wave16: np.ndarray) -> np.ndarray:
         audio = np.concatenate([audio, audio])
     # Doldurmadan sonra her dilim tam `need` örnektir ve num_hops ≥ 1;
     # eksik pencere dalı ölüydü, kaldırıldı (31 Ağu incelemesi).
+    #
+    # Dilim sonu `i * SR + need` ile alınır, referanstaki
+    # `int((i + INPUT_SEC) * SR)` ile DEĞİL: 9,01 ikilik tabanda tam
+    # durmadığı için o çarpım kimi i'de (i = 7, 8, ... ) bir örnek aşağı
+    # yuvarlanıyor, 144.159'luk pencere çıkıyor ve np.stack düşüyordu.
+    # Referans uygulama bu pencereleri sessizce atıyor (`continue`); burada
+    # tam boy alınıyorlar — 17 s'den kısa klipte iki yol özdeş, uzun klipte
+    # atılan pencereler de ölçüme giriyor.
     num_hops = int(np.floor(len(audio) / SR) - INPUT_SEC) + 1
-    return np.stack([audio[int(i * SR): int((i + INPUT_SEC) * SR)] for i in range(num_hops)])
+    return np.stack([audio[i * SR: i * SR + need] for i in range(num_hops)])
 
 
 def load_session(model_path: str, device: str = "cpu"):
