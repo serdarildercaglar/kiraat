@@ -3087,6 +3087,18 @@ aşamaları CPU/GPU havuzlarına ayırıyor ama havuzların çekirdek rekabetini
 modellemiyor — sample-25'te görünmemişti, çünkü orada `clip_qc` `music`
 başlamadan bitiyordu.
 
+**GPU işçileri aşama modellerini bırakmıyor; `dnsmos` aynı koşuda
+`music`in ardına konmamalı.** `scheduler._STAGES` aşama nesnesini işçi
+başına bir kez kuruyor ve hiç yıkmıyor (model yüklemesi pahalı olduğu
+için); `music` koştukça iki GPU işçisi 3090'ın 24.576 MiB'ının 23.969'unu
+tutar hâle geldi (3,4 saat sonra ölçüldü, çoğu torch'un ayırıcı havuzu).
+`dnsmos`un ONNX arenası (~6 GB, 31 Ağu kaydı) torch'un havuzunun dışında
+ayrıldığı için `music` bitip sıra `dnsmos`a geldiğinde aynı işçilerde
+bellek yetmezdi. Koşu bu yüzden `--stages music` ile yeniden başlatıldı
+(taze işçilerde 5.481 MiB); `dnsmos` bitişinde ayrı koşacak. Aşamaların
+`teardown`'ı dağıtıcı yolunda hiç çağrılmıyor — madde 14'ün (mühendislik
+borcu) altına giriyor.
+
 **Açık kalan.** Künye kesiminin bıraktığı 137 işaretsiz cümle-ortası klip
 düzeltilmedi: kesimi onarmak `segment`i ve 2.698 kaynağın hepsini yeniden
 koşturur, 137 klip için orantısız. Karar, dışa aktarım yazılırken metni
