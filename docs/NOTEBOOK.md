@@ -3234,6 +3234,78 @@ Manifest bu kuralla yeniden üretildi: `run.json` commit `11278f2`, temiz
 ağaç. Politika sürümü değişmedi (v6) — değişen `duplicate` işaretinin
 tanımı, alt küme kuralı değil.
 
+## 2026-09-06 — Değerlendirme bölmesi kuruldu (madde 5): kayıt düzeyi, kanal dengeli, sızıntı sıfır
+
+Korpusun train/dev/test bölmesi yoktu; kuruldu (`kiraat/split.py`,
+`scripts/make_splits.py`) ve sızıntı denetimiyle birlikte manifestin yanına
+yazıldı.
+
+Bölme **kayıt düzeyindedir**: bir kaydın klipleri tek bölmeye girer, yani
+değerlendirme modelin hiç duymadığı bir kayıt üzerinde yapılır. `test` ve
+`dev` **kanal dengelidir** (kanal başına eşit süre hedefi), çünkü korpusun
+kanal payları çok dengesiz ve değerlendirme kümesi o dengesizliği taşırsa
+raporlanan sayı iki kanalın sayısı olur.
+
+Kurarken iki kusur ölçülüp düzeltildi. (1) Kayıtlar saatlerce sürdüğü için
+bütün olarak alınınca 10 saatlik hedef **26 saate** çıkıyordu; dev/test
+artık kanal başına saat hedefine indiriliyor ve hedefi aşan klipler
+`train`'e GEÇMİYOR (geçseydi aynı kaydın klipleri iki bölmeye düşer, bölmenin
+tek garantisi giderdi), kullanılmadan bırakılıyor. (2) Üç kayıtlık iki kanal
+(`bizimkütüphane`, `KitaplarinKedisi`) eğitimden **tamamen düşüyordu**;
+artık kanalın klipli kayıtlarından en az biri `train`'de kalıyor ve kotası
+en açık bölme sıradaki kaydı alıyor (önce test'i doldurmak, küçük kanalın
+dev'de hiç görünmemesi demekti).
+
+Sonuç (önerilen alt küme üzerinden, politika v6):
+
+| bölme | klip | saat | kayıt | kanal |
+|---|---|---|---|---|
+| train | 1.512.448 | 2.517,08 | 2.579 | 27 |
+| dev | 5.750 | 9,54 | 40 | 27 |
+| test | 5.473 | 9,30 | 45 | 27 |
+
+Sızıntı denetimi: kayıt sızıntısı **0** (kurulum gereği, yine de sınanıyor),
+metin sızıntısı temizlik öncesi test 2.263 / dev 2.723 klip — bunlar
+`train` ile birebir aynı cümleyi taşıyordu ve değerlendirme kümesinden
+düşürüldü; temizlik sonrası kalan sızıntı **0**. `train` dokunulmadı.
+
+Eksik kalan: test kümesinin elle doğrulanması. Kullanıcı makineye fiziksel
+erişemediği için (PC Ordu'da) dinleme turu şimdilik yapılamıyor; küme
+kurulu ve denetimi temiz, ama "elle doğrulanmış" sıfatını hak etmesi için
+o tur gerekiyor.
+
+## 2026-09-06 — Konuşmacı kümeleme (madde 4): eşik veriden çıktı, kanal ≠ konuşmacı ölçüldü
+
+v1 küme sayısını 64'te sabitlemiş ve tavan dolmuştu. Burada önce eşiğin
+nereden geleceği ölçüldü (`scripts/probe_speaker.py`, ECAPA-TDNN
+`speechbrain/spkrec-ecapa-voxceleb`): 27 kanaldan 105 kayıt, kayıt başına
+8 klip (≥3 s, işaretsiz), klip gömmeleri kosinüsle karşılaştırıldı.
+
+| dağılım | çift | p05 | p50 | p95 |
+|---|---|---|---|---|
+| kayıt içi (klip–klip) | 2.940 | 0,560 | 0,742 | 0,853 |
+| aynı kanal (kayıt–kayıt) | 153 | 0,131 | 0,872 | 0,940 |
+| farklı kanal (kayıt–kayıt) | 5.307 | 0,053 | 0,179 | 0,420 |
+
+İki dağılım temiz ayrışıyor: eşit hata noktası **0,483** ve oradaki hata
+**%1,9**. Küme sayısı verilmeden, bu eşikle ortalama bağlantılı birleştirme
+(`scripts/cluster_speakers.py`): 105 kayıt → **31 küme**, en büyüğü 8 kayıt,
+6 küme tek kayıtlık, kenar payı medyanı 0,507 ve **negatif kenar paylı kayıt
+yok**.
+
+İki bulgu doğrudan tasarıma dokunuyor. Birincisi, aynı kanal dağılımının
+p05'i 0,131: **kanal konuşmacı değildir** — 27 kanalın 8'i birden çok
+konuşmacı barındırıyor. Bu, yineleme anahtarından kanalı çıkarma kararını
+(aynı gün) bağımsız olarak destekliyor. İkincisi, 31 kümenin 9'u birden
+çok kanala yayılıyor: aynı seslendiren birden çok kanalda yayımlıyor,
+dolayısıyla kanal dengesi konuşmacı dengesi değildir ve bölmenin konuşmacı
+sızıntısı ancak bu sütun bağlanınca denetlenebilir.
+
+Ölçüm 105 kayıtlık bir örneklemdir; tam korpusta (2.699 kayıt) tekrarlanıp
+sütun olarak bağlanması sırada. Toplu çıkarımın tek tek çıkarımla farkı da
+ölçüldü: kosinüs benzerliği en kötü 0,99981, en büyük bileşen farkı 0,0043
+— küme kararına etkisiz, ama gömme yayımlanırsa kayda geçmeli.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
