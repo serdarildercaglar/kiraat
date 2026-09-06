@@ -147,3 +147,30 @@ def test_klip_sonu_kayit_suresini_asmaz():
     assert out[0] == clips[0]                      # aşmayan klip dokunulmaz
     assert out[1].end == 9.6 and out[1].start == 5.2
     assert out[1].text == "İki." and out[1].word_span == (1, 2)
+
+
+def test_kunye_cumlenin_ortasindan_gecerse_kalan_parca_isaretlenir():
+    """6 Eyl 2026: künye cümle ortasından geçince kalan parça işaretsiz
+    kalıyordu ve önerilen alt kümede duruyordu (1,55 M klipte 23 klip,
+    "kanalımızda bu içeriğimizde sizlerle..."). Kesim cümle sınırındadır
+    değişmezi, cümle ortasına düşen her kesimin işaretli olmasını ister."""
+    words = mk("Sevgili dinleyiciler kanalımızda bu hafta Ömer Seyfettin okuyoruz.")
+    # "Sevgili dinleyiciler" künye olarak madenlenmiş; cümlenin geri kalanı parça.
+    clips = segment(words, CFG, boilerplate=[(0, 2)])
+    kunye = [c for c in clips if "boilerplate" in c.flags]
+    kalan = [c for c in clips if "boilerplate" not in c.flags]
+    assert kunye and kalan
+    for c in kalan:
+        assert "boilerplate_cut" in c.flags, (c.text, c.flags)
+        assert is_lower_start(c.text)          # gerçekten cümle ortasından
+
+
+def test_kunye_cumlenin_tamamiysa_komsu_cumle_isaretlenmez():
+    """Künye kendi başına bir cümleyse yanındaki cümle sağlamdır; onu da
+    işaretlemek önerilen alt kümeyi boşuna daraltırdı."""
+    words = mk("Kanalımıza abone olun. Ömer Seyfettin okuyoruz bugün burada.")
+    clips = segment(words, CFG, boilerplate=[(0, 3)])
+    kalan = [c for c in clips if "boilerplate" not in c.flags]
+    assert kalan
+    for c in kalan:
+        assert "boilerplate_cut" not in c.flags, (c.text, c.flags)

@@ -29,13 +29,13 @@ from .boilerplate import mine
 from .config import Config
 from .dedupe import IDENTITY_FIELDS, identity, mark_duplicates
 from .scoring import annotate
-from .stages import align, asr, clip_qc, dnsmos, music, prepare, segmentation  # noqa: F401  (kayıt için)
+from .stages import align, asr, clip_qc, dnsmos, music, prepare, segmentation, speaker  # noqa: F401  (kayıt için)
 from .stages.asr import load_words
 from .store import Store
 
 log = logging.getLogger("kiraat")
 
-SOURCE_STAGES = ("prepare", "asr", "align", "segment")
+SOURCE_STAGES = ("prepare", "asr", "align", "segment", "speaker")
 CLIP_STAGES = ("clip_qc", "music", "dnsmos")
 
 

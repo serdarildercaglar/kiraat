@@ -61,7 +61,7 @@ def test_segment_konfigi_dataclassa_donuyor():
 
 def test_politika_kurallari_okunuyor():
     policy = Config.load(DEFAULT).policy()
-    assert policy.version == "6"
+    assert policy.version == "7"
     assert policy.rules
     ok, reasons = policy.evaluate(
         {"speech_ratio": 0.9, "clip_ratio": 0.0, "internal_silence_sec": 0.2,

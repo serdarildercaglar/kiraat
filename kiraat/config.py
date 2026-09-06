@@ -21,7 +21,7 @@ from .segment import SegmentConfig
 SECTIONS = frozenset(
     {"paths", "runtime", "sources", "prepare", "vad", "asr", "align", "segment",
      "boundaries", "clip_qc", "dnsmos", "music", "boilerplate", "text", "dedupe",
-     "recommended_subset", "split"}
+     "recommended_subset", "split", "speaker"}
 )
 
 

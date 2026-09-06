@@ -85,6 +85,20 @@ class FakeAlign(SourceStage):
 
 
 @register(override=True)
+class FakeSpeaker(SourceStage):
+    """Konuşmacı gömmesi yerine sabit bir ölçüm; model yüklenmez."""
+
+    name = "speaker"
+    version = "t1"
+    gpu = True
+
+    def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
+        log_event(self.cfg, "speaker", src=source["id"], channel=source["channel"])
+        return [{"speaker_embedding": None, "speaker_n_clips": 0,
+                 "speaker_consistency": 1.0, "speaker_consistency_min": 1.0}]
+
+
+@register(override=True)
 class FakeSegment(SegmentStage):
     name = "segment"
     version = "t1"

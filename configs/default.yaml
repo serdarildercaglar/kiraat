@@ -262,6 +262,21 @@ text:
   emit_raw: true
   emit_spoken: true
 
+# Konuşmacı gömmesi. Aşama yalnızca ölçer: kayıt başına merkez vektör ve
+# kayıt içi tutarlılık. Kümeleme (kim kimdir) korpusun tamamı görüldükten
+# sonra `scripts/cluster_speakers.py` ile yapılır ve eşiğini veriden alır;
+# küme sayısı hiçbir yerde verilmez (v1 onu 64'te sabitlemiş ve tavan
+# dolmuştu). Ağırlık revizyonu sabittir: değişirse bütün gömmeler sessizce
+# değişir.
+speaker:
+  model: speechbrain/spkrec-ecapa-voxceleb
+  revision: 5c0be3875fda05e81f3c004ed8c7c06be308de1e
+  savedir: models/ecapa
+  clips: 12          # kayıt başına gömülecek klip
+  min_sec: 3.0       # bundan kısa klip kimlik için kullanılmaz
+  batch: 8
+  seed: kiraat
+
 # Değerlendirme bölmesi. Bölme kayıt düzeyindedir (bir kaydın klipleri tek
 # bölmeye girer) ve `test`/`dev` kanal dengelidir: kanal başına eşit süre
 # hedeflenir, çünkü korpusun kanal payları çok dengesiz ve değerlendirme
@@ -297,7 +312,7 @@ recommended_subset:
   # ile 12.958 klibin hepsinde sessizce geçiyordu; politika "DNSMOS ≥ 3,0
   # uygulandı" gibi okunuyor ama hiçbir klibi etkilemiyordu. Hiçbir klibin
   # `recommended` değeri değişmez. Aşama bağlanınca ölçülüp geri konur.
-  version: "6"
+  version: "7"
   rules:
     - metric: speech_ratio
       min: 0.60
@@ -328,7 +343,13 @@ recommended_subset:
     # gerekçesi yukarıda; kanıt yükü kapıdadır, veride değil):
     # - metric: dnsmos_ovrl
     #   min: 3.0
-    - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate, background_music]
+    # v7 (6 Eyl 2026): `boilerplate_cut` listeye eklendi. Künye cümlenin
+    # ortasından geçtiğinde kalan parça işaretsiz kalıyor ve önerilen alt
+    # kümede duruyordu (1,55 M klipte 23 klip, "kanalımızda bu içeriğimizde
+    # sizlerle..."). Kesim cümle sınırındadır değişmezi bunu dışarıda
+    # bırakmayı gerektiriyor; diğer kesim kusurları (`forced_split`,
+    # `gap_split`) zaten listedeydi.
+    - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate, background_music, boilerplate_cut]
 
 # Yayın paketi (HF dışa aktarımı, parçalama, örnekleme hızı) henüz
 # yazılmadı; `export:` bölümü o aşama gelince eklenecek. Şu an dışa aktarım

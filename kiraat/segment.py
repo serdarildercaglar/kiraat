@@ -211,15 +211,27 @@ def clamp_to_audio(clips: list[Clip], total_sec: float) -> list[Clip]:
 
 def _cut_at_boilerplate(
     sentences: list[_Sentence], words: list[Word], spans: Sequence[tuple[int, int]]
-) -> list[tuple[_Sentence, bool]]:
-    """Cümleleri boilerplate aralıklarının sınırlarında böl; (parça, boilerplate mi)."""
+) -> list[tuple[_Sentence, bool, bool]]:
+    """Cümleleri boilerplate aralıklarının sınırlarında böl.
+
+    Dönüş: (parça, boilerplate mi, cümlenin ortasından mı kalmış).
+
+    Üçüncü alan 6 Eyl 2026'da eklendi. Künye cümlenin ortasından geçtiğinde
+    geri kalan parça kendi başına klip oluyordu ve **hiçbir işaret
+    taşımıyordu**: "kanalımızda bu içeriğimizde sizlerle..." gibi klipler
+    önerilen alt kümede duruyordu (1,55 M klipte 23 tane). Kesim cümle
+    sınırındadır değişmezi, kesimin cümle ortasına düştüğü her yerin
+    işaretli olmasını gerektirir; parça artık `boilerplate_cut` taşır.
+    """
     marks = sorted(set(x for span in spans for x in span))
-    out: list[tuple[_Sentence, bool]] = []
+    out: list[tuple[_Sentence, bool, bool]] = []
     for sent in sentences:
         cuts = [sent.a] + [m for m in marks if sent.a < m < sent.b] + [sent.b]
         for a, b in zip(cuts, cuts[1:]):
             is_bp = any(x <= a and b <= y for x, y in spans)
-            out.append((_Sentence(a, b, *_extent(words, a, b)), is_bp))
+            # Parça cümlenin başında ve sonunda değilse cümle ortasından kalmıştır.
+            fragment = not is_bp and (a != sent.a or b != sent.b)
+            out.append((_Sentence(a, b, *_extent(words, a, b)), is_bp, fragment))
     return out
 
 
@@ -240,9 +252,12 @@ def segment(
         return []
 
     pieces: list[tuple[int, int, tuple[str, ...]]] = []
-    for sent, is_bp in _cut_at_boilerplate(_sentences(words), words, boilerplate):
+    for sent, is_bp, fragment in _cut_at_boilerplate(_sentences(words), words, boilerplate):
         if is_bp:
             pieces.append((sent.a, sent.b, ("boilerplate",)))
+        elif fragment:
+            pieces.extend((a, b, tuple(sorted(set(f) | {"boilerplate_cut"})))
+                          for a, b, f in _split_oversize(words, sent, cfg))
         else:
             pieces.extend(_split_oversize(words, sent, cfg))
 

@@ -45,7 +45,7 @@ from typing import TYPE_CHECKING, Any, Sequence
 
 from . import base
 from .config import Config
-from .stages import align, asr, clip_qc, dnsmos, music, prepare, segmentation  # noqa: F401  (kayıt için)
+from .stages import align, asr, clip_qc, dnsmos, music, prepare, segmentation, speaker  # noqa: F401  (kayıt için)
 
 if TYPE_CHECKING:
     from .pipeline import Pipeline
