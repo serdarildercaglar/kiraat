@@ -32,11 +32,24 @@ def test_kayit_duzeyinde_boler_ve_kanal_dengeli():
 def test_kanal_hedefi_dolduramazsa_acik_kalir_telafi_edilmez():
     """Küçük kanal test hedefini dolduramaz; başka kanaldan tamamlanmaz,
     çünkü telafi tam da bozmak istediğimiz dengesizliği geri getirir."""
-    srcs = [{"id": 1, "channel": "kucuk"}] + [{"id": i, "channel": "buyuk"} for i in range(2, 12)]
-    hours = {1: 0.1, **{i: 5.0 for i in range(2, 12)}}
+    srcs = [{"id": i, "channel": "kucuk"} for i in (1, 2)] + \
+           [{"id": i, "channel": "buyuk"} for i in range(3, 13)]
+    hours = {1: 0.1, 2: 0.1, **{i: 5.0 for i in range(3, 13)}}
     split_of = assign_sources(srcs, hours, SplitConfig(test_hours=4.0, dev_hours=0.0))
-    assert split_of[1] == "test"                      # elindeki kadarı alınır
-    assert sum(1 for i in range(2, 12) if split_of[i] == "test") == 1
+    kucuk = [split_of[i] for i in (1, 2)]
+    assert kucuk.count("test") == 1 and kucuk.count("train") == 1   # elindeki kadarı
+    assert sum(1 for i in range(3, 13) if split_of[i] == "test") == 1
+
+
+def test_kanalin_son_kaydi_train_de_kalir():
+    """Üç kayıtlık kanal (bizimkütüphane, KitaplarinKedisi) dev ve test'e
+    birer kayıt verir ama eğitimden düşmez; tek kayıtlık kanal hiç veremez."""
+    srcs = [{"id": i, "channel": "uc"} for i in (1, 2, 3)] + [{"id": 9, "channel": "tek"}]
+    hours = {1: 1.0, 2: 1.0, 3: 1.0, 9: 1.0}
+    split_of = assign_sources(srcs, hours, SplitConfig(test_hours=10.0, dev_hours=10.0))
+    uc = sorted(split_of[i] for i in (1, 2, 3))
+    assert uc == ["dev", "test", "train"]
+    assert split_of[9] == "train"
 
 
 def test_metin_sizintisi_bulunur():

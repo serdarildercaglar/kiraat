@@ -79,13 +79,14 @@ def assign_sources(sources: Sequence[Mapping[str, Any]], hours: Mapping[str, flo
                 continue
             picked = None
             if taken < takeable:
-                # Önce test, sonra dev doldurulur; ikisi de dolunca train.
-                for name in ("test", "dev"):
-                    if left[name] > 0:
-                        picked = name
-                        left[name] -= h
-                        taken += 1
-                        break
+                # Kotası en çok açık olan bölme alır; bu, test ve dev'i
+                # sırayla doldurur. Önce test'i doldurmak, üç kayıtlık bir
+                # kanalın dev'de hiç görünmemesi demekti.
+                acik = [n for n in ("test", "dev") if left[n] > 0]
+                if acik:
+                    picked = max(acik, key=lambda n: (left[n], n == "test"))
+                    left[picked] -= h
+                    taken += 1
             out[s["id"]] = picked or "train"
     return out
 

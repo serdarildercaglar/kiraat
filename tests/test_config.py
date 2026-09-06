@@ -30,6 +30,7 @@ def test_konfigde_okunmayan_anahtar_yok():
 
     from kiraat.boundaries import RefineConfig
     from kiraat.segment import SegmentConfig
+    from kiraat.split import SplitConfig
 
     root = Path(__file__).resolve().parents[1]
     cfg = yaml.safe_load((root / DEFAULT).read_text(encoding="utf-8"))
@@ -45,6 +46,8 @@ def test_konfigde_okunmayan_anahtar_yok():
             if section == "segment" and key in SegmentConfig.__dataclass_fields__:
                 continue
             if section == "boundaries" and key in RefineConfig.__dataclass_fields__:
+                continue
+            if section == "split" and key in SplitConfig.__dataclass_fields__:
                 continue
             okunmayan.append(f"{section}.{key}")
     assert not okunmayan, f"konfigde hiçbir kodun okumadığı anahtar(lar): {okunmayan}"
