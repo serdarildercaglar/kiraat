@@ -3144,6 +3144,55 @@ Anlık 450 W'lık tepe güçler kayboldu.
 Sırada `export`: hattın son aşaması ve ses yazmıyor, yalnızca manifest ile
 koşu kaydı üretiyor.
 
+## 2026-09-06 — TAM KOŞU BİTTİ: manifest yazıldı (`work/full-1/manifests`)
+
+`export` 06:23'te tamamlandı ve hattın tamamı kapandı. Manifest
+`clips.jsonl` 2,5 GB, yanında `run.json` koşu kaydı: commit `aa5f410`,
+çalışma ağacı temiz, izlenmeyen dosya yok — bu manifest commit'ten yeniden
+üretilebilir.
+
+Koşunun sayıları:
+
+| | |
+|---|---|
+| kaynak | 2.699 (1'i okunamadı: seslimakalem, bozuk m4a) |
+| kanal | 27 |
+| klip | 1.840.404 / **3.105,70 saat** |
+| önerilen alt küme (politika v6) | 1.486.240 klip / **2.480,51 saat** |
+
+Önerilen alt küme kliplerin %80,8'i, saatlerin %79,9'u. Kaynak envanteri
+3.440 ses-saatiydi; bölütlemeden 3.105,7 saat çıkması (%90,3) sessizlik,
+künye kesimi ve cümle sınırı dışında kalan artıkların payıdır.
+
+Dışlama sebepleri (klip başına birden çok işaret olabildiği için sebep
+kümesi olarak sayıldı; %0,1'in üstündekiler):
+
+| sebep | klip | pay |
+|---|---|---|
+| `background_music` | 194.246 | %10,55 |
+| `duplicate` | 62.508 | %3,40 |
+| `forced_split` | 44.983 | %2,44 |
+| `short` | 15.137 | %0,82 |
+| `internal_silence_sec>1.0` | 12.757 | %0,69 |
+| `background_music,duplicate` | 5.127 | %0,28 |
+| `oversize` | 4.229 | %0,23 |
+| `speech_ratio<0.6` | 2.412 | %0,13 |
+| `gap_split` | 2.446 | %0,13 |
+
+Yani havuzu asıl daraltan tek başına müzik işareti; onun ardından
+yinelenen metin geliyor. Kopya kararı şimdilik kanal anahtarıyla verildi —
+`speaker_id` yok, konuşmacı aşaması (deney 4) bağlanınca yeniden koşacak
+ve `duplicate` payı değişebilir.
+
+Önerilen alt kümedeki ilk kanallar: seslikitaplarmavi 539,0 sa,
+BirDinle 438,5 sa, dinleyiniz 223,0 sa, ses-arşiv 142,1 sa,
+sess-Seslikitap 141,1 sa, ZubeyirSener 137,7 sa. 27 kanalın hepsi alt
+kümede temsil ediliyor — v1'de doğrulanmamış bir sınıflandırıcının kanal
+çeşitliliğini silmesi tam olarak burada tekrarlanmadı.
+
+**Makaleye:** §Veri sayıları artık bu koşunun `run.json`'ından gelir;
+"yeniden koşulmalı" işaretli hiçbir sayı kalmadı.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
