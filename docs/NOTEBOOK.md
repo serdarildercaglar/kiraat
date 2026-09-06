@@ -3107,6 +3107,43 @@ politikanın `flag_absent` listesine eklemek — tespit metinden yapılıyor,
 yeniden üretim gerektirmiyor ve gelecekteki kesim kusurlarına karşı da ağ
 oluyor.
 
+## 2026-09-06 — Klip aşamaları kapandı: `clip_qc`, `music`, `dnsmos` 1.840.404 klipte tam
+
+Tam koşunun klip tarafı bitti. Üç aşamanın da `done` sayısı 1.840.404 ve
+veritabanındaki klip sayısına eşit; `dnsmos` metriği olmayan tek klip yok.
+`music` 5 Eylül 19:11'de (8,5 saat, ortalama 28 klip/s), `dnsmos` 6 Eylül
+04:20'de (6,30 saat, **81,1 klip/s = 292 bin klip/saat**) kapandı. dnsmos'un
+ölçülen hızı 31 Ağustos'ta sample-25d'den kestirilen 284 bin/saat ile
+birebir; koşuda tek hata satırı yok.
+
+5 Eylül'de düzeltilen pencereleme çökmesi üretimde doğrulandı: 17 s'den
+uzun 3.876 klibin 3.876'sı skorlandı, en uzunu (159,2 s) dahil
+(`sig 3,479 / bak 3,669 / ovrl 2,991`).
+
+Korpus genelinde DNSMOS P.835 dağılımı — makalenin ilk depo-içi kalite
+sayıları:
+
+| ölçüt | ortalama | p05 | p50 | p95 | en düşük | en yüksek |
+|---|---|---|---|---|---|---|
+| `dnsmos_sig` | 3,528 | 3,24 | 3,56 | 3,71 | 0,76 | 3,90 |
+| `dnsmos_bak` | 3,968 | 3,24 | 4,09 | 4,21 | 0,89 | 4,31 |
+| `dnsmos_ovrl` | 3,208 | 2,69 | 3,27 | 3,49 | 0,96 | 3,74 |
+
+Kliplerin **%83,57'si** `dnsmos_ovrl ≥ 3,0`. Bu bir kapı DEĞİL: sayı
+yalnızca sütun olarak duruyor, `recommended_subset` politikası v6'da
+dnsmos kuralı yok ve kör dinleme denetiminden geçmeden konmayacak. Alanın
+yerleşik eşiğinin bu korpusta neyi eleyeceğini göstermesi bakımından
+kaydediliyor.
+
+Koşu koşulu olarak not: `dnsmos` 280 W güç kapağı altında koştu. Kart
+(RTX 3090) geçmişte kısa devre görmüş olduğu için 5 Eylül 22:31'de
+`nvidia-smi -pl 280` uygulandı; ölçülen etki 318 → 270 W, fan %96 → %73,
+sıcaklık 74,5 → 72,8 °C, iş çıkarma kaybı %6 (82,5 → 77,5 klip/s).
+Anlık 450 W'lık tepe güçler kayboldu.
+
+Sırada `export`: hattın son aşaması ve ses yazmıyor, yalnızca manifest ile
+koşu kaydı üretiyor.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
