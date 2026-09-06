@@ -3,3 +3,4 @@ __pycache__/
 work/
 .venv/
 .pytest_cache/
+models/ecapa/
