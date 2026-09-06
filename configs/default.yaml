@@ -262,6 +262,17 @@ text:
   emit_raw: true
   emit_spoken: true
 
+# Değerlendirme bölmesi. Bölme kayıt düzeyindedir (bir kaydın klipleri tek
+# bölmeye girer) ve `test`/`dev` kanal dengelidir: kanal başına eşit süre
+# hedeflenir, çünkü korpusun kanal payları çok dengesiz ve değerlendirme
+# kümesi o dengesizliği taşırsa raporlanan sayı iki kanalın sayısı olur.
+# Metin sızıntısı (aynı cümle hem train'de hem test'te) denetlenir ve
+# sızan klip değerlendirme kümesinden düşürülür; train dokunulmaz.
+split:
+  test_hours: 10.0
+  dev_hours: 10.0
+  seed: kiraat-2026
+
 dedupe:
   # Aynı metin + aynı ses yinelemedir; aynı metnin ayrı bir okuması
   # korunur (prozodi çeşitliliği). "Aynı ses" bu alanların hepsinin birebir
