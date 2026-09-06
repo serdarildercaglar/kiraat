@@ -3234,6 +3234,55 @@ Manifest bu kuralla yeniden üretildi: `run.json` commit `11278f2`, temiz
 ağaç. Politika sürümü değişmedi (v6) — değişen `duplicate` işaretinin
 tanımı, alt küme kuralı değil.
 
+## 2026-09-06 — BÖLÜTLEME ABLASYONU (madde 1): cümle hizalı kesim, sessizlik hizalı kesime karşı
+
+Makalenin ana sonucu bu depoda ölçüldü. Aynı kayıtlar, aynı kelime zaman
+damgaları, aynı süre ayarları; değişen tek şey kesimin nerede yapıldığı.
+Cümle kolu tam koşunun ürettiği kliplerdir (veritabanından okundu); taban
+kol `kiraat/segment_vad.py` ile üretildi — silero VAD'ın konuşma bölgeleri
+aradaki sessizliklerde kesilir, tavanı aşan tek bölge tavanda sert kesilir.
+Örneklem kanal dengeli: 27 kanaldan 206 kayıt, **240,5 saat**
+(`scripts/ablate_segmentation.py --per-channel 8`).
+
+| ölçüm | cümle hizalı | sessizlik hizalı |
+|---|---|---|
+| klip | 141.379 | 76.466 |
+| saat | 240,54 | 254,18 |
+| cümle ortasından başlayan | 1.967 (**%1,39**) | 10.943 (**%14,31**) |
+| cümle ortasında biten | 2.405 (%1,70) | 12.117 (%15,85) |
+| **işaretsiz** kırık başlangıç | **0 (%0,00)** | 9.798 (**%12,81**) |
+| işaretsiz kırık bitiş | %0,01 | %11,59 |
+| iki ucu birden kırık | 418 | 2.673 |
+| süre medyanı | 5,94 s | 12,90 s |
+| süre %5–%95 | 2,69 – 10,96 s | 5,10 – 15,40 s |
+| süre tavanına dayanan | %0,64 | %14,70 |
+| `align_score` ortalaması | 0,9442 | 0,9459 |
+| klip başına en düşük `align_score`, ortalaması | **0,7319** | 0,6469 |
+
+Asıl satır işaretsiz olanıdır. Cümle kolunda kırık başlangıçlı **hiçbir
+işaretsiz klip yok**: %1,39'luk kırık başlangıcın tamamı `forced_split` ya
+da künye işareti taşıyor, yani kusur görünür ve önerilen alt kümeye
+girmiyor. Taban kolda kırıkların neredeyse hepsi işaretsiz (%12,81) —
+kullanıcı onları ayırt edemez, çünkü sessizlikte kesen bir hattın elinde
+kırığı gösterecek bir sinyal yoktur.
+
+Kusur kanala göre değişiyor ve hiçbir kanalda kaybolmuyor: taban kolda
+kırık başlangıç oranı **%7,0 ile %35,0** arasında (en kötüsü `seslimakalem`,
+en iyisi `OkumaSaati`), cümle kolunda **%0,00 ile %5,02** arasında.
+
+İki yan bulgu. (1) Sessizlik hizalı kesim daha çok saat üretiyor (254,2 ve
+240,5) ama neredeyse yarısı kadar klip (76,5 bin ve 141,4 bin): klipler iki
+kat uzun ve %14,7'si süre tavanına dayanıyor — yani tavan, cümle değil,
+kesim noktasını belirliyor. (2) Ortalama hizalama güveni iki kolda aynı
+(0,944 ve 0,946), ama klip başına **en düşük** kelime güveninin ortalaması
+cümle kolunda belirgin yüksek (0,732 ve 0,647): sessizlikte kesilen klipler
+kenarlarında daha çok kötü hizalanmış kelime taşıyor, ki kesimin kelimenin
+ortasına düşmesinin beklenen sonucu bu.
+
+**Makaleye:** §Bölütleme'nin ana tablosu budur ve tamamı bu depoda üretildi.
+Ölçüm dosyası `work/full-1/ablation/segmentation.json` (kaynak başına
+döküm dâhil).
+
 ## 2026-09-06 — Değerlendirme bölmesi kuruldu (madde 5): kayıt düzeyi, kanal dengeli, sızıntı sıfır
 
 Korpusun train/dev/test bölmesi yoktu; kuruldu (`kiraat/split.py`,
