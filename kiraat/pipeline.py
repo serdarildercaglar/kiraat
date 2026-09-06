@@ -27,7 +27,7 @@ from typing import Callable, Any, Mapping, Sequence
 from . import base, provenance
 from .boilerplate import mine
 from .config import Config
-from .dedupe import mark_duplicates
+from .dedupe import IDENTITY_FIELDS, identity, mark_duplicates
 from .scoring import annotate
 from .stages import align, asr, clip_qc, dnsmos, music, prepare, segmentation  # noqa: F401  (kayıt için)
 from .stages.asr import load_words
@@ -274,12 +274,13 @@ class Pipeline:
     # ------------------------------------------------------------------ çıktı
     def export(self) -> Path:
         clips = self.store.clips()
-        speaker_field = str(self.cfg.get("dedupe.speaker_field", "speaker_id"))
-        if not any(c.get("metrics", {}).get(speaker_field) or c.get(speaker_field) for c in clips):
-            log.warning("dedupe: %s yok, kanal anahtar alınıyor (konuşmacı aşaması bağlanınca değişecek)", speaker_field)
-            speaker_field = "channel"
         if bool(self.cfg.get("dedupe.enabled", True)):
-            clips = mark_duplicates(clips, speaker_field=speaker_field, text_field="text")
+            fields = tuple(self.cfg.get("dedupe.identity_fields", IDENTITY_FIELDS))
+            missing = [c["id"] for c in clips if identity(c, fields) is None]
+            if missing:
+                log.info("dedupe: %d klibin ses kimliği eksik, yineleme aranmıyor (ilk: %s)",
+                         len(missing), missing[0])
+            clips = mark_duplicates(clips, identity_fields=fields, text_field="text")
         policy = self.cfg.policy()
         clips = annotate(clips, policy)
         out = self.work / "manifests"

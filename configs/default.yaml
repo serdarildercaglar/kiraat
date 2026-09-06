@@ -193,9 +193,9 @@ dnsmos:
 # kaldırıldı). Konfig yalnızca uygulanan şeyi ilan eder; planlar
 # `docs/NOTEBOOK.md` içindeki "Koşulacak deneyler" başlığında durur.
 #
-# Bunun pratik sonucu: `dedupe.speaker_field: speaker_id` bekleyen sütun hâlâ
-# üretilmiyor, dışa aktarım uyarı basıp kanala düşüyor — yani "aynı metin +
-# farklı ses korunur" kuralı fiilen "farklı kanal korunur" olarak çalışıyor.
+# (`dedupe` 6 Eyl 2026'da bu ilkeye getirildi: bekleyen `speaker_id` sütunu
+# yerine ölçülen ses kimliğiyle karar veriyor, yani ilan ettiği şeyi
+# uyguluyor ve konuşmacı aşamasını beklemiyor.)
 
 # Arka plan müziği. Üç ölçüm de yayımlanır; hiçbiri kapı değildir.
 # `background_music` işareti yalnızca yayımlanan music_to_speech_db
@@ -263,8 +263,13 @@ text:
   emit_spoken: true
 
 dedupe:
-  speaker_field: speaker_id
-  # Aynı metin + aynı ses yinelemedir; aynı metin + farklı ses korunur.
+  # Aynı metin + aynı ses yinelemedir; aynı metnin ayrı bir okuması
+  # korunur (prozodi çeşitliliği). "Aynı ses" bu alanların hepsinin birebir
+  # tutmasıdır — sesin kendisini ölçenler. `word_confidence` ve sessizlik
+  # payları kasten dışarıda: onlar klibin çevresini ölçer ve aynı jenerik
+  # sesi bölümden bölüme farklı gösterir (6 Eyl 2026 ölçümü).
+  # Kanal anahtara girmez: ölçümler tutuyorsa aynı kaydın kopyasıdır.
+  identity_fields: [duration, loudness_lufs, rms_dbfs, peak_dbfs]
   enabled: true
 
 # Önerilen alt küme. Bu bloğu değiştirmek veriyi yeniden üretmez, yalnızca
