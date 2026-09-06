@@ -23,10 +23,14 @@ sildi. Yeni bir sinyal kapı olmadan önce kör dinleme denetiminden geçer.
 ## Makale defteri
 
 Makale sıfırdan yazılıyor ve **önceki bir yayına ya da önceki bir veri
-kümesine hiç değinmiyor** — ne taban olarak, ne atıf olarak. Yapılan her iş,
-her ölçüm ve her deney tarihiyle [`docs/NOTEBOOK.md`](docs/NOTEBOOK.md)
-dosyasına düşülür; bir aşama bitip sonucu görüldüğünde oraya kayıt eklemek
-işin parçasıdır, sonraya bırakılmaz.
+kümesine hiç değinmiyor** — ne taban olarak, ne atıf olarak. Ölçümler ve
+sonuçlar [`docs/NOTEBOOK.md`](docs/NOTEBOOK.md) dosyasına düşülür, ama
+defter bir günlük değil: **konu konu düzenlidir ve yalnızca bugün geçerli
+olan sonucu tutar.** Bir aşama bitip sonucu görüldüğünde ilgili başlık
+güncellenir. Düzeltme günlüğü, "şu hatayı yaptık sonra şunu ekledik" gibi
+son durumu anlatmayan anlatılar ve eskimiş koşuların sayıları defterde
+tutulmaz — onların izi git geçmişindedir. Sebep basit: defter makale
+yazılırken referans alınacak, kafa karıştıran eskimiş not oraya sızmamalı.
 
 Bir sayı makaleye girecekse bu depoda üretilmiş olmalı. Başka bir yerde
 ölçülmüş her şey defterde "yeniden koşulmalı" diye işaretlenir ve burada
