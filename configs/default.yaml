@@ -312,7 +312,7 @@ recommended_subset:
   # ile 12.958 klibin hepsinde sessizce geçiyordu; politika "DNSMOS ≥ 3,0
   # uygulandı" gibi okunuyor ama hiçbir klibi etkilemiyordu. Hiçbir klibin
   # `recommended` değeri değişmez. Aşama bağlanınca ölçülüp geri konur.
-  version: "7"
+  version: "6"
   rules:
     - metric: speech_ratio
       min: 0.60
@@ -343,13 +343,7 @@ recommended_subset:
     # gerekçesi yukarıda; kanıt yükü kapıdadır, veride değil):
     # - metric: dnsmos_ovrl
     #   min: 3.0
-    # v7 (6 Eyl 2026): `boilerplate_cut` listeye eklendi. Künye cümlenin
-    # ortasından geçtiğinde kalan parça işaretsiz kalıyor ve önerilen alt
-    # kümede duruyordu (1,55 M klipte 23 klip, "kanalımızda bu içeriğimizde
-    # sizlerle..."). Kesim cümle sınırındadır değişmezi bunu dışarıda
-    # bırakmayı gerektiriyor; diğer kesim kusurları (`forced_split`,
-    # `gap_split`) zaten listedeydi.
-    - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate, background_music, boilerplate_cut]
+    - flag_absent: [oversize, forced_split, gap_split, short, duplicate, boilerplate, background_music]
 
 # Yayın paketi (HF dışa aktarımı, parçalama, örnekleme hızı) henüz
 # yazılmadı; `export:` bölümü o aşama gelince eklenecek. Şu an dışa aktarım

@@ -39,7 +39,7 @@ def cut(src: str, sr: int, dst: Path, start: float, end: float) -> None:
 class SegmentStage(SourceStage):
     name = "segment"
     config_sections = ("align", "text", "boundaries")   # align.enabled/confidence_source, text.emit_*, sınır iyileştirme eşikleri
-    version = "10"  # v10: künye cümlenin ortasından geçince kalan parça `boilerplate_cut` taşır; v9: harf+rakam okunuşu (3G→üç ge) ve 1-3 basamaklı sayı+nokta cümle sonu sayılmaz
+    version = "9"   # v9: harf+rakam okunuşu (3G→üç ge) ve 1-3 basamaklı sayı+nokta cümle sonu sayılmaz
     depends_on = ("asr", "align", "boilerplate")
 
     def process_source(self, source: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
