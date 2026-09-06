@@ -3193,6 +3193,47 @@ kümede temsil ediliyor — v1'de doğrulanmamış bir sınıflandırıcının k
 **Makaleye:** §Veri sayıları artık bu koşunun `run.json`'ından gelir;
 "yeniden koşulmalı" işaretli hiçbir sayı kalmadı.
 
+## 2026-09-06 — Yineleme kuralı ölçüldü ve keskinleştirildi: aynı metnin ayrı okuması yineleme değildir
+
+Kullanıcı kuralı netleştirdi: aynı metin farklı bir okumayla geçiyorsa
+prozodi çeşitliliğidir ve tutulur; yineleme, metnin aynı **ve** ölçülen
+değerlerin aynı olmasıdır. Karar vermeden önce manifest üzerinde ölçüldü
+(`scripts/probe_dedupe.py`, 1.840.404 klip):
+
+| tanım | yineleme sayılan klip |
+|---|---|
+| eski anahtar (metin + kanal) | 72.839 |
+| ölçülen **bütün** değerler birebir aynı (kuralın harfi) | **0** |
+| ses ölçümleri birebir aynı (süre+LUFS+RMS+tepe), kanal içinde | 592 |
+| ses ölçümleri birebir aynı, kanal fark etmeksizin | 598 |
+| süre 0,1 s / LUFS 0,1 dB'ye yuvarlanmış | 15.752 |
+
+İkinci satır kuralın harfiyen uygulanamayacağını gösteriyor: kanalların
+her bölüme koyduğu jenerik cümle (`bizimkütüphane`, "Kitapların büyüsü
+kumaşlarda hayat buluyor.") üç bölümde de aynı ses — süre 3,12 s, LUFS
+−12,88, RMS −12,67, tepe −0,05 birebir — ama `word_confidence` 0,98 /
+0,96 / 0,981 ve `leading_silence_sec` 0,128 / 0,028 farklı, çünkü bunlar
+sesin değil klibin çevresinin ölçümü. Son satır ise fazla gevşek:
+"Hayır."ın 0,70 ve 0,74 saniyelik iki ayrı okuması aynı kovaya düşüyor,
+yani korunması istenen şeyi eliyor.
+
+Kullanıcı kararı: **ses ölçümleri birebir aynı, kanal fark etmeksizin.**
+Kanal anahtardan çıktı, çünkü ölçümler tutuyorsa aynı kaydın kopyasıdır ve
+hangi kanalda durduğu bunu değiştirmez. `dedupe` artık `speaker_id`
+sütununu da beklemiyor; konuşmacı aşaması (deney 4) bu kararın önkoşulu
+olmaktan çıktı.
+
+Manifestteki etkisi: yineleme işareti **72.839 → 576 klip**, önerilen alt
+küme **1.486.240 → 1.547.494 klip** (+61.254) ve **2.480,51 → 2.575,22
+saat** (+94,71). Kalan 576 kopyanın 453'ü tek kanalda (`seslimakalem`)
+toplanıyor — o kanalın bölüm jeneriği. 150 klibin ses kimliği eksik
+(okunamayan ses); onlar yineleme aranmadan geçiliyor ve kayıtta
+sayılıyorlar.
+
+Manifest bu kuralla yeniden üretildi: `run.json` commit `11278f2`, temiz
+ağaç. Politika sürümü değişmedi (v6) — değişen `duplicate` işaretinin
+tanımı, alt küme kuralı değil.
+
 ## Koşulacak deneyler
 
 Makalenin dayanacağı ölçümlerden henüz yapılmamış olanlar. Her biri
