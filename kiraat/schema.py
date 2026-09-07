@@ -130,7 +130,17 @@ COLUMNS: tuple[Column, ...] = (
            "`duplicate`: aynı kayıt/kanal içinde aynı metnin tekrarı (bkz. `duplicate_of`); `boilerplate`: kanalın kayıtlarında tekrar eden künye/anons kalıbı; "
            "`unreadable_audio`: klip dosyası okunamadı, ölçümleri yok."),
     Column("duplicate_of", "string", "export",
-           "Klip bir yinelemeyse korunan (en uzun süreli) kopyanın kimliği; değilse boş. Yineleme anahtarı (metin, konuşmacı) çiftidir: aynı metin farklı sesle okunuyorsa yineleme sayılmaz. Konuşmacı aşaması henüz bağlı olmadığı için `speaker_id` sütunu yoktur ve dışa aktarım uyarı basıp anahtarın konuşmacı yerine **kanalı** kullanır — bu sürümde kural fiilen \"aynı metin, farklı kanal korunur\" biçimindedir.",
+           "Klip bir yinelemeyse korunan kopyanın kimliği; değilse boş. Yineleme, metnin aynı VE sesin aynı olmasıdır: ses kimliği `dedupe.identity_fields` (süre, LUFS, RMS, tepe) birebir tutuyorsa klip aynı kaydın kopyasıdır. Aynı metnin ayrı bir okuması yineleme DEĞİLDİR, prozodi çeşitliliği olarak tutulur; kanal anahtara girmez.",
+           optional=True),
+    # ------------------------------------------------------------ konuşmacı
+    Column("speaker_id", "string", "export",
+           "Kaydın konuşmacı kümesi (`spkNNNN`). Kümeleme korpusun tamamı üzerinde yapılır: birleştirme eşiği ölçülen iki dağılımın eşit hata noktasından alınır (kayıt içi klip benzerliği ve farklı kanalların kayıt benzerliği), küme sayısı verilmez. Kimlik kayıt düzeyindedir; kaydın bütün klipleri aynı değeri taşır. Kapı değildir, politikada kuralı yoktur.",
+           optional=True),
+    Column("speaker_consistency", "float", "speaker",
+           "Kaydın gömülen kliplerinin birbirine kosinüs benzerliğinin ortalaması (0–1). Düşük değer kayıtta birden çok ses olduğunu gösterir (röportaj, çok sesli okuma) ve o kaydın tek konuşmacı gibi ele alınamayacağını söyler.",
+           optional=True),
+    Column("speaker_margin", "float", "export",
+           "Kaydın kendi küme merkezine benzerliği eksi en yakın diğer kümeye benzerliği. Küçük değer kümeler arası sınıra yakın bir kaydı işaret eder; negatif değer yanlış kümede olabileceğini söyler.",
            optional=True),
     Column("recommended", "bool", "export",
            "Sürümlü politikanın (`recommended_subset`) bu klibi varsayılan eğitim alt kümesine önerip önermediği. Veri elemez; kullanıcı ölçüm sütunlarından kendi kuralını koyabilir."),

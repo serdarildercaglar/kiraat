@@ -287,6 +287,23 @@ class Pipeline:
         out.mkdir(parents=True, exist_ok=True)
         path = out / "clips.jsonl"
         sources = {s["id"]: s for s in self.store.sources()}
+
+        # Konuşmacı kimliği kayıt düzeyinde bir niteliktir ve kümeleme korpusun
+        # tamamı görüldükten sonra yapılır (`scripts/cluster_speakers.py`), yani
+        # bir aşamanın üretebileceği bir şey değil. Kümeleme çıktısı varsa
+        # klibe kaydının kimliği, kayıt içi tutarlılığı ve kenar payı yazılır;
+        # yoksa sütunlar hiç yazılmaz. Politikada kural DEĞİLDİR.
+        speakers: dict[int, dict[str, Any]] = {}
+        clusters = self.work / "speaker" / "clusters.json"
+        if clusters.exists():
+            blob = json.loads(clusters.read_text(encoding="utf-8"))
+            for row in blob.get("kayıtlar", []):
+                speakers[row["source_id"]] = {
+                    "speaker_id": f"spk{row['speaker_cluster']:04d}",
+                    "speaker_margin": row.get("margin"),
+                }
+            log.info("konuşmacı: %d kayıt, %d küme (eşik %.3f)",
+                     len(speakers), blob.get("küme"), blob.get("eşik", float("nan")))
         with path.open("w", encoding="utf-8") as fh:
             for c in clips:
                 s = sources[c["source_id"]]
@@ -300,6 +317,9 @@ class Pipeline:
                     # İşaret ve ölçüm sırası aşamaların bitiş sırasına bağlıdır (dağıtıcıda
                     # müzik clip_qc'den önce bitebilir); manifest sıraya bakmadan aynı olsun.
                     "flags": sorted(c["flags"]), "duplicate_of": c.get("duplicate_of"),
+                    **speakers.get(c["source_id"], {}),
+                    **({"speaker_consistency": s["meta"]["speaker_consistency"]}
+                       if s.get("meta", {}).get("speaker_consistency") is not None else {}),
                     **{k: c["metrics"][k] for k in sorted(c["metrics"])},
                     "recommended": c["recommended"], "exclusion_reasons": c["exclusion_reasons"],
                     "policy_version": c["policy_version"],
@@ -313,6 +333,7 @@ class Pipeline:
             "channels": len({c["channel"] for c in clips}),
             "clips": len(clips),
             "recommended": sum(1 for c in clips if c["recommended"]),
+            "speakers": len({v["speaker_id"] for v in speakers.values()}),
             "hours": round(sum(c["duration"] for c in clips) / 3600, 3),
             "recommended_hours": round(sum(c["duration"] for c in clips if c["recommended"]) / 3600, 3),
         })
