@@ -211,9 +211,15 @@ kullanan çalışmaların bu künyeyi taşıması beklenir.
 | **toplam** | **2.680** | **1.840.404** | **3.105,7** | **2.575,2** | **90** |
 ## Lisans ve kullanım
 
-Korpus **CC BY 4.0** ile yayımlanır: araştırma ve ticari kullanım
-serbesttir, tek şart atıftır. Atıf, hem bu veri kümesini hem de yukarıdaki
-**kanal künyesini** içermelidir.
+Korpus **CC BY 4.0** ile yayımlanır. Tek şart atıftır; atıf hem bu veri
+kümesini hem de yukarıdaki **kanal künyesini** içermelidir.
+
+**Ticari kullanım serbesttir.** Bu korpusla model eğitebilir, eğittiğiniz
+modeli ticari ürünlerde kullanabilir, satabilir ve dilediğiniz lisansla
+dağıtabilirsiniz — modelin lisansı size aittir, bu korpusun lisansı ona
+bulaşmaz. Türev veri kümeleri de serbesttir; onlar için de tek beklenti
+kaynağın ve kanal künyesinin belirtilmesidir. Ne gayri ticari kısıtı ne de
+aynı lisansla paylaşma (share-alike) koşulu vardır.
 
 Kayıtlar Türkçe sesli kitap YouTube kanallarının kamuya açık
 yayınlarındandır. **Hak sahibi itiraz ederse ilgili kanalın kayıtları veri
