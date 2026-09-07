@@ -68,25 +68,55 @@ def margins(centers, labels: list[int]) -> list[float]:
 
 def main() -> None:
     p = argparse.ArgumentParser()
+    p.add_argument("--speaker-dir", default=None,
+                   help="`speaker` aşamasının çıktıları (work/<koşu>/speaker); verilirse "
+                        "merkezler ve kayıt içi tutarlılık oradan okunur")
+    p.add_argument("--db", default="work/full-1/db/state.sqlite")
     p.add_argument("--centers", default="work/full-1/ablation/speaker_probe.pt")
     p.add_argument("--probe", default="work/full-1/ablation/speaker_probe.json")
     p.add_argument("--threshold", type=float, default=None, help="verilmezse EER'den")
     p.add_argument("--out", default=None)
     args = p.parse_args()
 
+    import numpy as np
     import torch
 
-    blob = torch.load(args.centers)
-    centers, meta = blob["centers"], blob["meta"]
-    probe = json.loads(Path(args.probe).read_text(encoding="utf-8"))
-
-    # Pozitif/negatif dağılımlar ölçüm dosyasından değil, merkezlerden
-    # yeniden kurulur: pozitif = kayıt içi klip-merkez, negatif = farklı
-    # kanal merkez-merkez.
-    pos = [r["within_mean"] for r in probe["kayıt_başına"]]
+    if args.speaker_dir:
+        # `speaker` aşamasının çıktısı: kayıt başına bir .npz (merkez + klip
+        # gömmeleri) ve veritabanında kanal + kayıt içi tutarlılık.
+        import sqlite3
+        db = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
+        info = {}
+        for sid, ch, mj in db.execute("select id, channel, meta_json from sources where error is null"):
+            m = json.loads(mj)
+            if m.get("speaker_embedding"):
+                info[sid] = (ch, m.get("speaker_consistency"), m["speaker_embedding"])
+        meta, cent, pos = [], [], []
+        for sid in sorted(info):
+            ch, cons, path = info[sid]
+            z = np.load(path)
+            meta.append((sid, ch))
+            cent.append(z["center"])
+            if cons is not None:
+                pos.append(cons)
+        centers = torch.from_numpy(np.stack(cent))
+    else:
+        blob = torch.load(args.centers)
+        centers, meta = blob["centers"], blob["meta"]
+        probe = json.loads(Path(args.probe).read_text(encoding="utf-8"))
+        # Pozitif/negatif dağılımlar merkezlerden kurulur: pozitif = kayıt içi
+        # klip-merkez, negatif = farklı kanal merkez-merkez.
+        pos = [r["within_mean"] for r in probe["kayıt_başına"]]
     sim = (centers @ centers.T).numpy()
-    neg = [float(sim[i, j]) for i in range(len(meta)) for j in range(i + 1, len(meta))
-           if meta[i][1] != meta[j][1]]
+    # Negatifler: farklı kanalların kayıtları. Çift sayısı kayıt sayısının
+    # karesiyle büyüdüğü için 200 binden fazlaysa tohumlu örneklenir.
+    import random
+    rng = random.Random(20260907)
+    pairs = [(i, j) for i in range(len(meta)) for j in range(i + 1, len(meta))
+             if meta[i][1] != meta[j][1]]
+    if len(pairs) > 200000:
+        pairs = rng.sample(pairs, 200000)
+    neg = [float(sim[i, j]) for i, j in pairs]
     thr, err = (args.threshold, None) if args.threshold else eer_threshold(pos, neg)
 
     labels = cluster(centers, thr)
