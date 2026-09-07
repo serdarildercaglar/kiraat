@@ -162,8 +162,14 @@ tepe birebir). Aynı metnin ayrı bir okuması yineleme sayılmaz, prozodi
 
 - **Metin ASR çıktısıdır**, insan eliyle düzeltilmemiştir; `text_raw`,
   `text` ve `text_spoken` alanları aynı ASR metninden türetilir.
-- **Rakamlar zorlamalı hizalanmaz**: hizalayıcının sözlüğünde rakam yok, o
-  kelimelerin damgası ASR'ye düşer.
+- **Rakamlar zorlamalı hizalanmaz.** Hizalayıcı (`MMS_FA`) karakter
+  tabanlıdır ve sözlüğünde rakam karakteri yoktur; içinde rakam geçen
+  kelimelerin ("1923", "15'inci", "%20") zaman damgası hizalayıcıdan değil
+  ASR'den gelir ve o kelimeler `align_score`'a katılmaz. Etkilenen klip
+  payı: **%3,08** (önerilen alt kümede %2,91). Metni hizalamadan önce
+  okunuşa çevirmek bu sorunu çözerdi ama yayımlanan metnin kendisini
+  değiştireceği için tercih edilmedi; `text_spoken` sütunu okunuşu ayrıca
+  veriyor.
 - **Cümle başı kısa sözcüklerde çöp hizalama** görülür (ölçülen pay %2,12);
   `align_score_min` bunu görünür kılar.
 - **Kanal ve konuşmacı yığılması**: önerilen alt kümede ilk iki kanalın
