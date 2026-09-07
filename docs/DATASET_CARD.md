@@ -14,6 +14,15 @@ tags:
 - read-speech
 - tts
 - audiobook
+extra_gated_prompt: >-
+  Bu veri kümesi CC BY 4.0 ile yayımlanır: araştırma ve ticari kullanım
+  serbesttir, eğittiğiniz modelin lisansı size aittir. Tek şart atıftır ve
+  atıf, veri kümesinin yanı sıra kartta listelenen kaynak YouTube
+  kanallarının künyesini de içermelidir. Kayıtlar bu kanalların kamuya açık
+  yayınlarındandır; hak sahibi itiraz ederse ilgili kanalın kayıtları veri
+  kümesinden kaldırılır. Kabul ettiğinizde erişim anında açılır.
+extra_gated_fields:
+  Atıf ve kanal künyesi şartını kabul ediyorum: checkbox
 ---
 
 # KIRAAT — Türkçe okuma-konuşma korpusu
