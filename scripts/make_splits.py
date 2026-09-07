@@ -69,11 +69,17 @@ def main() -> None:
              if split_of.get(c["source_id"], "train") == "train" or c["id"] in kept]
     print(f"kanal başına hedefe indirildikten sonra aday klip: {len(clips)}")
 
+    # Bölmelere girmeyen her klip `rest`e yazılır: önerilmeyenler, kanal
+    # hedefini aşınca kullanılmadan bırakılanlar ve metin sızıntısı yüzünden
+    # değerlendirme kümesinden düşürülenler. Korpusun tamamı yayımlanır —
+    # hiçbir klip silinmez — ama bu klipler bir eğitim/değerlendirme
+    # bölmesine ait değildir.
     counts: dict[str, Counter] = {s: Counter() for s in ("train", "dev", "test")}
     secs: dict[str, float] = defaultdict(float)
     kanal: dict[str, Counter] = {s: Counter() for s in ("train", "dev", "test")}
     files = {s: (out_dir / f"split-{s}.jsonl").open("w", encoding="utf-8")
-             for s in ("train", "dev", "test")}
+             for s in ("train", "dev", "test", "rest")}
+    kalan = {c["id"] for c in clips}
     dropped = sum(len(v) for v in leaked.values())
     for c in clips:
         split = split_of.get(c["source_id"], "train")
@@ -81,8 +87,19 @@ def main() -> None:
         kanal[split][c["channel"]] += 1
         secs[split] += c["duration"]
         files[split].write(json.dumps({**c, "split": split}, ensure_ascii=False) + "\n")
+    # `rest`: manifestteki her klip eksi üç bölmeye yazılanlar.
+    yazilan = {c["id"] for c in clips}
+    rest_klip = rest_sn = 0
+    for line in manifest.open(encoding="utf-8"):
+        r = json.loads(line)
+        if r["id"] in yazilan:
+            continue
+        rest_klip += 1
+        rest_sn += r["duration"]
+        files["rest"].write(json.dumps({**r, "split": "rest"}, ensure_ascii=False) + "\n")
     for fh in files.values():
         fh.close()
+    print(f"  {'rest':5} {rest_klip:>9} klip  {rest_sn/3600:>9.2f} sa  (bölmelere girmeyen)")
 
     # Denetim: bölmeler arası metin örtüşmesi artık sıfır olmalı.
     kalan = text_leakage(clips, split_of)
@@ -90,6 +107,7 @@ def main() -> None:
         "config": {"test_hours": scfg.test_hours, "dev_hours": scfg.dev_hours, "seed": scfg.seed},
         "aday_klip": len(clips),
         "düşürülen_sızıntı_klibi": dropped,
+        "rest": {"klip": rest_klip, "saat": round(rest_sn / 3600, 3)},
         "bölmeler": {s: {"klip": sum(counts[s].values()), "saat": round(secs[s] / 3600, 3),
                          "kayıt": sum(1 for v in split_of.values() if v == s),
                          "kanal": len(kanal[s])} for s in ("train", "dev", "test")},
