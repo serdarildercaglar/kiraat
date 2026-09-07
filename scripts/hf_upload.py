@@ -69,17 +69,20 @@ def build(path: Path, split: str, cache: Path):
     return ds.cast_column("audio", Audio(sampling_rate=SAMPLE_RATE))
 
 
-def bytes_per_second(path: Path, sample: int = 200) -> float:
+def bytes_per_second(path: Path, stride: int = 500) -> float:
     """Klip dosyalarından saniye başına bayt; parça sayısı bundan çıkar.
 
     Arrow'un bildirdiği boyut sesi içermez (baytlar gömülmeden önce yalnızca
     yol vardır), bu yüzden hedef parça boyutu gerçek dosya boyutlarından
-    kestirilir."""
+    kestirilir. Örnekleme dosyanın TAMAMINA yayılır: baştan birkaç yüz satır
+    almak kanala göre yanıltıyor — bölme dosyaları kanal kanal sıralı ve
+    kanalların bit hızları farklı (dev bölmesi 400 MB hedefle tek 859 MB'lık
+    parça üretmişti)."""
     toplam_bayt = toplam_sn = 0.0
     with path.open(encoding="utf-8") as fh:
         for i, line in enumerate(fh):
-            if i >= sample:
-                break
+            if i % stride:
+                continue
             row = json.loads(line)
             try:
                 toplam_bayt += Path(row["audio"]).stat().st_size
