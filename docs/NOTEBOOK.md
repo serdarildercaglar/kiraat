@@ -114,6 +114,7 @@ koşu kaydı).
 |---|---|
 | kaynak | 2.699 (1'i okunamadı) |
 | kanal | 27 |
+| konuşmacı | **90** (kümeleme, aşağıda) |
 | klip | **1.840.404 / 3.105,70 saat** |
 | önerilen alt küme (politika v6) | **1.547.494 klip / 2.575,22 saat** |
 
@@ -377,6 +378,14 @@ metin sızıntısı temizlik öncesi test 2.263 / dev 2.723 klip — bunlar
 `train` ile birebir aynı cümleyi taşıyordu ve değerlendirme kümesinden
 düşürüldü, `train` dokunulmadı; **temizlik sonrası kalan sızıntı 0**.
 
+**Konuşmacı örtüşmesi.** `speaker_id` bağlandıktan sonra ölçüldü (7 Eylül):
+train 89, dev 26, test 26 konuşmacı; test'in 26 konuşmacısından **25'i
+train'de de var**, yalnızca `spk0003` train'de hiç geçmiyor. Yani bölme
+kayıt düzeyinde ayrıktır ama **görülmüş konuşmacı** değerlendirmesidir —
+TTS'te alışılmış kurulum budur, ama makalede böyle anılmalı ve
+"görülmemiş konuşmacı" iddiası edilmemeli. Görülmemiş konuşmacı
+değerlendirmesi istenirse ayrı bir alt küme kurulmalı.
+
 Eksik: test kümesinin elle doğrulanması. Küme kurulu ve denetimi temiz ama
 "elle doğrulanmış" sıfatını hak etmesi için bir dinleme turu gerekiyor.
 
@@ -384,15 +393,17 @@ Eksik: test kümesinin elle doğrulanması. Küme kurulu ve denetimi temiz ama
 
 ---
 
-## Konuşmacı: eşik veriden, küme sayısı verilmeden
+## Konuşmacı: 90 konuşmacı, eşik veriden, küme sayısı verilmeden
 
 `speaker` aşaması kayıt başına ECAPA-TDNN merkez vektörü ve kayıt içi
 tutarlılık ölçer; **kim kimdir kararı aşamada verilmez.** Kümeleme korpus
-düzeyinde yapılır (`scripts/cluster_speakers.py`) ve birleştirme eşiği
-ölçülen iki dağılımın eşit hata noktasından alınır; küme sayısı hiçbir
-yerde verilmez.
+düzeyinde yapılır (`scripts/cluster_speakers.py`): birleştirme eşiği
+ölçülen iki dağılımın eşit hata noktasından alınır, küme sayısı hiçbir
+yerde verilmez. Sonuç manifeste üç sütun olarak yazılır (`speaker_id`,
+`speaker_consistency`, `speaker_margin`) ve politikada kuralı yoktur.
 
-Ölçüm (6 Eylül 2026, 27 kanaldan 105 kayıt, kayıt başına 8 klip ≥3 s):
+Eşiği belirleyen dağılımlar (27 kanaldan 105 kayıt, kayıt başına 8 klip
+≥3 s):
 
 | dağılım | çift | p05 | p50 | p95 |
 |---|---|---|---|---|
@@ -400,21 +411,30 @@ yerde verilmez.
 | aynı kanal (kayıt–kayıt) | 153 | 0,131 | 0,872 | 0,940 |
 | farklı kanal (kayıt–kayıt) | 5.307 | 0,053 | 0,179 | 0,420 |
 
-Eşit hata noktası **0,483**, oradaki hata **%1,9**. Bu eşikle ortalama
-bağlantılı birleştirme: 105 kayıt → **31 küme**, en büyüğü 8 kayıt, 6 küme
-tek kayıtlık, kenar payı medyanı 0,507, **negatif kenar paylı kayıt yok**.
+**Tam korpus sonucu** (7 Eylül 2026, 2.677 kayıt; 21 kayıtta kimlik kuracak
+uzunlukta klip yok): eşit hata noktası **0,532**, oradaki hata **%0,52**.
+Bu eşikle ortalama bağlantılı birleştirme **90 konuşmacı** veriyor; kenar
+payı medyanı 0,445 ve **negatif kenar paylı kayıt yok**.
 
-İki bulgu tasarıma dokunuyor. Aynı kanal dağılımının p05'i 0,131: **kanal
-konuşmacı değildir** — 27 kanalın 8'i birden çok konuşmacı barındırıyor.
-Ve 31 kümenin 9'u birden çok kanala yayılıyor: aynı seslendiren birden çok
-kanalda yayımlıyor, dolayısıyla kanal dengesi konuşmacı dengesi değildir.
+| küme | kayıt | saat | pay | baskın kanal |
+|---|---|---|---|---|
+| spk0037 | 266 | 565,4 | %18,2 | seslikitaplarmavi |
+| spk0014 | 222 | 478,2 | %15,4 | BirDinle |
+| spk0022 | 245 | 228,1 | %7,3 | Peri_Mia + SESLİKİTAPEVİ |
+| spk0010 | 168 | 224,2 | %7,2 | sess-Seslikitap |
+| spk0028 | 67 | 193,6 | %6,2 | Pandoramedyaseslikitap |
 
-Ölçüm 105 kayıtlık örneklemdir; tam korpusta tekrarlanıp sütun olarak
-bağlanması sırada.
+Dağılım uzun kuyruklu: en büyük konuşmacının payı %18,2, ilk beşi %54,4,
+ilk onu %75,0; 62 konuşmacının 10 saatten, 17'sinin 1 saatten az kaydı var.
 
-**Makaleye:** §Konuşmacı, §Sınırlar (kanal ≠ konuşmacı).
+İki bulgu doğrudan tasarıma dokunuyor. **Kanal konuşmacı değildir:**
+27 kanalın **13'ünde** birden çok konuşmacı var. Ve **9 küme birden çok
+kanala yayılıyor** — aynı seslendiren `MuratKaraOfficial2021` ve
+`Seslendiriyor`'da, bir başkası `denizinötesindekisesler`, `ses-arşiv` ve
+`sesli-kitaplar`'da yayımlıyor. Kanal dengesi konuşmacı dengesi değildir.
 
----
+**Makaleye:** §Veri (90 konuşmacı, dağılım), §Sınırlar (konuşmacı yığılması,
+kanal ≠ konuşmacı).
 
 ## Hız ve maliyet (yeniden üretilebilirlik)
 
@@ -501,8 +521,10 @@ sorunu ve makalede yöntem katkısı olarak anlatılacak.
 - **Kanal yığılması:** önerilen alt kümede ilk iki kanalın payı %38,2.
 - **Tek kodlama profili:** korpusun tamamı ~129 kb/s AAC, kaynak bant
   kesimi medyan 15,7 kHz; iki kanal 13 kHz civarında dar bantlı.
-- **Konuşmacı kimliği henüz sütun değil:** ölçüm 105 kayıtlık örneklemde
-  doğrulandı, tam korpusa bağlanmadı.
+- **Konuşmacı yığılması:** 90 konuşmacının ilk beşi saatlerin %54,4'ünü,
+  ilk onu %75,0'ini taşıyor; 17 konuşmacının bir saatten az kaydı var.
+- **Değerlendirme görülmüş konuşmacıyladır:** test konuşmacılarının 26'da
+  25'i train'de de geçiyor.
 
 ---
 
@@ -517,23 +539,21 @@ tamamlandığında yukarıya konu başlığı olarak taşınır ve buradan düş
    kanıtı aynı deneyden çıkar. Düzenek tasarlanacak.
 2. **Test kümesinin elle doğrulanması.** Bölme kurulu ve sızıntısı sıfır;
    dinleme turu yapılmadı.
-3. **Konuşmacı sütununun tam korpusa bağlanması.** Aşama yazıldı ve
-   ölçüldü; 2.698 kayıtta koşturulup `speaker_id` sütunu üretilecek.
-4. **Hizalama güveni geçerlemesi.** Kelime başına hizalama olasılığının
+3. **Hizalama güveni geçerlemesi.** Kelime başına hizalama olasılığının
    transcript doğruluğuyla ilişkisi; insan referanslı küçük bir örneklemde
    CER ile karşılaştırma.
-5. **`dnsmos_ovrl` eşiğinin kör dinlemesi.** Sütun korpusun tamamında var;
+4. **`dnsmos_ovrl` eşiğinin kör dinlemesi.** Sütun korpusun tamamında var;
    ≥3,0 kuralının neyi eleyeceği ölçülebilir durumda. Kural ancak bantlara
    dengelenmiş bir dinleme turundan sonra konabilir.
-6. **Şablon künye madenciliği.** Kelimesi kelimesine n-gram, "<yazar>'ın
+5. **Şablon künye madenciliği.** Kelimesi kelimesine n-gram, "<yazar>'ın
    <kitap> adlı kitabından" gibi değişken yuvalı kalıpları bulamıyor.
    Sabit iskelet + yuva madenciliği ya da künye sözlüğüyle cümle düzeyinde
    işaret; kör dinlemeyle doğrulama.
-7. **Klip başına dil kimliği.** Türkçe olmayan klipleri görünür kılar
+6. **Klip başına dil kimliği.** Türkçe olmayan klipleri görünür kılar
    (Emilia ≥0,8 ile kapı yapıyor; bizde sütun olur). Model seçimi ister.
-8. **`duration / n_words` dağılımı.** LibriTTS'in ses–metin uyuşmazlığı
+7. **`duration / n_words` dağılımı.** LibriTTS'in ses–metin uyuşmazlığı
    ölçüsü iki yayımlanan sütundan türetilebiliyor; aykırıların gerçekten
    uyuşmazlık olup olmadığı kör dinlemeyle sınanmalı. Düşük öncelik.
-9. **Yayın paketi.** HF dışa aktarımı, parçalama, veri kartı
+8. **Yayın paketi.** HF dışa aktarımı, parçalama, veri kartı
    (`python -m kiraat schema` çıktısından), kelime düzeyi damgaların ve
    kaynak düzeyi ölçümlerin yayımı.
