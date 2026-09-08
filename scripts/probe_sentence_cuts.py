@@ -82,7 +82,35 @@ BASLIK = (
 )
 
 
-def olc_v1(db: Path, ornek: int) -> list[Tally]:
+class Dokum:
+    """Kırık kliplerin tam dökümü; JSONL, satır başına bir klip.
+
+    Sayı tabloyu, döküm gözü besler: hangi cümlenin nerede kesildiği ancak
+    metne bakılarak anlaşılır.
+    """
+
+    def __init__(self, yol: Path | None) -> None:
+        self.yol = yol
+        self.fh = yol.open("w", encoding="utf-8") if yol else None
+        self.n = 0
+
+    def yaz(self, text: str | None, **alanlar: object) -> None:
+        if self.fh is None or not text or not text.strip():
+            return
+        bas, son = is_lower_start(text), not has_sentence_end(text)
+        if not (bas or son):
+            return
+        kirik = "iki_uc" if bas and son else ("bas" if bas else "son")
+        json.dump({"kirik": kirik, "text": text, **alanlar}, self.fh, ensure_ascii=False)
+        self.fh.write("\n")
+        self.n += 1
+
+    def kapat(self) -> None:
+        if self.fh:
+            self.fh.close()
+
+
+def olc_v1(db: Path, ornek: int, dokum: Dokum) -> list[Tally]:
     """v1 deposu: metin `stage_results`'ta, karar `clips.decision`'da."""
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     kumeler = {
@@ -93,13 +121,23 @@ def olc_v1(db: Path, ornek: int) -> list[Tally]:
     yayim = Tally("v1 yayımlanan havuz")
     tumu = Tally("v1 tüm klipler")
     sorgu = """
-        SELECT c.id, c.decision, c.duration, r.metrics_json
+        SELECT c.id, c.channel, c.decision, c.start_sec, c.duration, r.metrics_json
         FROM stage_results r JOIN clips c ON c.id = r.row_id
         WHERE r.level = 'clip' AND r.stage = 'text'
     """
-    for kimlik, karar, duration, mj in con.execute(sorgu):
+    for kimlik, kanal, karar, start, duration, mj in con.execute(sorgu):
         text = json.loads(mj).get("text")
         etiket = f"v1-{kimlik}"
+        dokum.yaz(
+            text,
+            korpus="v1",
+            id=kimlik,
+            kanal=kanal,
+            karar=karar,
+            start=round(start, 2),
+            duration=round(duration, 2),
+            yayimlandi=karar in ("ACCEPT", "REVIEW"),
+        )
         tumu.ekle(text, duration, ornek, etiket)
         if karar in kumeler:
             kumeler[karar].ekle(text, duration, ornek, etiket)
@@ -109,18 +147,30 @@ def olc_v1(db: Path, ornek: int) -> list[Tally]:
     return [tumu, yayim, kumeler["ACCEPT"], kumeler["REVIEW"], kumeler["REJECT"]]
 
 
-def olc_kiraat(db: Path, policy: Policy, ornek: int) -> list[Tally]:
+def olc_kiraat(db: Path, policy: Policy, ornek: int, dokum: Dokum) -> list[Tally]:
     """kiraat deposu: metin ve işaretler `clips` satırında; öneri politikadan."""
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     tumu = Tally("kiraat tüm korpus")
     onerilen = Tally("kiraat önerilen alt küme")
     disarida = Tally("kiraat politika dışı")
-    sorgu = "SELECT id, duration, text, flags_json, metrics_json FROM clips"
-    for kimlik, duration, text, fj, mj in con.execute(sorgu):
+    sorgu = "SELECT id, channel, start, duration, text, flags_json, metrics_json FROM clips"
+    for kimlik, kanal, start, duration, text, fj, mj in con.execute(sorgu):
         tumu.ekle(text, duration, ornek, kimlik)
-        _, gerekceler = policy.evaluate(json.loads(mj), json.loads(fj))
+        flags = json.loads(fj)
+        onerilir, gerekceler = policy.evaluate(json.loads(mj), flags)
         hedef = disarida if gerekceler else onerilen
         hedef.ekle(text, duration, ornek, kimlik)
+        dokum.yaz(
+            text,
+            korpus="kiraat",
+            id=kimlik,
+            kanal=kanal,
+            isaretler=flags,
+            start=round(start, 2),
+            duration=round(duration, 2),
+            onerilir=onerilir,
+            gerekceler=list(gerekceler),
+        )
     con.close()
     return [tumu, onerilen, disarida]
 
@@ -131,18 +181,33 @@ def main() -> int:
     ap.add_argument("--v1", type=Path, default=None, help="v1 state-v2.sqlite yolu")
     ap.add_argument("--config", type=Path, default=Path("configs/default.yaml"))
     ap.add_argument("--examples", type=int, default=5)
+    ap.add_argument(
+        "--dump",
+        type=Path,
+        default=None,
+        help="kırık kliplerin tam dökümünü bu dizine JSONL olarak yaz",
+    )
     args = ap.parse_args()
 
     cfg = Config.load(args.config)
     policy = Policy.from_dict(cfg.data["recommended_subset"])
+    if args.dump:
+        args.dump.mkdir(parents=True, exist_ok=True)
 
     satirlar: list[Tally] = []
+    dokumler: list[Dokum] = []
     if args.v1:
         if not args.v1.exists():
             print(f"v1 deposu bulunamadi: {args.v1}", file=sys.stderr)
             return 2
-        satirlar += olc_v1(args.v1, args.examples)
-    satirlar += olc_kiraat(args.kiraat, policy, args.examples)
+        d = Dokum(args.dump / "v1-kirik.jsonl" if args.dump else None)
+        satirlar += olc_v1(args.v1, args.examples, d)
+        d.kapat()
+        dokumler.append(d)
+    d = Dokum(args.dump / "kiraat-kirik.jsonl" if args.dump else None)
+    satirlar += olc_kiraat(args.kiraat, policy, args.examples, d)
+    d.kapat()
+    dokumler.append(d)
 
     print(f"politika surumu: {policy.version}")
     print()
@@ -156,6 +221,10 @@ def main() -> int:
         print()
         for t in bos:
             print(f"bos metin: {t.ad} -> {t.bos:,}")
+
+    for d in dokumler:
+        if d.yol:
+            print(f"\ndokum: {d.yol} -> {d.n:,} kirik klip")
 
     print()
     for t in satirlar:
