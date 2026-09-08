@@ -4,3 +4,12 @@ work/
 .venv/
 .pytest_cache/
 models/ecapa/
+
+# LaTeX ara çıktıları
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.fls
+paper/*.fdb_latexmk

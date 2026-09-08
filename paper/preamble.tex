@@ -1,0 +1,36 @@
+% Ortak önbölüm. pdflatex ve xelatex ile derlenir.
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else
+  \usepackage{fontspec}
+\fi
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+
+\captionsetup{font=small,labelfont=bf}
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.12}
+
+% Sayı sütunları için sağa dayalı, sabit genişlikli hücre.
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+% Kod ve sütun adları.
+\newcommand{\col}[1]{\texttt{\small #1}}
+
+\hypersetup{
+  pdfauthor={Serdar I. Caglar},
+  pdfkeywords={speech corpus, text-to-speech, Turkish, forced alignment, data curation}
+}
