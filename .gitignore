@@ -5,6 +5,9 @@ work/
 .pytest_cache/
 models/ecapa/
 
+# Gizli anahtarlar (HF_TOKEN)
+.env
+
 # LaTeX ara çıktıları
 paper/*.aux
 paper/*.bbl
