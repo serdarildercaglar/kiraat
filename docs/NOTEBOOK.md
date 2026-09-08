@@ -207,6 +207,50 @@ döküm dâhil).
 
 ---
 
+## Cümle bütünlüğü: tam korpusta ölçüm
+
+7 Eylül 2026, `scripts/probe_sentence_cuts.py`. Ablasyon 206 kayıtlık
+dengeli bir örneklemde koşuyor; bu ölçüm aynı iki tanımı — küçük harfle
+başlayan klip (`is_lower_start`) ve cümle sonu noktalamasıyla bitmeyen klip
+(`has_sentence_end`) — **1.840.404 klibin tamamına** uyguluyor ve önerilen
+alt kümeyi ayrı sayıyor. Tanımlar `kiraat/text/turkish.py` içindeki ortak
+yordamlardır; rakamla ya da tırnakla başlayan metin kırık sayılmaz.
+
+| küme | klip | saat | baş kırığı | son kırığı |
+|---|---|---|---|---|
+| tüm korpus | 1.840.404 | 3.105,7 | 27.483 (%1,49) | 33.346 (%1,81) |
+| önerilen alt küme | 1.547.939 | 2.576,2 | **23 (%0,0015)** | 430 (%0,03) |
+| politika dışı | 292.465 | 529,5 | 27.460 (%9,39) | 32.916 (%11,25) |
+
+Sayılar tek başına değil, işaretle birlikte okunur. Korpustaki kırıkların
+neredeyse tamamı hattın kendi işaretlediği kliplerde toplanıyor:
+
+| işaret | klip | baş kırığı | son kırığı |
+|---|---|---|---|
+| işaretsiz | 1.558.854 | 23 (%0,00) | 521 (%0,03) |
+| `forced_split` | 52.501 | 25.360 (%48,30) | 29.461 (%56,12) |
+| `gap_split` | 5.141 | 2.494 (%48,51) | 3.433 (%66,78) |
+| `boilerplate` | 1.053 | 364 (%34,57) | 673 (%63,91) |
+| `oversize` | 6.731 | 964 (%14,32) | 711 (%10,56) |
+| `background_music` | 207.196 | 2.531 (%1,22) | 3.046 (%1,47) |
+| `short` | 20.904 | 246 (%1,18) | 1.035 (%4,95) |
+
+Baş kırıklarının %92,3'ü `forced_split` ya da `gap_split` taşıyor; bunlar
+hattın "burada cümle sınırı bulamadım, tavana ya da boşluğa dayanarak
+kestim" dediği kliplerdir. Yani kırık, hattın göremediği bir kusur değil,
+kendi ilan ettiği bir kusurdur — ve ilan edildiği için politika onu önerilen
+alt kümenin dışında tutuyor. Değişmezin ölçülmüş hâli budur: işaretsiz
+1.558.854 klipte cümle ortasından başlayan **23 klip** var, yüz binde 1,5.
+
+Kalan 23 klip künye kesiminden geliyor (örnekler: "kanalımızda bu
+içeriğimizde…", "seslendiren Fatma Gökbulut."). Künye işaretinin cümle
+düzeyine taşınması "Koşulacak deneyler" listesinde duruyor; bu ölçüm o işin
+büyüklüğünü de veriyor.
+
+**Makaleye:** §Bölütleme, ablasyon tablosunun yanına tam korpus satırı.
+
+---
+
 ## Sınır iyileştirme ve kulakla doğrulama
 
 Cümle sınırında kesmek kesim noktasını belirler, sınırın tam yerini

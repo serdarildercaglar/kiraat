@@ -46,6 +46,16 @@ sıralamadan geliyor — hat sessizlikte kesiyor, cümlede değil. Seslendiren
 virgülde nefes alır, iki cümle arasında almayabilir; VAD bu ikisini ayırt
 edemez.
 
+**Doğrulandı (7 Eyl 2026, `scripts/probe_sentence_cuts.py`).** Yukarıdaki
+manifest sayımı, aynı tanımlarla doğrudan v1 metrik deposundan
+(`voxcpm/work/db/state-v2.sqlite`, salt okunur) yeniden ölçüldü. Yayımlanan
+857.123 klipte kırık başlangıç %6,72, cümle sonu olmayan %11,29; temiz
+havuzda (424.817 klip) sırasıyla **%9,38** ve **%14,12**. Tablodaki %9,4
+tutuyor. Aynı betiğin kiraat kolu için defterdeki "Cümle bütünlüğü: tam
+korpusta ölçüm" kaydına bakılır — o kayıt bu karşılaştırmayı içermez ve
+içeremez, çünkü defter önceki hiçbir veri kümesine değinmez; buradaki
+karşılaştırma iç belgede kalır.
+
 **Karar.** Sıralama tersine çevrildi: uzun formda ASR + kelime zaman damgası
 → transcript üzerinde cümle bölütleme → cümle sınırında kesim. VAD korunur
 ama yalnızca ASR'ye verilecek konuşma bölgelerini bulur. Tek istisna, tek
