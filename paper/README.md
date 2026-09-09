@@ -13,20 +13,50 @@ ilgili başlıktır.
 
 ## Derleme
 
-Depoda LaTeX kurulu değildi; `tectonic` ayrı bir conda ortamına kuruldu ve
-eksik paketleri kendisi indiriyor:
+`tectonic` ile derlenir; eksik LaTeX paketlerini kendisi indirdiği için
+sisteme TeX kurmak ya da sudo gerekmez:
 
 ```bash
-/home/serdar/miniconda3/envs/tex/bin/tectonic -X compile paper/main_en.tex
+tectonic -X compile paper/main_en.tex
 ```
 
-`pdflatex` ile de derlenir (`iftex` sayesinde `xelatex` de çalışır):
+Kurulu değilse statik ikili yeter (sürüm sabit tutulur, çıktı yeniden
+üretilebilsin diye):
 
 ```bash
+V=0.15.0
+curl -sL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40$V/tectonic-$V-x86_64-unknown-linux-musl.tar.gz" \
+  | tar xz -C /tmp
+install -m 755 /tmp/tectonic ~/.local/bin/tectonic
+```
+
+Depodaki `main_en.pdf` bununla üretildi: tectonic 0.15.0, xdvipdfmx,
+11 sayfa. Yeniden derleme içerikçe aynı PDF'i verir ama bayt bayt aynısını
+vermez — PDF kimliği ve zaman damgaları her koşuda değişir, 97.036 baytın
+67'si oynar. Karşılaştırma bu yüzden `cmp` ile değil metin dökümüyle
+yapılır:
+
+```bash
+pdftotext eski.pdf - > eski.txt && pdftotext paper/main_en.pdf - > yeni.txt
+diff eski.txt yeni.txt
+```
+
+Tectonic'in "TeX rerun seems needed, but stopping at 6 passes" uyarısı
+beklenen bir çıktıdır ve atıflar çözülmüş olarak biter; kontrol için
+derleme kaydında `Undefined` aranır.
+
+`pdflatex` yolu da açık (`iftex` sayesinde `xelatex` de çalışır), ama
+önbölümün istediği `booktabs`, `caption`, `microtype` ve `xcolor` taban
+TeX Live kurulumunda bulunmaz:
+
+```bash
+sudo apt install texlive-latex-recommended texlive-latex-extra
 pdflatex main_en && bibtex main_en && pdflatex main_en && pdflatex main_en
 ```
 
 arXiv BibTeX koşturmaz; gönderim paketine `main_en.bbl` konulmalıdır.
+Tectonic ara dosyaları varsayılan olarak siler, `.bbl` için
+`--keep-intermediates` verilir.
 
 ## Taslakta eksik olanlar
 
