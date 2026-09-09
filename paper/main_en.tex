@@ -256,7 +256,7 @@ than the duration ceiling is split at its internal punctuation, and the
 resulting clips carry the \col{forced\_split} flag; a gap inside a sentence
 that exceeds the tolerated silence forces a split flagged \col{gap\_split}. The
 flags are the mechanism by which the defect stays visible:
-Section~\ref{sec:integrity} shows that 92.3\% of all mid-sentence starts in
+Section~\ref{sec:integrity} shows that 97.6\% of all mid-sentence starts in
 the corpus carry one of these two flags, and that the policy therefore keeps
 them out of the recommended subset.
 
@@ -433,7 +433,7 @@ subset & clips & hours & broken start & broken end \\
 \midrule
 whole corpus & 1,840,404 & 3,105.7 & 27,483 (1.49\%) & 33,346 (1.81\%) \\
 recommended subset & 1,547,494 & 2,575.2 & \textbf{23 (0.0015\%)} & 430 (0.03\%) \\
-outside the policy & 292,910 & 530.5 & 27,460 (9.39\%) & 32,916 (11.25\%) \\
+outside the policy & 292,910 & 530.5 & 27,460 (9.37\%) & 32,916 (11.24\%) \\
 \bottomrule
 \end{tabular}
 \caption{Sentence integrity over the full corpus. Rates are per clip.}
@@ -441,9 +441,10 @@ outside the policy & 292,910 & 530.5 & 27,460 (9.39\%) & 32,916 (11.25\%) \\
 \end{table}
 
 Table~\ref{tab:integrity} should be read together with the flags.
-Of the 27,483 clips that begin mid-sentence, 92.3\% carry \col{forced\_split}
-or \col{gap\_split}; among the 1,558,854 clips that carry no flag at all, 23
-begin mid-sentence, a rate of 15 per million. The corpus does contain
+Of the 27,483 clips that begin mid-sentence, 97.6\% carry \col{forced\_split}
+or \col{gap\_split} (92.3\% carry \col{forced\_split} alone); among the
+1,558,409 clips that carry no flag at all, 23 begin mid-sentence, a rate of
+15 per million. The corpus does contain
 mid-sentence cuts --- a sentence that runs past the duration ceiling has to be
 split somewhere --- but they are cuts the pipeline declares, and declaring them
 is what allows the policy to exclude them and a consumer to find them.
