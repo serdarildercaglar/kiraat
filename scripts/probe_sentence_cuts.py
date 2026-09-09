@@ -15,6 +15,13 @@ sessizlikte kesen bir hattın aynı ham kayıtlarda ne ürettiğiyle karşılaş
 Karşılaştırılan hat, sessizlikte kesen v1'in `state-v2.sqlite` deposudur;
 veri bu depoya kopyalanmaz, yalnız okunur (`--v1` ile yol verilir).
 
+Önerilen alt küme, `export`'un ürettiğiyle birebir aynı olmak zorunda:
+`duplicate` işareti bir aşamanın çıktısı değil, dışa aktarımda
+`dedupe.mark_duplicates` ile konur, yani veritabanındaki `flags_json`
+içinde bulunmaz. Politika o işarete bakan bir kural taşıdığı için betik
+yinelemeleri kendisi işaretler; atlanırsa önerilen alt küme kartta ve
+`run.json`'da duran sayıdan büyük çıkar.
+
 Kullanım:
 
     python scripts/probe_sentence_cuts.py \
@@ -35,6 +42,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from kiraat.config import Config  # noqa: E402
+from kiraat.dedupe import IDENTITY_FIELDS, mark_duplicates  # noqa: E402
 from kiraat.scoring import Policy  # noqa: E402
 from kiraat.text.turkish import has_sentence_end, is_lower_start  # noqa: E402
 
@@ -147,19 +155,55 @@ def olc_v1(db: Path, ornek: int, dokum: Dokum) -> list[Tally]:
     return [tumu, yayim, kumeler["ACCEPT"], kumeler["REVIEW"], kumeler["REJECT"]]
 
 
-def olc_kiraat(db: Path, policy: Policy, ornek: int, dokum: Dokum) -> list[Tally]:
+def yineleme_kimlikleri(db: Path, alanlar: tuple[str, ...]) -> set[str]:
+    """`duplicate` işaretini alacak kliplerin kimlikleri; export'un yordamıyla.
+
+    `mark_duplicates` metnin VE sesin aynı olmasını arar; ses kimliği
+    `alanlar` ölçümlerinden kurulur. Burada yalnız o alanlar okunur, tüm
+    `metrics_json` bellekte tutulmaz — `dedupe.identity` alanı önce klibin
+    kendi anahtarlarında arar, bu yüzden düzleştirmek ölçümü değiştirmez.
+    """
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    klipler = []
+    for kimlik, duration, text, mj in con.execute(
+            "SELECT id, duration, text, metrics_json FROM clips"):
+        m = json.loads(mj)
+        klip = {"id": kimlik, "duration": duration, "text": text}
+        for a in alanlar:
+            if a not in klip:
+                klip[a] = m.get(a)
+        klipler.append(klip)
+    con.close()
+    isaretli = mark_duplicates(klipler, identity_fields=alanlar, text_field="text")
+    return {c["id"] for c in isaretli if c["duplicate_of"]}
+
+
+def olc_kiraat(db: Path, policy: Policy, ornek: int, dokum: Dokum,
+               yinelemeler: set[str]) -> list[Tally]:
     """kiraat deposu: metin ve işaretler `clips` satırında; öneri politikadan."""
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     tumu = Tally("kiraat tüm korpus")
     onerilen = Tally("kiraat önerilen alt küme")
     disarida = Tally("kiraat politika dışı")
+    # İşaret kırılımı: kırıkların hattın kendi işaretlediği kliplerde mi
+    # toplandığını gösterir. Bir klip birden çok işaret taşıyabilir, bu
+    # yüzden satırların toplamı korpusu vermez; "işaretsiz" ayrık kümedir.
+    isaretsiz = Tally("  işaretsiz")
+    basina: dict[str, Tally] = {}
     sorgu = "SELECT id, channel, start, duration, text, flags_json, metrics_json FROM clips"
     for kimlik, kanal, start, duration, text, fj, mj in con.execute(sorgu):
         tumu.ekle(text, duration, ornek, kimlik)
         flags = json.loads(fj)
+        if kimlik in yinelemeler and "duplicate" not in flags:
+            flags.append("duplicate")
         onerilir, gerekceler = policy.evaluate(json.loads(mj), flags)
         hedef = disarida if gerekceler else onerilen
         hedef.ekle(text, duration, ornek, kimlik)
+        if flags:
+            for f in flags:
+                basina.setdefault(f, Tally(f"  {f}")).ekle(text, duration, 0, kimlik)
+        else:
+            isaretsiz.ekle(text, duration, ornek, kimlik)
         dokum.yaz(
             text,
             korpus="kiraat",
@@ -172,7 +216,8 @@ def olc_kiraat(db: Path, policy: Policy, ornek: int, dokum: Dokum) -> list[Tally
             gerekceler=list(gerekceler),
         )
     con.close()
-    return [tumu, onerilen, disarida]
+    sirali = sorted(basina.values(), key=lambda t: -t.bas_kirik)
+    return [tumu, onerilen, disarida, isaretsiz, *sirali]
 
 
 def main() -> int:
@@ -191,6 +236,7 @@ def main() -> int:
 
     cfg = Config.load(args.config)
     policy = Policy.from_dict(cfg.data["recommended_subset"])
+    alanlar = tuple(cfg.get("dedupe.identity_fields", IDENTITY_FIELDS))
     if args.dump:
         args.dump.mkdir(parents=True, exist_ok=True)
 
@@ -205,11 +251,13 @@ def main() -> int:
         d.kapat()
         dokumler.append(d)
     d = Dokum(args.dump / "kiraat-kirik.jsonl" if args.dump else None)
-    satirlar += olc_kiraat(args.kiraat, policy, args.examples, d)
+    yinelemeler = yineleme_kimlikleri(args.kiraat, alanlar)
+    satirlar += olc_kiraat(args.kiraat, policy, args.examples, d, yinelemeler)
     d.kapat()
     dokumler.append(d)
 
     print(f"politika surumu: {policy.version}")
+    print(f"yineleme (dedupe, {'+'.join(alanlar)}): {len(yinelemeler):,} klip")
     print()
     print(BASLIK)
     print("-" * len(BASLIK))
