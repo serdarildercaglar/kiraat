@@ -46,3 +46,28 @@ def test_depolama_semasinda_ses_bayt():
     assert set(st["audio"]) == {"bytes", "path"}
     assert SPLITS == ("train", "dev", "test", "rest"), \
         "rest bölmesi olmadan korpusun bir kısmı yayımlanmaz"
+
+
+def test_kart_yayimlanan_her_sutunu_belgeler():
+    """Kart, yayımlanan sütunların tam listesini taşır — biri eklenip kartta
+    unutulursa burada patlar. Kartı ilk yazarken `audio`, `source_id` ve
+    `split` tabloda yoktu; verinin kendisi belgesiz kalmıştı."""
+    import re
+    from pathlib import Path
+
+    kart = Path(__file__).resolve().parents[1] / "docs" / "DATASET_CARD.md"
+    govde = kart.read_text(encoding="utf-8").split("## Columns", 1)[1]
+    govde = govde.split("## Known limitations")[0]
+    belgeli = set(re.findall(r"^\| `([a-z_]+)`", govde, re.M))
+    assert belgeli == {c.name for c in published_columns()} | {"split"}
+
+
+def test_kart_yayimlanan_her_bolmeyi_anar():
+    """`rest` bölmesi kartta yoksa okur 316.733 klibi kayıp sayar."""
+    from pathlib import Path
+
+    kart = (Path(__file__).resolve().parents[1] / "docs" / "DATASET_CARD.md")
+    metin = kart.read_text(encoding="utf-8")
+    for bolme in SPLITS:
+        assert f"`{bolme}`" in metin, f"{bolme} bölmesi kartta anılmıyor"
+        assert f"path: data/{bolme}-*" in metin, f"{bolme} configs bloğunda yok"

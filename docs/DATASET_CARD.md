@@ -8,6 +8,17 @@ task_categories:
 pretty_name: KIRAAT — A Turkish Read-Speech Corpus
 size_categories:
 - 1M<n<10M
+configs:
+- config_name: default
+  data_files:
+  - split: train
+    path: data/train-*
+  - split: dev
+    path: data/dev-*
+  - split: test
+    path: data/test-*
+  - split: rest
+    path: data/rest-*
 tags:
 - speech
 - turkish
@@ -42,8 +53,35 @@ from in the `channel` column.
 | speakers (clustered) | **90** |
 | source recordings | 2,680 |
 | words (ASR) | 21,695,774 |
-| audio | 24 kHz, mono, FLAC |
+| audio | 24 kHz, mono, FLAC, embedded in the parquet shards |
+| download size | ~250 GB (clip files measured at 246 GB) |
+| splits | `train` / `dev` / `test` / `rest` — the whole corpus is published |
 | language | Turkish |
+
+## Loading
+
+```python
+from datasets import load_dataset
+
+# the default training subset
+train = load_dataset("serdarcaglar/kiraat", split="train")
+
+# 250 GB is a lot to download for a look; stream instead
+train = load_dataset("serdarcaglar/kiraat", split="train", streaming=True)
+clip = next(iter(train))
+clip["audio"]["array"], clip["text_spoken"], clip["speaker_id"]
+
+# everything the policy left out — published, not deleted
+rest = load_dataset("serdarcaglar/kiraat", split="rest", streaming=True)
+```
+
+Audio is embedded in the parquet shards, so there is no separate audio
+download; `datasets` decodes the `audio` column for you. This needs
+**`datasets>=4`** — the shards were written with the `List` feature type,
+and on 3.x loading fails with `Feature type 'List' not found` before any
+row is read. Decoding the `audio` column also needs `torchcodec`
+installed; without it you can still read the raw FLAC bytes with
+`.cast_column("audio", Audio(decode=False))`.
 
 ## Two things that set this corpus apart
 
@@ -51,9 +89,11 @@ from in the `channel` column.
 cut at sentence boundaries over word timestamps produced by ASR and forced
 alignment. This has a measured consequence. On the same recordings (206
 recordings from 27 channels, 240.5 hours), silence-aligned segmentation
-starts **12.81% of its clips mid-sentence with nothing in the data to
-indicate it**; with sentence-aligned segmentation that figure is **0.00%**
-(every broken start is visible through a `forced_split` or boilerplate flag).
+starts 14.31% of its clips mid-sentence, and **12.81% with nothing in the
+data to indicate it**. Sentence-aligned segmentation starts 1.39%
+mid-sentence and **0.00% without a marker**: every broken start carries a
+`forced_split` or boilerplate flag, so it is visible in the data and it
+falls outside the recommended subset.
 
 **No threshold ever drops a clip.** Quality measurements are published as
 columns. Which clips belong to the default training subset is decided by a
@@ -71,6 +111,22 @@ removed. You can cut your own thresholds from the columns — clips with
 | train | 1,512,448 | 2,517.08 | 2,579 | 27 | 89 |
 | dev | 5,750 | 9.54 | 40 | 27 | 26 |
 | test | 5,473 | 9.30 | 45 | 27 | 26 |
+| rest | 316,733 | 569.78 | — | 27 | — |
+| **total** | **1,840,404** | **3,105.70** | **2,680** | **27** | **90** |
+
+`train`, `dev` and `test` are drawn from the recommended subset. Every
+remaining clip is published in a fourth split, **`rest`** — nothing is
+deleted, and a clip's measurement columns are the same there as anywhere
+else:
+
+| what is in `rest` | clips | hours |
+|---|---|---|
+| `recommended=false` | 292,910 | 530.5 |
+| recommended but unused: beyond a channel's dev/test duration target, or dropped by the text-leakage cleanup (these are never moved into `train`) | 23,823 | 39.3 |
+
+The `recordings` column above counts recordings whose clips form a split;
+`rest` draws clips from recordings across all three, and 16 of the 2,680
+recordings have all of their clips in `rest`.
 
 Splits are **recording-level**: all clips from one recording land in one
 split, so evaluation happens on a recording the model has never heard. `dev`
@@ -96,7 +152,10 @@ subset via the versioned policy.
 
 Every model revision and stage version is pinned in the run record
 (`run.json`), and the pipeline code is open:
-<https://github.com/serdarildercaglar/kiraat>.
+<https://github.com/serdarildercaglar/kiraat>. Every count, hour and share
+printed in this card is regenerated from the run database by
+`scripts/verify_card.py` — including the duplicate marking, the policy
+decision and the four splits, which are recomputed rather than read back.
 
 ## Quality distributions (recommended subset)
 
@@ -146,7 +205,9 @@ is small.
 
 | column | type | unit | stage | description |
 |---|---|---|---|---|
+| `audio` | audio | 24 kHz | export | The clip audio itself, mono FLAC embedded in the parquet shards. `datasets` decodes it to `{array, sampling_rate}`; there is no separate audio download. No gain is applied — see `loudness_lufs`. |
 | `id` | string |  | segment | Clip id, `srcNNNNN-KKKKK`: the source recording's number and the clip's index within that recording. |
+| `source_id` | string |  | prepare | The source recording the clip was cut from (`srcNNNNN`). Every clip of one recording carries the same value; this is the key to group by if you build your own recording-level splits. |
 | `channel` | string |  | prepare | The YouTube channel the source recording came from (folder name). This is not a speaker identity; a channel may have several readers. |
 | `source_sample_rate` | int | Hz | prepare | The source recording's actual sample rate in its container. Clips are resampled to 24 kHz, so sources below 24 kHz have been upsampled and this column is what tells them apart. |
 | `source_flags` | list[string] |  | prepare | Recording-level flags. `truncated_source`: the decoded audio is shorter than 95% of the duration the container reports (a corrupt or partial download). |
@@ -175,7 +236,7 @@ is small.
 | `music_score_audioset` (optional) | float |  | music | Maximum score of an AudioSet AST classifier over its music labels (Music, Background music, Soundtrack…), taken as the max over clip windows. A cheap screening signal; it can coexist with speech. Empty for unreadable clips (`unreadable_audio`). |
 | `music_to_speech_db` (optional) | float | dB | music | A physical measurement from source separation (HDemucs): the ratio of accompaniment energy (drums+bass+other) to vocal energy. If the separator did not run, the floor value −80. The `background_music` flag is derived from this column using the threshold in the config. Empty for unreadable clips. |
 | `music_db_separated` (optional) | bool |  | music | Whether the separator actually ran on this clip. If not, `music_to_speech_db` is the floor value rather than a measurement (the AudioSet score was below the screening threshold). Empty for unreadable clips. |
-| `music_stem_db` (optional) | dict[string,float] | dB | music | Per-stem energy levels for the separator's four stems (drums, bass, other, vocals); written only for clips the separator ran on. `music_to_speech_db` is derived from these. |
+| `music_stem_db` (optional) | string (JSON) | dB | music | Per-stem energy levels for the separator's four stems (drums, bass, other, vocals); written only for clips the separator ran on. `music_to_speech_db` is derived from these. Published as a JSON object encoded in a string (the key set is not fixed), so parse it with `json.loads`. |
 | `dnsmos_sig` (optional) | float |  | dnsmos | DNSMOS P.835 speech quality estimate (SIG, 1–5): distortion of the speech itself. Matches the reference implementation exactly: 9.01 s windows, polynomial mapping, window averaging. Empty for unreadable clips (`unreadable_audio`). |
 | `dnsmos_bak` (optional) | float |  | dnsmos | DNSMOS P.835 background estimate (BAK, 1–5): how intrusive the background noise is; higher means cleaner. Empty for unreadable clips. |
 | `dnsmos_ovrl` (optional) | float |  | dnsmos | DNSMOS P.835 overall quality estimate (OVRL, 1–5). Not a gate: a policy rule may only be added after blind listening review (see the policy v4 record). Empty for unreadable clips. |
@@ -187,6 +248,7 @@ is small.
 | `recommended` | bool |  | export | Whether the versioned policy (`recommended_subset`) recommends this clip for the default training subset. It removes no data; you can set your own rule from the measurement columns. |
 | `exclusion_reasons` | list[string] |  | export | If `recommended=false`, the list of rules that were not met: `metric<threshold`, `metric>threshold`, `flag:name[,name]`, `missing_measurement:metric`. Empty for recommended clips. |
 | `policy_version` | string |  | export | The policy version that produced `recommended` and `exclusion_reasons`; the rules are versioned in the config, and when they change only these three columns are recomputed. |
+| `split` | string |  | export | The published split the row belongs to: `train`, `dev`, `test` or `rest`. |
 
 ## Known limitations
 
@@ -211,6 +273,8 @@ is small.
   bandwidth cut is 15.7 kHz, and around 13 kHz on two channels.
 - **The test set has not been verified by hand**; the leakage check is
   automatic.
+- **2,699 recordings were downloaded and 2,680 produced clips**: one could
+  not be decoded, and 18 more yielded no sentence-bounded clip.
 
 ## Channel credits
 
@@ -248,11 +312,24 @@ using this corpus is expected to carry these credits.
 | KitaplarinKedisi | 3 | 664 | 1.0 | 1.0 | 2 |
 | **total** | **2,680** | **1,840,404** | **3,105.7** | **2,575.2** | **90** |
 
+The speaker column counts the distinct clusters heard on each channel, so
+it adds up to more than 90: a cluster can appear on several channels — the
+same reader published by more than one of them. The hours columns are
+rounded per channel and add up to 3,105.6 / 2,575.3.
+
 ## License and use
 
 The corpus is released under **CC BY 4.0**. The only condition is
 attribution, and attribution must cover both this dataset and the **channel
 credits** above.
+
+To be precise about what that license covers: everything produced here — the
+segmentation, the transcripts, every measurement column, the policy and the
+splits — is released under CC BY 4.0. The **recordings themselves are the
+publicly available uploads of the channels above and their rights remain
+with them**; this card grants no rights over them beyond what those public
+uploads already carry, which is why the credit condition names the channels
+and why the takedown line below exists.
 
 **Commercial use is permitted.** You may train models on this corpus, use
 them in commercial products, sell them and distribute them under any license
@@ -265,6 +342,18 @@ The recordings come from the publicly available uploads of Turkish audiobook
 YouTube channels. **If a rights holder objects, that channel's recordings are
 removed from the dataset**; reaching us through the repository or the
 dataset's discussion page is enough.
+
+## Personal and sensitive information
+
+The audio is human speech, so it carries identifiable voices: 90 speaker
+clusters read these recordings. `speaker_id` is a cluster derived from
+speaker embeddings, **not a name** — no identity, contact or demographic
+information is published, and no attempt was made to link a cluster to a
+person. The material is read literature from public uploads rather than
+private conversation, so no personal information beyond the voices
+themselves is expected in the text; the transcripts were not screened for it
+by hand. Requests to remove a voice are handled the same way as rights
+holder requests below.
 
 ## Citation
 

@@ -112,11 +112,18 @@ koşu kaydı).
 
 | | |
 |---|---|
-| kaynak | 2.699 (1'i okunamadı) |
+| kaynak | 2.699 (1'i okunamadı, 18'i klip üretmedi → 2.680 kayıt) |
 | kanal | 27 |
 | konuşmacı | **90** (kümeleme, aşağıda) |
 | klip | **1.840.404 / 3.105,70 saat** |
+| kelime (ASR) | **21.695.774** |
 | önerilen alt küme (politika v6) | **1.547.494 klip / 2.575,22 saat** |
+
+Kartın bütün sayıları `scripts/verify_card.py` ile `state.sqlite`'tan
+yeniden üretilir — yineleme işareti, politika kararı ve dört bölme dahil,
+manifestten okunmadan yeniden hesaplanarak: 150 denetimin hepsi geçiyor.
+Kapsam dışındaki üç şey kendi betiğini ister: konuşmacı kümeleri (kayıt
+başına gömme dosyaları), bölütleme ablasyonu (ikinci kol), indirme boyutu.
 
 Envanterdeki 3.440 saatten manifestteki 3.105,7 saate düşüş (%90,3 verim)
 sessizlik, künye kesimi ve cümle sınırı dışında kalan artıklardan gelir.
@@ -142,8 +149,8 @@ sessizlik, künye kesimi ve cümle sınırı dışında kalan artıklardan gelir
 
 Korpusun tamamında DNSMOS: OVRL ortalama 3,208 (p05 2,69 / p50 3,27 /
 p95 3,49; en düşük 0,96, en yüksek 3,74). Kliplerin **%83,57'si**
-`dnsmos_ovrl ≥ 3,0` — alanın yerleşik eşiği bu korpusta neyi eleyeceğini
-göstermek için kaydedilir, kural değildir.
+`dnsmos_ovrl ≥ 3,0`, **%3,86'sı ≥ 3,5** — alanın yerleşik eşikleri bu
+korpusta neyi eleyeceğini göstermek için kaydedilir, kural değildir.
 
 **İşaretler** (bütün klipler): `background_music` 207.196, `forced_split`
 52.501, `short` 20.904, `oversize` 6.731, `gap_split` 5.141, `boilerplate`
@@ -425,6 +432,14 @@ kullanılmadan bırakılır — bölmenin tek garantisi budur.
 | train | 1.512.448 | 2.517,08 | 2.579 | 27 |
 | dev | 5.750 | 9,54 | 40 | 27 |
 | test | 5.473 | 9,30 | 45 | 27 |
+| rest | 316.733 | 569,78 | — | 27 |
+
+`rest`, üç bölmeye girmeyen her kliptir ve yayımlanır: 292.910 önerilmeyen
+klip (530,5 sa) + kanal süre hedefi ya da metin sızıntısı temizliği yüzünden
+kullanılmadan kalan 23.823 önerilen klip (39,3 sa). Kayıt sütunu bölmeyi
+oluşturan kayıtları sayar; `rest` üç bölmenin kayıtlarından da klip alır,
+2.680 kaydın 16'sının kliplerinin tamamı `rest`tedir. Korpusun tamamı dört
+bölmede yayımlanır, hiçbir klip düşürülmez.
 
 Sızıntı denetimi: **kayıt sızıntısı 0** (kurulum gereği, yine de sınanır);
 metin sızıntısı temizlik öncesi test 2.263 / dev 2.723 klip — bunlar
