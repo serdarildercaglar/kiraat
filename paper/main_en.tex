@@ -19,7 +19,7 @@ Turkish has abundant text and speech-recognition data but very little read
 speech suitable for training text-to-speech (TTS): the openly available
 read-speech corpora for the language are measured in tens or low hundreds of
 hours. We release \textsc{Kiraat}, a corpus of 1,840,404 clips totalling
-3,105.7 hours of Turkish read speech, segmented from 2,699 audiobook and
+3,105.7 hours of Turkish read speech, segmented from 2,680 audiobook and
 spoken-article recordings across 27 channels, together with the pipeline that
 produced it.
 
@@ -73,7 +73,7 @@ itself.
 \paragraph{Contributions.}
 \begin{enumerate}
 \item \textbf{The corpus.} 1,840,404 clips, 3,105.7 hours of Turkish read
-speech at 24\,kHz from 2,699 recordings on 27 channels, with 90 clustered
+speech at 24\,kHz from 2,680 recordings on 27 channels, with 90 clustered
 speaker identities, published with every per-clip measurement the pipeline
 computed and with an evaluation split whose recording and text leakage are
 both zero (Section~\ref{sec:corpus}).
@@ -565,8 +565,9 @@ so evaluation is on a recording the model has never heard. The \col{dev} and
 \col{test} splits are channel-balanced, because the corpus is not and an
 evaluation set that inherited the imbalance would report the numbers of two
 channels. Recordings run for hours, so dev and test are reduced to a per-channel
-hour target and the clips beyond that target are left unused rather than moved
-into training.
+hour target and the clips beyond that target are left out of training rather
+than moved into it; they are published in the \col{rest} split described
+below.
 
 \begin{table}[t]
 \centering
@@ -578,11 +579,28 @@ split & clips & hours & recordings & channels \\
 train & 1,512,448 & 2,517.08 & 2,579 & 27 \\
 dev & 5,750 & 9.54 & 40 & 27 \\
 test & 5,473 & 9.30 & 45 & 27 \\
+\midrule
+rest & 316,733 & 569.78 & --- & 27 \\
+\textbf{total} & \textbf{1,840,404} & \textbf{3,105.70} & \textbf{2,680} & \textbf{27} \\
 \bottomrule
 \end{tabular}
-\caption{Evaluation split over the recommended subset.}
+\caption{The four published splits. \col{train}, \col{dev} and \col{test} are
+drawn from the recommended subset; \col{rest} carries every remaining clip, so
+the four splits together are the whole corpus. The recordings column counts
+recordings whose clips form a split; \col{rest} draws clips from recordings
+across all three, and 16 of the 2,680 recordings have all of their clips in it.}
 \label{tab:splits}
 \end{table}
+
+Nothing is left out of the release. The clips that the policy does not
+recommend, and the recommended clips that dev and test did not use, are
+published in a fourth split, \col{rest}: 292,910 clips (530.5 hours) with
+\col{recommended=false}, and 23,823 clips (39.3 hours) that are recommended but
+fell beyond a channel's dev/test duration target or were dropped by the
+text-leakage cleanup below. A clip in \col{rest} carries exactly the same
+measurement columns as one in \col{train}, so a consumer who sets a different
+policy can recover it from the release rather than re-running the pipeline ---
+which is the whole point of not gating.
 
 Recording leakage is zero by construction and is nevertheless tested. Text
 leakage was not zero by construction: 2,263 test clips and 2,723 dev clips
