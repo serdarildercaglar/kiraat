@@ -350,7 +350,7 @@ information is published, and no attempt was made to link a cluster to a
 person. The material is read literature from public uploads rather than
 private conversation, but that does not rule out personal or sensitive information in the text;
 the transcripts were not screened for it by hand. Requests to remove a voice are handled the same way as rights
-holder requests below.
+holder requests above.
 
 ## Citation
 
