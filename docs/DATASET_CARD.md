@@ -1,5 +1,4 @@
 ---
-license: cc-by-4.0
 language:
 - tr
 task_categories:
@@ -26,13 +25,12 @@ tags:
 - tts
 - audiobook
 extra_gated_prompt: >-
-  This dataset is released under CC BY 4.0: research and commercial use are
-  both permitted, and any model you train on it is yours to license as you
-  wish. The single condition is attribution, and attribution must credit the
-  source YouTube channels listed in this card in addition to the dataset
-  itself. The recordings come from those channels' publicly available
-  uploads; if a rights holder objects, that channel's recordings are removed
-  from the dataset. Access opens immediately once you accept.
+  No dataset licence is declared. The audio originates from public YouTube
+  uploads, whose public availability does not establish redistribution or
+  commercial-use permission. Credit the source channels and the dataset.
+  Recording, literary-text and narrator rights must be assessed separately;
+  this card does not grant rights held by third parties. Rights holders can
+  request removal through repository issues or dataset discussions.
 extra_gated_fields:
   I accept the attribution and channel-credit condition: checkbox
 ---
@@ -50,7 +48,7 @@ from in the `channel` column.
 | duration | **3,105.7 hours** |
 | recommended subset | **1,547,494 clips / 2,575.2 hours** |
 | channels | 27 |
-| speakers (clustered) | **90** |
+| speaker clusters (inferred) | **90** |
 | source recordings | 2,680 |
 | words (ASR) | 21,695,774 |
 | audio | 24 kHz, mono, FLAC, embedded in the parquet shards |
@@ -85,28 +83,25 @@ installed; without it you can still read the raw FLAC bytes with
 
 ## Two things that set this corpus apart
 
-**Cuts land on sentence boundaries.** Clips are not cut at silences; they are
-cut at sentence boundaries over word timestamps produced by ASR and forced
-alignment. This has a measured consequence. On the same recordings (206
-recordings from 27 channels, 240.5 hours), silence-aligned segmentation
-starts 14.31% of its clips mid-sentence, and **12.81% with nothing in the
-data to indicate it**. Sentence-aligned segmentation starts 1.39%
-mid-sentence and **0.00% without a marker**: every broken start carries a
-`forced_split` or boilerplate flag, so it is visible in the data and it
-falls outside the recommended subset.
+**Segmentation follows transcript sentence boundaries.** The reported
+206-recording comparison uses lowercase starts and missing final punctuation
+as transcript proxies. Lowercase-start rates are 14.31% in the implemented
+VAD baseline and 1.39% in the sentence arm; unflagged rates are 12.81% and
+0.00%. These checks depend on ASR casing/punctuation and do not establish
+acoustic truncation rates. Baseline clips can be inspected from their text,
+so absence of a dedicated flag does not make the proxy undetectable.
 
 **No threshold ever drops a clip.** Quality measurements are published as
 columns. Which clips belong to the default training subset is decided by a
 *versioned policy*, and the reason for every exclusion is written into the
-`exclusion_reasons` column. The policy itself has been through blind
-listening review: two thresholds that are standard in this field
-(`clip_ratio`, `word_confidence`) did not survive that review and were
-removed. You can cut your own thresholds from the columns — clips with
+`exclusion_reasons` column. Small score-stratified listening audits informed removal of two candidate
+thresholds (`clip_ratio`, `word_confidence`). They do not establish
+corpus-wide error rates or downstream training utility. You can cut your own thresholds from the columns — clips with
 `recommended=false` have not been deleted.
 
 ## Splits
 
-| split | clips | hours | recordings | channels | speakers |
+| split | clips | hours | recordings | channels | speaker clusters |
 |---|---|---|---|---|---|
 | train | 1,512,448 | 2,517.08 | 2,579 | 27 | 89 |
 | dev | 5,750 | 9.54 | 40 | 27 | 26 |
@@ -128,15 +123,19 @@ The `recordings` column above counts recordings whose clips form a split;
 `rest` draws clips from recordings across all three, and 16 of the 2,680
 recordings have all of their clips in `rest`.
 
-Splits are **recording-level**: all clips from one recording land in one
-split, so evaluation happens on a recording the model has never heard. `dev`
+The **train/dev/test splits have disjoint source IDs**. `rest` also contains
+clips from their recordings. If adding `rest` to training, first exclude
+every dev/test source ID and recheck transcript overlap. `dev`
 and `test` are channel-balanced (equal duration target per channel). Text
 leakage was checked and cleaned: dev/test clips carrying a sentence
 identical to one in `train` were dropped, and the remaining overlap is
-**zero**.
+**zero** for train--dev and train--test. A separate database audit found
+12 shared normalized text keys between dev and test. These checks do not
+exclude near-duplicate text, shared books or re-uploads under different IDs.
 
-Speaker overlap was left in deliberately: 25 of the 26 speakers in `test`
-also appear in `train`, so this is a **seen-speaker** evaluation. If you want
+The reported cluster assignments have overlap: 25 of the 26 test clusters
+also occur in training. These are **inferred speaker labels**, not manually
+verified identities, and the evaluation is predominantly seen-cluster. If you want
 an unseen-speaker experiment, build your own split from the `speaker_id`
 column.
 
@@ -150,8 +149,10 @@ speech ratio, silences, level, BS.1770 loudness; music via HDemucs +
 AudioSet; DNSMOS P.835; speaker embeddings via ECAPA-TDNN) → recommended
 subset via the versioned policy.
 
-Every model revision and stage version is pinned in the run record
-(`run.json`), and the pipeline code is open:
+The export code writes model identifiers, configuration and stage versions
+to `run.json`. Speaker-weight provenance is incomplete: the configured
+revision is not passed to the loader, and the provenance record omits the
+speaker model and its dependencies. The pipeline source is available:
 <https://github.com/serdarildercaglar/kiraat>. Every count, hour and share
 printed in this card is regenerated from the run database by
 `scripts/verify_card.py` — including the duplicate marking, the policy
@@ -172,9 +173,13 @@ decision and the four splits, which are recomputed rather than read back.
 | `n_words` | 5 | 11 | 21 |
 
 Across the whole corpus, **83.6%** of clips have `dnsmos_ovrl ≥ 3.0` — a
-threshold commonly used in the field (at `≥ 3.5` the share is 3.9%). Audio is
-**not normalized**; level is given as a column and the decision is left to
-you.
+threshold commonly used in the field (at `≥ 3.5` the share is 3.9%). No loudness normalization is applied. Mono conversion, resampling and a
+40 Hz high-pass filter do modify the signal. Level remains a column.
+
+Music separation was skipped for 1,455,201 clips and run on 385,203 clips.
+`music_to_speech_db = -80` with `music_db_separated=false` is an unmeasured
+sentinel, not evidence of absent music. Policies below the screening
+threshold need further inference.
 
 ## Recommended-subset policy (v6)
 
@@ -196,10 +201,10 @@ Flag frequencies over the whole corpus: `background_music` 207,196 (11.26%),
 (0.37%), `gap_split` 5,141 (0.28%), `boilerplate` 1,053 (0.06%), `duplicate`
 576 (0.03%).
 
-Duplicate means the text *and* the audio are identical (duration, LUFS, RMS
-and peak all match exactly). A separate reading of the same text is not a
-duplicate; it is kept as prosodic variety, which is why the duplicate count
-is small.
+The duplicate heuristic matches normalized text, duration, LUFS, RMS and
+peak exactly. Matching summary values do not prove waveform identity, and
+re-encoding or shifted boundaries can evade the heuristic. Its precision and
+recall have not been validated; separate readings are intended to be retained.
 
 ## Columns
 
@@ -209,7 +214,7 @@ is small.
 | `id` | string |  | segment | Clip id, `srcNNNNN-KKKKK`: the source recording's number and the clip's index within that recording. |
 | `source_id` | string |  | prepare | The source recording the clip was cut from (`srcNNNNN`). Every clip of one recording carries the same value; this is the key to group by if you build your own recording-level splits. |
 | `channel` | string |  | prepare | The YouTube channel the source recording came from (folder name). This is not a speaker identity; a channel may have several readers. |
-| `source_sample_rate` | int | Hz | prepare | The source recording's actual sample rate in its container. Clips are resampled to 24 kHz, so sources below 24 kHz have been upsampled and this column is what tells them apart. |
+| `source_sample_rate` | int | Hz | prepare | The source recording's actual container sample rate. Preparation resamples to at most 24 kHz without upsampling lower-rate sources. All 2,698 prepared recordings in the stored run report 24 kHz; dataset loading declares 24 kHz audio. |
 | `source_flags` | list[string] |  | prepare | Recording-level flags. `truncated_source`: the decoded audio is shorter than 95% of the duration the container reports (a corrupt or partial download). |
 | `start` | float | s | segment | Clip start time within the source recording, taken from the word timestamp at the sentence boundary, with boundary refinement and lead padding applied. |
 | `end` | float | s | segment | Clip end time within the source recording, same as `start`. |
@@ -221,7 +226,7 @@ is small.
 | `word_confidence` | float |  | segment | The lowest word probability in the clip, either a Whisper word probability or an aligner score depending on `confidence_source`. A single rare word (proper noun, interjection) drags it down; it is a ranking signal, not a gate. |
 | `word_confidence_mean` | float |  | segment | The clip mean of word probabilities from the same source. |
 | `confidence_source` | string |  | segment | Where the `word_confidence` columns come from: `asr` (Whisper word probability) or `align` (forced-alignment score). |
-| `align_score_min` (optional) | float |  | align | The lowest per-word mean-square probability from the forced aligner (MMS_FA, CTC) in the clip. Measures audio–text agreement independently of Whisper; 0 = could not be aligned. |
+| `align_score_min` (optional) | float |  | align | The minimum MMS_FA CTC word alignment score in the clip; a model score, not a calibrated probability of transcript correctness or a human-reference error measure. |
 | `align_score_mean` (optional) | float |  | align | The clip mean of the aligner's word scores. |
 | `lead_gap_sec` (optional) | float | s | segment | Gap between the clip's first word and the previous word in the recording. Empty if it is the recording's first word. A small value means the previous sentence risks bleeding into the clip. |
 | `trail_gap_sec` (optional) | float | s | segment | Gap between the clip's last word and the next word in the recording; empty if it is the recording's last word. |
@@ -234,16 +239,16 @@ is small.
 | `clip_ratio` | float |  | clip_qc | Fraction of samples at full scale (\|x\| ≥ 0.99); a measure of digital clipping. |
 | `loudness_lufs` (optional) | float | LUFS | clip_qc | BS.1770 integrated loudness (pyloudnorm). No gain is applied to the audio; level normalization is left to you, and this column is its input. Empty for clips shorter than the 0.4 s measurement block or entirely silent. |
 | `music_score_audioset` (optional) | float |  | music | Maximum score of an AudioSet AST classifier over its music labels (Music, Background music, Soundtrack…), taken as the max over clip windows. A cheap screening signal; it can coexist with speech. Empty for unreadable clips (`unreadable_audio`). |
-| `music_to_speech_db` (optional) | float | dB | music | A physical measurement from source separation (HDemucs): the ratio of accompaniment energy (drums+bass+other) to vocal energy. If the separator did not run, the floor value −80. The `background_music` flag is derived from this column using the threshold in the config. Empty for unreadable clips. |
+| `music_to_speech_db` (optional) | float | dB | music | A physical measurement from source separation (HDemucs): the ratio of accompaniment energy (drums+bass+other) to vocal energy. If the separator did not run, the floor value −80. The `background_music` flag requires both the dB threshold and the configured minimum AudioSet score. The floor value does not measure absent music. Empty for unreadable clips. |
 | `music_db_separated` (optional) | bool |  | music | Whether the separator actually ran on this clip. If not, `music_to_speech_db` is the floor value rather than a measurement (the AudioSet score was below the screening threshold). Empty for unreadable clips. |
 | `music_stem_db` (optional) | string (JSON) | dB | music | Per-stem energy levels for the separator's four stems (drums, bass, other, vocals); written only for clips the separator ran on. `music_to_speech_db` is derived from these. Published as a JSON object encoded in a string (the key set is not fixed), so parse it with `json.loads`. |
 | `dnsmos_sig` (optional) | float |  | dnsmos | DNSMOS P.835 speech quality estimate (SIG, 1–5): distortion of the speech itself. Matches the reference implementation exactly: 9.01 s windows, polynomial mapping, window averaging. Empty for unreadable clips (`unreadable_audio`). |
 | `dnsmos_bak` (optional) | float |  | dnsmos | DNSMOS P.835 background estimate (BAK, 1–5): how intrusive the background noise is; higher means cleaner. Empty for unreadable clips. |
 | `dnsmos_ovrl` (optional) | float |  | dnsmos | DNSMOS P.835 overall quality estimate (OVRL, 1–5). Not a gate: a policy rule may only be added after blind listening review (see the policy v4 record). Empty for unreadable clips. |
-| `flags` | list[string] |  | export | Clip flags; none of them removes a clip. `forced_split`: a sentence that exceeded the duration ceiling on its own was split at internal punctuation; `gap_split`: the same sentence was split at a long silence; `oversize`: no internal punctuation to split on, so the sentence was kept whole and exceeds the ceiling; `short`: duration below `segment.min_sec`; `background_music`: `music_to_speech_db` above threshold; `duplicate`: a repeat of the same text within the same recording/channel (see `duplicate_of`); `boilerplate`: an intro/announcement pattern that recurs across the channel's recordings; `unreadable_audio`: the clip file could not be read and has no measurements. |
-| `duplicate_of` (optional) | string |  | export | If the clip is a duplicate, the id of the copy that was kept; otherwise empty. A duplicate means the text AND the audio are identical: if the audio identity `dedupe.identity_fields` (duration, LUFS, RMS, peak) matches exactly, the clip is a copy of the same recording. A separate reading of the same text is NOT a duplicate — it is kept as prosodic variety; channel is not part of the key. |
+| `flags` | list[string] |  | export | Clip flags; none of them removes a clip. `forced_split`: a sentence that exceeded the duration ceiling on its own was split at internal punctuation; `gap_split`: the same sentence was split at a long silence; `oversize`: no internal punctuation to split on, so the sentence was kept whole and exceeds the ceiling; `short`: duration below `segment.min_sec`; `background_music`: both music thresholds pass; `duplicate`: normalized text and audio summary values match (see `duplicate_of`); `boilerplate`: an intro/announcement pattern that recurs across the channel's recordings; `unreadable_audio`: the clip file could not be read and has no measurements. |
+| `duplicate_of` (optional) | string |  | export | If the clip is a duplicate, the id of the copy that was kept; otherwise empty. The heuristic matches normalized text and `dedupe.identity_fields` (duration, LUFS, RMS, peak) exactly; this does not prove waveform identity. A separate reading of the same text is NOT a duplicate — it is kept as prosodic variety; channel is not part of the key. |
 | `speaker_id` (optional) | string |  | export | The recording's speaker cluster (`spkNNNN`). Clustering runs over the whole corpus: the merge threshold is taken from the equal-error point of two measured distributions (within-recording clip similarity, and cross-channel recording similarity), and no cluster count is imposed. The identity is recording-level; all clips of a recording carry the same value. Not a gate — the policy has no rule on it. |
-| `speaker_consistency` (optional) | float |  | speaker | Mean pairwise cosine similarity among the recording's embedded clips (0–1). A low value indicates more than one voice in the recording (interview, multi-voice reading) and says that recording cannot be treated as a single speaker. |
+| `speaker_consistency` (optional) | float |  | speaker | Mean pairwise cosine similarity among the recording's embedded clips. A low value may indicate acoustic or speaker variation; it does not by itself prove multiple speakers or substitute for diarization. |
 | `speaker_margin` (optional) | float |  | export | The recording's similarity to its own cluster centroid minus its similarity to the nearest other cluster. A small value points to a recording near a cluster boundary; a negative value says it may be in the wrong cluster. |
 | `recommended` | bool |  | export | Whether the versioned policy (`recommended_subset`) recommends this clip for the default training subset. It removes no data; you can set your own rule from the measurement columns. |
 | `exclusion_reasons` | list[string] |  | export | If `recommended=false`, the list of rules that were not met: `metric<threshold`, `metric>threshold`, `flag:name[,name]`, `missing_measurement:metric`. Empty for recommended clips. |
@@ -281,7 +286,7 @@ is small.
 Built from the publicly available recordings of the channels below. Work
 using this corpus is expected to carry these credits.
 
-| channel | recordings | clips | hours | recommended hours | speakers |
+| channel | recordings | clips | hours | recommended hours | speaker clusters |
 |---|---|---|---|---|---|
 | seslikitaplarmavi | 279 | 332,847 | 580.7 | 539.5 | 2 |
 | BirDinle | 235 | 285,797 | 487.9 | 444.8 | 6 |
@@ -317,31 +322,24 @@ it adds up to more than 90: a cluster can appear on several channels — the
 same reader published by more than one of them. The hours columns are
 rounded per channel and add up to 3,105.6 / 2,575.3.
 
-## License and use
+## Rights, use and removal
 
-The corpus is released under **CC BY 4.0**. The only condition is
-attribution, and attribution must cover both this dataset and the **channel
-credits** above.
+**No dataset license is declared.** Public availability of the source uploads
+alone does not establish permission to redistribute their audio or literary
+texts. This card does not grant rights held by recording, text or voice rights
+holders, and does not establish permission for commercial use or voice cloning.
+Licenses for code, derived annotations and underlying recordings must be
+specified separately once the applicable rights have been documented.
 
-To be precise about what that license covers: everything produced here — the
-segmentation, the transcripts, every measurement column, the policy and the
-splits — is released under CC BY 4.0. The **recordings themselves are the
-publicly available uploads of the channels above and their rights remain
-with them**; this card grants no rights over them beyond what those public
-uploads already carry, which is why the credit condition names the channels
-and why the takedown line below exists.
+Credit the dataset and the source channels in the table above. Attribution and
+an access acknowledgment do not substitute for a redistribution license or
+narrator consent. The Hugging Face access conditions apply separately.
 
-**Commercial use is permitted.** You may train models on this corpus, use
-them in commercial products, sell them and distribute them under any license
-you choose — the model's license is yours, and this corpus's license does not
-attach to it. Derivative datasets are permitted too; there as well, the only
-expectation is that the source and the channel credits are stated. There is
-no non-commercial restriction and no share-alike condition.
-
-The recordings come from the publicly available uploads of Turkish audiobook
-YouTube channels. **If a rights holder objects, that channel's recordings are
-removed from the dataset**; reaching us through the repository or the
-dataset's discussion page is enough.
+Rights holders and narrators can request removal through an issue in the code
+repository or a discussion on the dataset page. The stated procedure is to
+remove the affected channel's recordings; the release should additionally
+record affected clip IDs and dataset revisions. Source-by-source permission
+records and versioned removal records are not supplied in this repository.
 
 ## Personal and sensitive information
 
@@ -350,9 +348,8 @@ clusters read these recordings. `speaker_id` is a cluster derived from
 speaker embeddings, **not a name** — no identity, contact or demographic
 information is published, and no attempt was made to link a cluster to a
 person. The material is read literature from public uploads rather than
-private conversation, so no personal information beyond the voices
-themselves is expected in the text; the transcripts were not screened for it
-by hand. Requests to remove a voice are handled the same way as rights
+private conversation, but that does not rule out personal or sensitive information in the text;
+the transcripts were not screened for it by hand. Requests to remove a voice are handled the same way as rights
 holder requests below.
 
 ## Citation

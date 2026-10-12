@@ -1,8 +1,8 @@
 \documentclass[11pt,a4paper]{article}
 \input{preamble}
 
-\title{\textsc{Kiraat}: A 3,105-Hour Turkish Read-Speech Corpus\\
-Segmented at Sentence Boundaries and Released Without Quality Gates}
+\title{\textsc{Kiraat}: A Turkish Read-Speech Corpus\\
+with Sentence-Aligned Segmentation and a Versioned Selection Policy}
 
 \author{Serdar I. Ça\u{g}lar\\
 \small Independent Researcher\\
@@ -13,158 +13,141 @@ Segmented at Sentence Boundaries and Released Without Quality Gates}
 \begin{document}
 \maketitle
 
+
 \begin{abstract}
 \noindent
-Turkish has abundant text and speech-recognition data but very little read
-speech suitable for training text-to-speech (TTS): the openly available
-read-speech corpora for the language are measured in tens or low hundreds of
-hours. We release \textsc{Kiraat}, a corpus of 1,840,404 clips totalling
-3,105.7 hours of Turkish read speech, segmented from 2,680 audiobook and
-spoken-article recordings across 27 channels, together with the pipeline that
-produced it.
+We present \textsc{Kiraat}, a Turkish read-speech corpus comprising
+1,840,404 clips and 3,105.7 hours, extracted from 2,680 audiobook and
+spoken-article recordings across 27 channels. The pipeline transcribes
+long-form audio, obtains word-level forced alignments, and cuts at sentence
+boundaries inferred from the transcript. Quality measurements are retained
+as columns for all generated clips; a separate versioned policy selects a
+recommended subset of 1,547,494 clips and 2,575.2 hours without deleting
+the remaining clips from the release.
 
-Two design rules distinguish the pipeline from the established recipe. First,
-clips are cut at sentence boundaries recovered from word-level forced
-alignment, not at silences found by voice activity detection. In a controlled
-ablation over 206 recordings (240.5 hours) in which only the cut point varies,
-14.31\% of the clips produced by silence-based segmentation begin mid-sentence
-and 12.81\% do so with no signal that would let a consumer detect it; the
-sentence-aligned arm leaves no unflagged broken clip at all. Over the full
-corpus, 23 of the 1,547,494 clips in the recommended subset begin
-mid-sentence, a rate of 15 per million.
+A comparison on 206 recordings from all 27 channels reports lowercase-start
+rates of 1.39\% for sentence-aligned segmentation and 14.31\% for a VAD-based
+baseline. The corresponding unflagged lowercase-start rates are 0.00\% and
+12.81\%. These transcript proxies do not establish acoustic boundary
+accuracy. Across the recommended subset, 23 clips have lowercase starts.
+Exploratory listening audits informed policy revision: all 25 clips in a
+clipping-ratio audit were judged usable, but only seven exceeded the tested
+threshold; a word-confidence threshold would exclude 15 of 30 audited clips,
+14 of which had correct transcripts.
 
-Second, no threshold removes a clip. Every measurement stage writes columns
-only, and the accept/exclude decision is made by a separate, versioned policy
-read from configuration, so a consumer can reproduce a stricter or looser
-subset without re-running a model. This separation is what let us test
-thresholds instead of assuming them, and two standard ones did not survive:
-in blind listening, a clipping-ratio gate rejected clips that listeners judged
-usable 25 times out of 25, and an ASR-confidence gate rejected 15 of 30 clips
-whose transcripts were verbatim correct. Both rules were removed from the
-policy and both columns are still published.
-
-We report the corpus, the measured limits of its source material, a
-90-speaker clustering derived without fixing the number of speakers, an
-evaluation split with zero recording and text leakage, and the pipeline cost
-on a single GPU.
+We report quality distributions, 90 inferred speaker clusters, recording-level
+training and evaluation partitions with no shared source identifiers or exact normalized
+transcripts between training and evaluation, and stage throughput on an
+RTX 3090. Speaker identities and corpus-wide transcription accuracy have not
+been independently validated, and no downstream TTS experiment is reported.
+The contribution is a corpus construction and documentation workflow with
+auditable selection decisions, rather than demonstrated synthesis improvement.
 \end{abstract}
 
 \section{Introduction}
+Read speech is a useful source of paired audio and text for text-to-speech
+(TTS), but recordings collected for speech recognition do not automatically
+satisfy synthesis-oriented requirements for sentence boundaries, speaker
+consistency, text coverage, and acoustic quality. Turkish resources include
+the recognition-oriented Turkish Speech Corpus~\cite{turkicasr}. The question
+here is how to segment and document long-form Turkish readings for potential
+use in synthesis, rather than whether recognition data exist.
 
-Text-to-speech systems are trained on read speech: one speaker, a prepared
-text, a quiet room or a good microphone, and sentences delivered whole. The
-supply of such material is uneven across languages in a way that does not
-track the number of speakers. Turkish is a case in point. It has large text
-corpora, it is covered by the multilingual speech recognition and
-representation models, and transcribed speech for recognition exists in
-quantity; what it does not have is read speech in the form TTS training
-needs. The openly available Turkish read-speech corpora are measured in tens
-or low hundreds of hours, which is one to two orders of magnitude below what
-comparable English resources offer.
-
-The gap is therefore not in the language but in the task. This matters for how
-one should try to close it. A method that only works where a language is
-already well served is of little use; a method that turns publicly available
-audiobook channels into a TTS-grade corpus, and that states its own defects in
-measurable terms, transfers to any language that has such channels. That is
-what we set out to build, and what we release here alongside the corpus
-itself.
+We investigate two questions: how do sentence-based and VAD-based segmentation
+differ on the same recordings under transcript-based boundary checks, and how
+can quality selection remain auditable while preserving generated clips?
+\textsc{Kiraat} combines an audiobook and spoken-article corpus with per-clip
+measurements and a versioned selection policy. We evaluate corpus properties
+and implementation behavior. Transfer to other languages and improvements in
+TTS quality remain questions for subsequent experiments.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-\item \textbf{The corpus.} 1,840,404 clips, 3,105.7 hours of Turkish read
-speech at 24\,kHz from 2,680 recordings on 27 channels, with 90 clustered
-speaker identities, published with every per-clip measurement the pipeline
-computed and with an evaluation split whose recording and text leakage are
-both zero (Section~\ref{sec:corpus}).
-
-\item \textbf{Segmentation at sentence boundaries, measured against the
-alternative.} We reverse the usual order --- long-form ASR with word
-timestamps first, sentence segmentation on the transcript second, cutting
-third --- and quantify what that buys in a controlled ablation where the cut
-point is the only variable (Section~\ref{sec:ablation}).
-
-\item \textbf{A gate-free, versioned release policy.} Measurement stages are
-structurally forbidden to make decisions; the recommended subset is produced
-by a policy that lives in configuration, carries a version number, and records
-a reason for every exclusion (Section~\ref{sec:policy}).
-
-\item \textbf{Validated negative results.} Two thresholds in common use failed
-blind listening on this corpus and were removed. We report the protocol, the
-listener verdicts, and the columns that remain published so that others can
-re-impose the thresholds if their own listening supports them
-(Section~\ref{sec:negative}).
-
-\item \textbf{A method for multi-hour recordings.} 30.7\% of our source
-material is in single recordings longer than four hours, and the longest is
-14.9 hours. Processing these under a fixed memory budget shapes the whole
-architecture (Sections~\ref{sec:pipeline} and~\ref{sec:cost}).
+\item \textbf{Corpus and documentation.} 1,840,404 clips, 3,105.7 hours,
+27 channels and 90 inferred speaker clusters, with per-clip measurements
+and explicit selection decisions (Section~\ref{sec:corpus}).
+\item \textbf{Segmentation comparison.} Sentence-based and implemented
+VAD-based strategies are compared on shared recordings and word timestamps,
+using explicit transcript-boundary proxies (Section~\ref{sec:ablation}).
+\item \textbf{Versioned selection.} Measurement stages cannot write
+recommendation decisions; a policy selects a subset without deleting the
+remaining generated clips (Section~\ref{sec:policy}).
+\item \textbf{Exploratory audits.} Small score-stratified listening samples
+inform threshold revision, with their interpretation restricted to the audited
+items (Section~\ref{sec:negative}).
+\item \textbf{Long-form implementation.} Windowed forced alignment and a
+CPU/GPU scheduler support multi-hour recordings; stage throughput is reported
+(Section~\ref{sec:cost}).
 \end{enumerate}
 
 \section{Related work}
+\paragraph{Construction pipelines.}
+Emilia~\cite{emilia,emilialarge} combines standardization, source separation,
+speaker diarization, VAD segmentation, transcription and quality filtering.
+GigaSpeech~2~\cite{gigaspeech2} combines automated collection, Whisper-based
+transcription and alignment with label refinement for speech recognition.
+WhisperX~\cite{whisperx} also separates transcription from forced alignment.
+Our pipeline uses established components, including Whisper~\cite{whisper}
+and MMS~\cite{mms}; we do not claim these components as new methods.
 
-\paragraph{The established pipeline.}
-Contemporary pipelines that turn found audio into speech corpora share a
-skeleton: standardisation, optional source separation, speaker diarisation,
-segmentation by voice activity detection, ASR, and quality filtering. Emilia
-\cite{emilia,emilialarge} is the clearest statement of it, and GigaSpeech~2
-\cite{gigaspeech2} instantiates the same order for languages with less data,
-transcribing with Whisper \cite{whisper} and force-aligning with MMS
-\cite{mms}. We share most of this skeleton and depart from it in two places.
+\paragraph{Segmentation.}
+Sentence-oriented cutting is established in LibriTTS~\cite{libritts},
+Libriheavy~\cite{libriheavy} and GigaSpeech~\cite{gigaspeech}.
+WenetSpeech4TTS~\cite{wenetspeech4tts} revises boundaries and addresses
+speaker mixing when adapting an ASR corpus for synthesis. Our contribution
+is a comparison on Turkish recordings with shared timestamps and explicit
+flags for exceptional cuts. It is not a claim that controlled segmentation
+analysis is absent from the literature.
 
-\paragraph{Where to cut.}
-Cutting at sentence boundaries rather than at silences is not new, and we do
-not claim it as a contribution: LibriTTS \cite{libritts} separated itself from
-LibriSpeech \cite{librispeech} on exactly this point, Libriheavy
-\cite{libriheavy} places its cuts at sentence boundaries as well, and
-WenetSpeech4TTS \cite{wenetspeech4tts} attacks the same defect from the other
-side by merging adjacent segments and widening boundaries so that words are
-not cut. What is missing from the literature, and what we supply, is a
-controlled measurement of the cost of the alternative on the same recordings,
-including the part that matters most to a consumer: whether the resulting
-defect is detectable in the released metadata.
+\paragraph{Selection and restoration.}
+Emilia retains clips with DNSMOS P.835 OVRL above 3.0; its thresholds can be
+adjusted for different uses~\cite{emilia}. WenetSpeech4TTS releases quality
+subsets, while LibriTTS-R~\cite{librittsr} restores audio while retaining the
+same constituent samples. We retain generated clips across four partitions
+and separate their measurements from a versioned recommended-subset policy.
+This supports alternative selection over stored measurements, subject to
+screening and missingness. No universal superiority over filtering or
+restoration is established.
 
-\paragraph{Filtering as a gate.}
-Pipelines that build data to feed their own model filter inside the pipeline
-with fixed thresholds. Emilia discards clips below a DNSMOS \cite{dnsmos} OVRL
-of 3.0; LibriTTS requires an estimated SNR above 20\,dB for its ``clean''
-subset, and its stricter path reduces LibriSpeech's 982 hours to 585. Projects
-that release a shared corpus more often score and stratify instead:
-WenetSpeech4TTS publishes Premium, Standard and Basic tiers cut at DNSMOS
-P.808 thresholds and ships all three, and LibriTTS-R \cite{librittsr} takes
-the same instinct further by restoring clips rather than discarding them. We
-go one step beyond stratification: nothing is removed at any tier, the
-thresholds live outside the data, and the policy that applies them is
-versioned so that a published number can be reproduced exactly or
-deliberately changed.
-
-\paragraph{Turkish read speech.}
-The Turkish speech resources in open circulation are dominated by
-recognition-oriented material: read prompts collected by volunteers, broadcast
-news, and multilingual evaluation sets. The read-speech portion suitable for
-TTS training is small in every case, which is the gap this release addresses.
-% TODO: her kaynağın saat sayısı birincil kaynaktan doğrulanıp buraya
-% tablo olarak konacak (Common Voice tr, FLEURS tr, MediaSpeech tr,
-% Turkish Speech Corpus). Doğrulanmadan sayı yazılmaz.
+\paragraph{Turkish resources.}
+Publicly documented Turkish speech resources were designed primarily for
+recognition. Common Voice~\cite{commonvoice} is a multilingual corpus, including
+Turkish, whose recordings are both collected and validated by crowdsourcing,
+and which its authors describe as public domain. FLEURS~\cite{fleurs} provides
+approximately 12 hours per language of read FLoRes-101 sentences under
+CC BY 4.0, as a multilingual evaluation benchmark. MediaSpeech~\cite{mediaspeech}
+is a manually transcribed ASR evaluation set collected from official media
+YouTube channels in Turkish and three other languages. The Turkish Speech
+Corpus was introduced for multilingual Turkic speech recognition~\cite{turkicasr}.
+These resources differ from \textsc{Kiraat} in recording style and validation:
+short prompted sentences or broadcast speech with human or crowd
+verification, as opposed to long-form audiobook and spoken-article readings
+with automatic transcripts and no human transcript verification. Access also
+differs: \textsc{Kiraat} is gated and declares no license (Section~\ref{sec:ethics}).
+We distinguish total transcribed speech from independently validated
+synthesis training material: neither dataset size nor an ASR label alone
+establishes TTS suitability.
 
 \section{Source material and its measured limits}
 \label{sec:corpus}
+The recorded inventory comprises 2,700 files from 27 public Turkish audiobook
+and spoken-article channels: 2,698 readable audio files, one corrupt m4a and
+one README, totaling 3,440.2 hours and 200.1\,GB. The run database contains
+2,699 source entries, one per audio file. Of these, 2,680 contribute clips;
+one (the corrupt m4a) fails decoding, and 18 decode but receive no ASR words
+and hence no clips (34.8 source hours; 15 of the 18 from one channel). A
+per-source ledger derived from the run database lists source ID, channel,
+file name, duration, status and clip count for all 2,699 entries
+(\col{docs/source\_ledger.csv}). The run database records 3,430.5 hours for
+the 2,698 decoded files; the 9.7-hour difference from the inventory total
+reflects separately measured durations and is not reconciled file by file.
 
-The raw material is 2,700 files downloaded from 27 public Turkish audiobook
-and spoken-article channels. Every file was probed before any processing
-began: 2,698 are readable audio (one m4a is corrupt, one file is a README),
-totalling \textbf{3,440.2 hours} and 200.1\,GB.
-
-\paragraph{Recordings are long.}
-The median recording is 41.4 minutes and the longest is 14.92 hours.
-Table~\ref{tab:lengths} gives the distribution. The consequential figure is
-that \textbf{30.7\% of the corpus hours sit in single recordings longer than
-four hours}. Processing a multi-hour recording under a fixed memory budget is
-therefore a requirement of this material, not an optimisation, and it shapes
-the pipeline described in Section~\ref{sec:pipeline}. The established
-pipelines do not help here: Emilia's inputs range from 20 seconds to just under
-one hour, and Libriheavy resolves long-form audio by aligning it to the book
-text, a reference we do not have.
+\paragraph{Recording duration.}
+The median recording lasts 41.4 minutes and the longest 14.92 hours.
+Table~\ref{tab:lengths} reports the inventory distribution. About 30.7\% of
+source hours occur in recordings longer than four hours. Libriheavy aligns
+long-form audio to available book text; we instead align ASR transcripts,
+because reference book texts were not supplied with these recordings.
 
 \begin{table}[t]
 \centering
@@ -186,35 +169,28 @@ $<$ 10 min   & 168 & 20.4 & 0.6\% \\
 \label{tab:lengths}
 \end{table}
 
-\paragraph{The encoding profile is uniform, and that is a limitation.}
-2,618 files are AAC (3,379.7 hours) and 80 are MP3 (60.5 hours); 2,693 are at
-44.1\,kHz; the bit rate is tightly concentrated (5th percentile 128, median
-129, 95th percentile 130\,kb/s). We measured the true bandwidth of the source
-by taking a 60-second excerpt from the middle of one recording per channel and
-computing a 32k-point FFT: the median cutoff frequency is \textbf{15.7\,kHz}
-(minimum 13.0, maximum 15.8), and the median share of energy above 12\,kHz is
-0.05\%. A 24\,kHz release rate (12\,kHz Nyquist) therefore sits below the
-ceiling of the source everywhere in the corpus; upsampling further would buy
-nothing and downsampling has no justification. The uniformity itself is a
-limitation of the corpus and we state it in Section~\ref{sec:limits}: a model
-trained on \textsc{Kiraat} sees one codec profile.
+\paragraph{Encoding and bandwidth.}
+The inventory reports 2,618 AAC files (3,379.7 hours) and 80 MP3 files
+(60.5 hours), with 2,693 files at 44.1\,kHz. Bit-rate percentiles are
+128/129/130\,kb/s (p05/p50/p95). Bandwidth was probed on one 60-second
+excerpt per channel using a 32k-point FFT. The reported median cutoff is
+15.7\,kHz (range 13.0--15.8); median energy above 12\,kHz is 0.05\%.
+These 27 excerpts inform the choice of a 24\,kHz release rate, but do not
+establish bandwidth for every recording or the optimal sampling rate for TTS.
 
-\paragraph{Channel shares are unequal, and no cap was applied.}
-The largest channel contributes 19.5\% of the raw hours and the second 15.5\%;
-the top two together contribute 35.2\%. We considered a per-channel hour cap
-and decided against it: the cap that would have equalised the channels would
-have reduced the corpus from 3,440 to 1,849 hours. Pruning channel diversity
-with a threshold is precisely the move this pipeline exists to avoid, and the
-imbalance is published rather than hidden --- every clip carries its
-\col{channel} and \col{duration}, so a consumer can impose any cap they like.
+\paragraph{Concentration.}
+The largest two channels contribute approximately 35\% of raw hours. No
+per-channel cap is applied. Each clip retains channel and duration metadata
+so consumers can study or rebalance concentration. In the recommended subset,
+the two largest channels account for 38.2\% of hours.
 
-\section{Pipeline}
+\section{Pipeline and measurements}
 \label{sec:pipeline}
-
-The pipeline runs as a sequence of stages over a SQLite state store, with CPU
-and GPU work overlapped by a scheduler that keeps one writer. Table~\ref{tab:stages}
-lists the stages and the models, with the weight revisions pinned in the run
-record.
+\label{sec:measurements}
+The pipeline uses a SQLite state store and a scheduler overlapping CPU and
+GPU work with one database writer. Table~\ref{tab:stages} lists configured
+stages. Quality selection is applied after measurement rather than inside
+clip measurement stages.
 
 \begin{table}[t]
 \centering
@@ -223,7 +199,7 @@ record.
 \toprule
 stage & what it does & model / setting \\
 \midrule
-\col{prepare} & decode, 24\,kHz mono, 40\,Hz high-pass, $-1$\,dB peak & ffmpeg \\
+\col{prepare} & decode, mono, up to 24\,kHz, 40\,Hz high-pass; no limiter & ffmpeg \\
 \col{asr} & long-form transcription with word timestamps & faster-whisper \texttt{large-v3}, rev.\ \texttt{edaa852e}, beam 5, temperature 0, \col{condition\_on\_previous\_text: false} \\
 \col{align} & forced alignment, per-word score & torchaudio \texttt{MMS\_FA} (with \col{<star>}) \\
 \col{boilerplate} & channel-level mining of station idents and announcements & word $n$-grams, threshold 40\% of a channel's recordings (min.\ 2), \col{max\_words: 24} \\
@@ -231,146 +207,131 @@ stage & what it does & model / setting \\
 \col{clip\_qc} & speech ratio, internal silence, edge silences, level, LUFS & silero VAD; BS.1770 \\
 \col{music} & music-to-speech level and AudioSet music score & torchaudio \texttt{HDEMUCS\_HIGH\_MUSDB\_PLUS}; \texttt{MIT/ast-finetuned-audioset-10-10-0.4593} \\
 \col{dnsmos} & P.835 SIG / BAK / OVRL & DNS-Challenge \texttt{sig\_bak\_ovr.onnx}, sha256 pinned in config \\
-\col{speaker} & per-recording voice identity and within-recording consistency & ECAPA-TDNN \texttt{speechbrain/spkrec-ecapa-voxceleb}, rev.\ \texttt{5c0be387} \\
+\col{speaker} & recording embeddings and within-recording consistency & ECAPA-TDNN \texttt{speechbrain/spkrec-ecapa-voxceleb}, revision configured but not passed to loader \\
 \col{export} & manifest and run record & \col{manifests/clips.jsonl}, \col{run.json} \\
 \bottomrule
 \end{tabular}
-\caption{Pipeline stages. Every model revision is pinned and recorded in
-\col{run.json} together with the git commit, the stage versions and the
-configuration hash.}
+\caption{Stages and configured settings. The export code records git state,
+stage versions, configuration and model identifiers; speaker-weight
+provenance is incomplete.}
 \label{tab:stages}
 \end{table}
 
-\subsection{Segmentation at sentence boundaries}
+\subsection{Sentence-oriented segmentation}
+ASR runs over speech windows and outputs words and timestamps. MMS forced
+alignment refines word times; the transcript is divided into sentences, and
+audio cuts follow their word spans. VAD supplies ASR regions and clip quality
+measurements, but does not define the primary sentence boundaries.
 
-The order is the point. A pipeline that segments first and transcribes second
-can only cut where the audio is quiet, and quietness does not mark sentence
-ends: a narrator breathes at a comma and may not breathe between two
-sentences. We transcribe the whole recording first, obtain word-level
-timestamps, segment the \emph{transcript} into sentences, and only then cut
-the audio at the timestamps of the sentence boundaries. Voice activity
-detection is retained, but only to find the speech regions handed to ASR.
+The configuration uses a 1.5\,s minimum clip duration, a 7.0\,s joining
+target, a 15.0\,s ceiling, a 1.2\,s maximum joining gap, and leading/trailing
+padding of 0.15/0.25\,s. Exceptional intra-sentence cuts receive
+\col{forced\_split} or \col{gap\_split} flags. Boilerplate mining uses
+repeated channel-level word $n$-grams, separately marking announcements.
+These flags are construction annotations, not human judgments of boundary
+correctness.
 
-Two situations force a cut that is not a sentence boundary. A sentence longer
-than the duration ceiling is split at its internal punctuation, and the
-resulting clips carry the \col{forced\_split} flag; a gap inside a sentence
-that exceeds the tolerated silence forces a split flagged \col{gap\_split}. The
-flags are the mechanism by which the defect stays visible:
-Section~\ref{sec:integrity} shows that 97.6\% of all mid-sentence starts in
-the corpus carry one of these two flags, and that the policy therefore keeps
-them out of the recommended subset.
+The aligner forms approximately 30\,s windows, with a 60\,s maximum and
+0.5\,s padding, using coarse ASR timestamps. A window reader loads and
+resamples only the required interval, bounding the alignment waveform and
+lattice size. This does not establish constant memory use for all stages.
 
-\subsection{Boundary refinement}
+\subsection{Acoustic boundary refinement}
+An energy-based search near an inter-clip word boundary adjusts the cut
+within a configured window to reduce phoneme truncation. The recorded
+post-refinement listening audits found no truncated syllables in 28 clips
+and no truncated words in another 30 clips (20 suspected cases and 10
+controls, shuffled). These selected samples do not establish a corpus-wide
+acoustic error rate. Listener counts, expertise, clip identifiers, annotation
+instructions and per-item labels are not part of this release, so these
+audits cannot be independently re-scored.
 
-Cutting at a sentence boundary fixes \emph{which} point to cut at, not
-\emph{exactly where} that point is: a forced aligner reports the end of a word
-slightly early, so a cut placed on the timestamp clips the final phoneme. The
-refinement stage looks at signal energy in a small window around the timestamp
-between adjacent clips and pulls the cut to the actual silence, with the
-window and thresholds in configuration.
+\subsection{Duplicate heuristic}
+Separate readings of the same text are retained for prosodic diversity.
+The implemented heuristic groups clips by Turkish-aware normalized text and
+exact equality of duration, LUFS, RMS and peak; channel is not in the key.
+Matching summary statistics do not prove waveform identity, and re-encoding
+or shifted boundaries can prevent true duplicates from matching. The
+heuristic flags 576 clips. Clips with missing fingerprint fields bypass the
+check. Its precision and recall have not been independently established.
 
-This was found by ear, not by a metric. A first listening round found truncated
-syllables; the refinement was written in response; a third round on 28 clips
-found 28 clean --- zero broken starts, zero broken ends, zero truncated
-syllables --- and a fourth round on 30 clips (20 suspected, 10 controls,
-shuffled) found zero truncated words in all of them. The audit criterion moved
-with the finding: it is no longer ``does the cut match the timestamp'' but
-``does any word inside the clip's own word span fall outside the clip'', that
-is, does the text match the audio.
+\subsection{Audio preparation and quality columns}
+Preparation converts audio to mono, applies a 40\,Hz high-pass filter and
+resamples to at most 24\,kHz, without upsampling lower-rate sources at this
+stage. Export declares 24\,kHz audio for dataset loading. These operations
+modify the waveform; no loudness normalization or peak limiting is applied.
+Source separation is used for measurement, and its output is discarded.
 
-\subsection{Duplicates}
+Clip measurements include VAD speech ratio and silence, peak/RMS/LUFS,
+clipping ratio, DNSMOS P.835 SIG/BAK/OVRL~\cite{dnsmos}, word scores,
+and speaker embeddings. DNSMOS is a model-derived quality estimate, not a
+human MOS collected for this corpus. Acoustic properties and quality scores
+are retained even when the selection policy rejects a clip.
 
-A duplicate is not the same text read twice. Two narrators reading the same
-sentence is prosodic diversity and is kept; a duplicate is the same text
-\emph{and} the same audio. We define ``same audio'' by measurement --- duration,
-LUFS, RMS and peak matching exactly --- and deliberately do not put the channel
-in the key, since matching measurements mean the same recording regardless of
-where it was published. Table~\ref{tab:dupe} shows why the definition had to be
-measured rather than assumed: the obvious key over-counts by two orders of
-magnitude, and a tolerant key collapses genuinely different readings.
+\paragraph{Music screening.}
+The AST AudioSet model~\cite{ast} scores music labels for every clip.
+HDemucs~\cite{hdemucs} runs only when that score is at least 0.05.
+Separation was skipped for 1,455,201 clips and performed for 385,203
+clips in the stored run. Skipped clips receive the sentinel $-80$\,dB in
+\col{music\_to\_speech\_db}, and
+\col{music\_db\_separated} is false. This sentinel does not demonstrate absent
+music. For separated clips the column estimates accompaniment-to-vocal energy,
+not calibrated speech/noise level or perceptual audibility. A policy requiring
+separation below the screening threshold needs further model inference.
 
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{lr}
-\toprule
-definition & clips counted as duplicates \\
-\midrule
-text + channel (the obvious key) & 72,839 \\
-every measured value identical & 0 \\
-audio measurements identical, within channel & 592 \\
-audio measurements identical, channel ignored & 598 \\
-duration rounded to 0.1\,s, LUFS to 0.1\,dB & 15,752 \\
-\bottomrule
-\end{tabular}
-\caption{Duplicate counts over all 1,840,404 clips under five definitions. The
-second row shows that a literal reading of the rule is unusable: a channel's
-per-episode ident is byte-identical audio, but \col{word\_confidence} and
-\col{leading\_silence\_sec} differ because they measure the clip's
-surroundings, not its audio.}
-\label{tab:dupe}
-\end{table}
-
-The released manifest flags \textbf{576} clips as duplicates, 453 of them in a
-single channel's episode ident. 150 clips have no audio identity because their
-audio could not be read, and are passed through without a duplicate check.
-
-\section{Measurements, not decisions}
-\label{sec:measurements}
-
-Every clip stage writes columns and nothing else. This is enforced rather than
-documented: the stage base class rejects any stage output containing a
-\col{recommended} or \col{decision} field. Thresholds do not appear in code at
-all; they live in a single configuration file whose loader refuses to silently
-accept an unknown section or key. The column schema has one definition in the
-source, and the dataset card is generated from it, so the published
-documentation cannot drift from the published columns.
-
-The consequence for a consumer is concrete. Every clip in the release carries
-its speech ratio, internal and edge silences, peak, RMS and BS.1770 loudness,
-clipping ratio, AudioSet music score and separated music-to-speech level,
-DNSMOS SIG/BAK/OVRL, mean and minimum forced-alignment score, ASR word
-confidence, word count, speaker identity, within-recording speaker
-consistency, and its flags --- whether or not our policy recommends it.
-Re-deriving a different subset requires re-reading a manifest, not re-running a
-GPU stage.
-
-\paragraph{Audio is measured, not modified.}
-Source separation is run to \emph{measure} background music, and its output is
-discarded; the released waveform is the decoded source at 24\,kHz, and loudness
-is a published column rather than an applied normalisation. Pipelines that
-normalise level and publish the separated signal make a choice on the
-consumer's behalf that cannot be undone downstream; we make it undoable by not
-making it.
+\paragraph{Text fields and confidence.}
+\col{text\_raw} joins ASR words; \col{text} applies light cleaning;
+\col{text\_spoken} expands numerals and abbreviations. Per-operation transformation logs are not exported. The last field is intended for TTS training,
+but normalization has not been validated corpus-wide against human transcripts.
+\col{word\_confidence} is the minimum word score, using ASR scores in the
+current configuration; forced-alignment mean/minimum scores are separate.
+Neither is a calibrated probability of transcript correctness.
 
 \section{The recommended subset policy}
 \label{sec:policy}
+The stage base class rejects clip-stage outputs containing \col{recommended}
+or \col{decision}. Operational thresholds are specified in configuration;
+implementation helpers also contain defaults. The configuration loader rejects
+unknown sections and keys. The column table is generated from the schema,
+while narrative documentation and remote cards require separate checks.
 
-The policy is a versioned object in configuration. Version~6, the one used for
-this release, has three rules: \col{speech\_ratio} $\ge$ 0.60,
-\col{internal\_silence\_sec} $\le$ 1.0, and the absence of any of the flags
+Version~6 requires \col{speech\_ratio} $\ge 0.60$,
+\col{internal\_silence\_sec} $\le 1.0$, and absence of
 \col{oversize}, \col{forced\_split}, \col{gap\_split}, \col{short},
-\col{duplicate}, \col{boilerplate}, \col{background\_music}. Applying it to the
-full corpus yields the recommended subset: \textbf{1,547,494 clips, 2,575.2
-hours}, which is 84.1\% of the clips and 82.9\% of the hours. Every excluded
-clip carries the reason it was excluded.
+\col{duplicate}, \col{boilerplate} and \col{background\_music} flags.
+The result is 1,547,494 clips and 2,575.2 hours: 84.1\% of generated clips
+and 82.9\% of their duration. Exclusion reasons and policy version are
+retained. Missing required policy measurements fail the applicable rule.
 
-Because the policy is separate from the data, its history is legible, and its
-history is mostly a history of rules that were \emph{removed}. That is the
-subject of the next section.
+All generated clips remain in the release. This guarantee begins after
+segmentation; it does not mean that every source interval or failed decoding
+result becomes a clip. Alternative selection is possible over stored
+measurements, but missing or screened values limit policies that can be
+recomputed without inference.
 
 \section{Results}
-
-\subsection{Segmentation: what the cut point costs}
+\subsection{Segmentation comparison}
 \label{sec:ablation}
+The research notebook reports a comparison on 206 recordings from all
+27 channels. The sentence arm is read from the full-run database; the VAD
+arm is constructed from speech regions on the same recordings and shared
+word timestamps, using the same configuration object. Source selection uses
+seed 20260906 and up to eight recordings per channel. Coverage of all
+channels does not imply equal audio duration per channel.
 
-We ran both segmentation strategies over the same recordings, from the same
-word timestamps, with the same duration settings; the only variable is where
-the cut is placed. The sentence arm is the output of the full pipeline; the
-baseline arm cuts the speech regions found by silero VAD at the silences
-between them, splitting hard at the ceiling when a single region exceeds it.
-The sample is channel-balanced: 206 recordings from all 27 channels, 240.5
-hours. Table~\ref{tab:ablation} gives the result.
+The arms also differ in grouping, exceptional-cut flags, boilerplate handling,
+and boundary refinement. In particular, the VAD implementation does not use
+the sentence joining target in the same way. This is a strategy comparison,
+not an isolated intervention on a single cut point or a benchmark against
+executed Emilia or LibriTTS pipelines.
+
+We define \emph{lowercase start} using the Turkish-aware \col{is\_lower\_start}
+routine (the first alphabetic character after leading punctuation is tested;
+an initial numeral is not flagged). A second proxy tests absence of
+sentence-final punctuation after stripping closing quotes/brackets. These
+proxies depend on ASR casing and punctuation, which also guide sentence
+segmentation. Consequently they are not independent labels of acoustic
+truncation or sentence integrity.
 
 \begin{table}[t]
 \centering
@@ -381,11 +342,11 @@ measure & sentence-aligned & silence-aligned \\
 \midrule
 clips & 141,379 & 76,466 \\
 hours & 240.54 & 254.18 \\
-begins mid-sentence & 1,967 (1.39\%) & 10,943 (\textbf{14.31\%}) \\
-ends mid-sentence & 2,405 (1.70\%) & 12,117 (15.85\%) \\
-\textbf{unflagged} broken start & \textbf{0 (0.00\%)} & 9,798 (\textbf{12.81\%}) \\
-unflagged broken end & 0.01\% & 11.59\% \\
-broken at both ends & 418 & 2,673 \\
+lowercase start & 1,967 (1.39\%) & 10,943 (\textbf{14.31\%}) \\
+no final punctuation & 2,405 (1.70\%) & 12,117 (15.85\%) \\
+\textbf{unflagged} lowercase start & \textbf{0 (0.00\%)} & 9,798 (\textbf{12.81\%}) \\
+unflagged missing final punctuation & 0.01\% & 11.59\% \\
+both transcript proxies & 418 & 2,673 \\
 median duration & 5.94\,s & 12.90\,s \\
 duration, 5th--95th pct & 2.69--10.96\,s & 5.10--15.40\,s \\
 at the duration ceiling & 0.64\% & 14.70\% \\
@@ -393,116 +354,114 @@ mean \col{align\_score} & 0.9442 & 0.9459 \\
 mean of per-clip \emph{minimum} \col{align\_score} & \textbf{0.7319} & 0.6469 \\
 \bottomrule
 \end{tabular}
-\caption{Segmentation ablation over 206 recordings (240.5 hours) from all 27
-channels. Only the cut point differs between the two arms.}
+\caption{Reported comparison on 206 recordings from all 27 channels.
+Hours are sums of clip durations, including padding, not unique source
+coverage. Boundary checks use transcript proxies. The baseline is the
+implemented VAD strategy, not an execution of another published pipeline.}
 \label{tab:ablation}
 \end{table}
 
-The row that matters is the unflagged one. In the sentence arm there is
-\emph{no} unflagged clip with a broken start: all of the 1.39\% carry
-\col{forced\_split} or a boilerplate flag, so the defect is visible in the
-release and excluded from the recommended subset. In the baseline arm almost
-all of the breakage is unflagged (12.81\%), because a pipeline that cuts at
-silence has no signal with which to mark it. The defect varies by channel but
-never disappears: the baseline arm's mid-sentence rate ranges from 7.0\% to
-35.0\% across channels, the sentence arm's from 0.00\% to 5.02\%.
+The reported lowercase-start rate is 1.39\% for sentence segmentation and
+14.31\% for the implemented VAD baseline. Among all clips, unflagged
+lowercase-start rates are 0.00\% and 12.81\%, respectively. ``Unflagged''
+means an empty flag list, although the arms do not have identical flag
+vocabularies. The metadata lack a dedicated flag for many proxy-positive
+baseline clips; their text still permits the proxy to be computed. They
+should therefore not be described as undetectable.
 
-Two side findings. Silence-aligned segmentation yields \emph{more} hours
-(254.2 against 240.5) from roughly half as many clips: its clips are twice as
-long and 14.7\% of them end at the duration ceiling, meaning the cut point is
-set by the ceiling rather than by the content. And while mean alignment
-confidence is identical across the two arms, the mean of the per-clip
-\emph{minimum} word confidence is clearly higher in the sentence arm (0.732
-against 0.647): clips cut at silences carry more badly aligned words at their
-edges.
+The sentence arm sums to 240.54 clip-hours and the VAD arm to 254.18.
+These are padded clip-duration totals, not measured unique source coverage;
+VAD padding can overlap between adjacent clips. Retained speech coverage,
+overlap and omitted words must be reported before interpreting the difference
+as yield. The values are taken from the research notebook. The per-source
+outputs of the baseline arm are not part of this release, so the comparison
+cannot be re-derived from the released database alone; the implementation
+is \col{scripts/ablate\_segmentation.py}.
 
-\subsection{Sentence integrity over the full corpus}
+Mean alignment scores are 0.9442 and 0.9459. Mean per-clip minimum scores
+are 0.7319 and 0.6469, but the arms have different word-count and duration
+distributions. Longer clips have more opportunities for a low minimum, so
+this statistic alone does not establish poorer edge alignment. No paired
+recording-level confidence interval or significance test is reported.
+
+\subsection{Transcript-boundary proxies over the corpus}
 \label{sec:integrity}
-
-The ablation is a controlled comparison on a balanced sample. We also applied
-the same two definitions --- a clip whose text begins with a lowercase letter,
-and a clip whose text does not end in sentence-final punctuation, both computed
-with the same Turkish-aware routines --- to all 1,840,404 clips.
+The same routines applied to all generated clips yield the counts in
+Table~\ref{tab:integrity}. The recommended subset contains 23 lowercase
+starts and 430 clips without final punctuation; the former is approximately
+15 per million clips, a descriptive proxy rate rather than an acoustic
+failure probability.
 
 \begin{table}[t]
 \centering
 \small
 \begin{tabular}{lrrrr}
 \toprule
-subset & clips & hours & broken start & broken end \\
+subset & clips & hours & lowercase start & no final punctuation \\
 \midrule
 whole corpus & 1,840,404 & 3,105.7 & 27,483 (1.49\%) & 33,346 (1.81\%) \\
 recommended subset & 1,547,494 & 2,575.2 & \textbf{23 (0.0015\%)} & 430 (0.03\%) \\
 outside the policy & 292,910 & 530.5 & 27,460 (9.37\%) & 32,916 (11.24\%) \\
 \bottomrule
 \end{tabular}
-\caption{Sentence integrity over the full corpus. Rates are per clip.}
+\caption{Transcript-boundary proxies over the full corpus. Rates are per clip; these are not human-labeled acoustic error rates.}
 \label{tab:integrity}
 \end{table}
 
-Table~\ref{tab:integrity} should be read together with the flags.
-Of the 27,483 clips that begin mid-sentence, 97.6\% carry \col{forced\_split}
-or \col{gap\_split} (92.3\% carry \col{forced\_split} alone); among the
-1,558,409 clips that carry no flag at all, 23 begin mid-sentence, a rate of
-15 per million. The corpus does contain
-mid-sentence cuts --- a sentence that runs past the duration ceiling has to be
-split somewhere --- but they are cuts the pipeline declares, and declaring them
-is what allows the policy to exclude them and a consumer to find them.
+Of the 27,483 lowercase-start clips, 97.6\% carry \col{forced\_split} or
+\col{gap\_split}. Among 1,558,409 clips with no flags, 23 have lowercase
+starts. The flags make exceptional construction paths explicit; they do not
+validate the remaining clips. The notebook associates the remaining
+lowercase-start cases with boilerplate handling, which requires item-level
+inspection before a causal conclusion.
 
-\subsection{Blind listening: two standard thresholds that did not hold}
+\subsection{Exploratory listening audits}
 \label{sec:negative}
-
-Because the thresholds are separate from the data, they can be tested. Our
-protocol hides the channel and the measurement, balances the clips across
-bands of the measurement under test, and records the listener's verdict to a
-file before the scores are revealed. Six rounds were run: two on background
-music, two on boundary cuts, one on clipping ratio and one on ASR word
-confidence. Two of them ended with a rule being deleted.
+The documented procedure hides channel and measurement values, samples across
+score bands, shuffles clips and records judgments before revealing scores.
+The notebook describes six policy/refinement rounds: two on music, two on
+boundaries, one on clipping and one on word confidence. The exact listener
+count, inter-rater agreement and per-item labels have not been archived with the available source materials. We therefore treat these as exploratory audits, not
+population estimates of error or training utility.
 
 \paragraph{Clipping ratio.}
-A rule excluding clips with a clipping ratio above 0.002 was removing 536
-clips --- and 532 of them were in a single channel, 93.2\% of that channel's
-output. That is the signature of a channel property, not a clip defect. A blind
-round of 25 clips balanced across six bands of the measure (0 to 0.0227) found
-24 ``no audible distortion'' and one ``slight'', and that one was in the lowest
-band; all 25 were judged fit for training. The rule was removed in policy v5.
+A candidate ceiling of 0.002 excluded 536 clips in a development sample;
+532 were from one channel. These are not full-release exclusion counts.
+Among 25 audited clips across six score bands (0--0.0227), 24 were judged
+free of audible distortion and one slightly distorted; all were judged usable.
+Only seven exceeded the ceiling, and none of those seven was judged audibly
+distorted. This motivated removal of the candidate rule in policy v5.
+It does not establish that clipping is harmless in general.
 
 \paragraph{ASR word confidence.}
-A rule requiring word confidence $\ge$ 0.60 was tested the same way: 30 clips
-across six bands from 0.18 to 0.99, channel and score hidden. In 29 the
-transcript was verbatim correct; the single error was in the lowest-confidence
-clip. The threshold would have removed 15 of these 30, of which 14 were found
-flawless. An independent check without ears agrees that the signal is weak but
-real: rank correlation with the aligner score is $+0.262$, and even in the
-worst band the median \col{align\_score\_mean} is 0.938. The rule was removed in
-policy v6, and the column is still published as a ranking signal.
+Thirty audited clips span six bands from 0.18 to 0.99. Twenty-nine transcripts
+were judged verbatim correct and one had a small error. A minimum confidence
+of 0.60 would exclude 15 clips, 14 of which had correct transcripts. The rule
+was removed in v6. The reported rank correlation with alignment score is
+$+0.262$, but agreement between two automatic scores is not independent
+validation of transcript accuracy. This sample cannot supply corpus WER/CER.
 
-\paragraph{What survived.}
-The background-music rule survived the same treatment and was corrected by it.
-Our first guess of $-30$\,dB was refuted: in the $-40$ to $-33$\,dB band, 6 of
-6 clips had clearly audible music. A second round of 36 clips balanced across
-four level bands found audible music in 86\% of the flagged clips and clean
-audio in 11 of 14 unflagged ones. The threshold stayed at $-40$\,dB, and the
-rule is the conjunction of two columns --- separated music-to-speech level
-above $-40$\,dB \emph{and} AudioSet music score $\ge$ 0.3 --- because the two
-columns measure different things: their Spearman correlation on 3,097
-separated clips is only $+0.479$.
+\paragraph{Music.}
+An initial audit found clearly audible music in 6/6 clips in the
+$-40$ to $-33$\,dB band. A later 36-clip audit, sampled across four bands,
+reported audible music in 86\% of flagged clips and no music in 11/14
+unflagged clips. These stratified observations are not prevalence-weighted
+precision or recall. The current flag requires both separated level above
+$-40$\,dB and AudioSet score $\ge 0.3$. The notebook reports Spearman
+$+0.479$ between the scores on 3,097 separated clips; this screened sample
+does not characterize clips for which separation was skipped.
 
-\paragraph{A rule we did not re-impose.}
-The DNSMOS OVRL $\ge$ 3.0 gate used by other pipelines is not in our policy.
-The column exists for every clip and 83.57\% of the corpus would pass it; we
-report that number precisely so that the gate's effect is visible, and we will
-not adopt it until it passes the same blind listening the other rules were
-subjected to. The burden of proof is on the gate, not on the data.
+\paragraph{DNSMOS.}
+No DNSMOS threshold is used in the policy. Across the whole corpus,
+83.57\% of clips have OVRL $\ge 3.0$. This describes the effect of one
+hypothetical threshold, not its validity for Turkish synthesis data.
 
-\subsection{The released columns}
-
-Table~\ref{tab:cols} gives the distribution of the main columns over the
-recommended subset. Two of them carry design decisions. Loudness is published
-and \emph{not} applied: the median clip is at $-20.92$\,LUFS with a 5th--95th
-percentile range of $-27.99$ to $-12.54$, and normalising is the consumer's
-choice. DNSMOS is published for every clip: over the whole corpus the mean OVRL
-is 3.208 (5th percentile 2.69, median 3.27, 95th 3.49).
+\subsection{Quality distributions}
+Table~\ref{tab:cols} describes the recommended subset. Across the whole
+corpus, mean DNSMOS OVRL is 3.208 (p05/p50/p95: 2.69/3.27/3.49).
+These are predicted scores. The loudness spread remains in the released audio.
+The music dB summaries mix measurements with sentinel values and must be
+interpreted with \col{music\_db\_separated}.
 
 \begin{table}[t]
 \centering
@@ -526,48 +485,51 @@ duration (s) & 2.76 & 5.82 & 10.56 & 5.99 \\
 \col{internal\_silence\_sec} & 0.000 & 0.000 & 0.664 & 0.166 \\
 \bottomrule
 \end{tabular}
-\caption{Column distributions over the recommended subset (1,547,494 clips).}
+\caption{Column distributions over the recommended subset (1,547,494 clips). The music dB column includes an unmeasured sentinel; its summary is not the distribution of measured music levels.}
 \label{tab:cols}
 \end{table}
 
-The flags over the whole corpus are: \col{background\_music} 207,196,
+Whole-corpus flag counts are \col{background\_music} 207,196,
 \col{forced\_split} 52,501, \col{short} 20,904, \col{oversize} 6,731,
-\col{gap\_split} 5,141, \col{boilerplate} 1,053, \col{duplicate} 576. The
-music flag alone accounts for most of the difference between the corpus and
-the recommended subset.
+\col{gap\_split} 5,141, \col{boilerplate} 1,053 and \col{duplicate} 576.
+Flags overlap, so their counts cannot be added as disjoint exclusions.
 
-\subsection{Speakers}
+\subsection{Inferred speaker clusters}
+ECAPA-TDNN~\cite{ecapa} embeds up to 12 deterministically selected clips of
+at least 3\,s per recording. The stage exports a normalized centroid and
+within-recording clip-pair cosine statistics. Recordings with fewer than two
+eligible clips do not receive a centroid; this is not speaker diarization.
 
-Channels are not speakers, and we did not assume they were. The \col{speaker}
-stage computes an ECAPA-TDNN centroid per recording and a within-recording
-consistency; the identity decision is made afterwards, at corpus level, by
-average-linkage clustering. The merge threshold is not chosen by hand and the
-number of clusters is never supplied: we measure the similarity distribution
-within recordings and across recordings, and take the threshold at the equal
-error point of the two.
+Average-linkage clustering uses a similarity threshold derived from two
+proxy distributions: per-recording within-clip mean similarity, and centroid
+similarity between different channels (up to 200,000 sampled pairs, seed
+20260907). The code equalizes their empirical tail rates. These proxies are
+not labeled same-speaker and different-speaker pairs: one recording can
+contain multiple voices, and one narrator can occur on different channels.
+They also aggregate different types of similarity observations.
 
-On the full corpus (2,677 recordings; 21 have no clip long enough to establish
-an identity) the equal error point is at \textbf{0.532} with an error of
-0.52\%, and clustering at that threshold yields \textbf{90 speakers}. The
-median margin is 0.445 and no recording has a negative margin.
+The notebook reports threshold 0.532, proxy tail error 0.52\%, and 90
+clusters over 2,677 recordings with embeddings; 21 readable recordings lack
+an embedding. The 0.52\% is not a speaker-verification EER measured against
+known identities. Median cluster margin is reported as 0.445; centroids
+include the recording itself, so positive margins are not independent
+validation. The resulting cluster label is released per clip as
+\col{speaker\_id}, but the recording embeddings are not part of this release,
+so the clustering cannot be recomputed from released files. No labeled
+same/different-speaker pairs have been audited.
 
-Two findings bear on the design. \textbf{13 of the 27 channels contain more
-than one speaker}, and \textbf{9 clusters span several channels} --- the same
-narrator publishes on two or three of them. Channel balance is therefore not
-speaker balance, and neither is a substitute for the other. The distribution is
-long-tailed: the largest speaker holds 18.2\% of the hours, the top five 54.4\%
-and the top ten 75.0\%, while 17 speakers have less than an hour.
+The reported assignment has more than one cluster in 13 channels and nine
+clusters spanning several channels. These are inferred relationships, not
+verified narrator identities. The largest cluster contains 18.2\% of hours,
+the top five 54.4\%, and the top ten 75.0\%; 17 clusters have less than one
+hour. Speaker-ID metadata should be treated as provisional clustering labels.
 
-\subsection{Evaluation split}
-
-The split is at the recording level: all clips of a recording go to one split,
-so evaluation is on a recording the model has never heard. The \col{dev} and
-\col{test} splits are channel-balanced, because the corpus is not and an
-evaluation set that inherited the imbalance would report the numbers of two
-channels. Recordings run for hours, so dev and test are reduced to a per-channel
-hour target and the clips beyond that target are left out of training rather
-than moved into it; they are published in the \col{rest} split described
-below.
+\subsection{Evaluation partitions}
+Recommended clips are assigned to train/dev/test by source recording.
+Dev and test each target 10 hours, allocated equally across channels, with
+seed \col{kiraat-2026}. Equal targets do not guarantee equal final channel
+shares after transcript-overlap removal and quota trimming. No human-verified
+test transcript set is currently supplied.
 
 \begin{table}[t]
 \centering
@@ -587,110 +549,141 @@ rest & 316,733 & 569.78 & --- & 27 \\
 \caption{The four published splits. \col{train}, \col{dev} and \col{test} are
 drawn from the recommended subset; \col{rest} carries every remaining clip, so
 the four splits together are the whole corpus. The recordings column counts
-recordings whose clips form a split; \col{rest} draws clips from recordings
+recordings contributing clips to that split; \col{rest} draws clips from recordings
 across all three, and 16 of the 2,680 recordings have all of their clips in it.}
 \label{tab:splits}
 \end{table}
 
-Nothing is left out of the release. The clips that the policy does not
-recommend, and the recommended clips that dev and test did not use, are
-published in a fourth split, \col{rest}: 292,910 clips (530.5 hours) with
-\col{recommended=false}, and 23,823 clips (39.3 hours) that are recommended but
-fell beyond a channel's dev/test duration target or were dropped by the
-text-leakage cleanup below. A clip in \col{rest} carries exactly the same
-measurement columns as one in \col{train}, so a consumer who sets a different
-policy can recover it from the release rather than re-running the pipeline ---
-which is the whole point of not gating.
+The remaining 316,733 clips are in \col{rest}: 292,910 non-recommended clips
+and 23,823 recommended clips unused after quota trimming or text cleanup.
+Thus recordings can appear in \col{rest} and one of train/dev/test.
+Only the three named training/evaluation partitions have disjoint source IDs.
 
-Recording leakage is zero by construction and is nevertheless tested. Text
-leakage was not zero by construction: 2,263 test clips and 2,723 dev clips
-carried a sentence that appears verbatim in training, because the same book is
-read by different narrators on different channels. They were dropped from the
-evaluation sets --- training was left untouched --- and the remaining leakage is
-zero.
+Before cleanup, 2,263 test clips and 2,723 dev clips shared normalized text
+with training. Evaluation clips with these keys are moved to \col{rest}.
+The normalization applies Unicode NFC, Turkish-aware lowercasing, punctuation
+removal and whitespace collapsing. After cleanup, no train--dev or train--test
+key overlaps remain. This does not exclude near-duplicate text, shared books,
+re-uploads under distinct source IDs or pretraining contamination. A separate database audit finds 12 shared normalized text keys between
+dev and test. These pairs do not share source IDs, but their text is not
+independent.
 
-Speaker overlap is a different matter and we report it plainly: train has 89
-speakers, dev 26 and test 26, and \textbf{25 of the 26 test speakers also occur
-in training}. This is the usual setup for TTS evaluation, but it is a
-\emph{seen-speaker} evaluation and must not be described otherwise. An
-unseen-speaker evaluation would require a separately constructed subset.
+The reported cluster counts are 89 in train and 26 each in dev/test, with
+25 of 26 test clusters also present in train. This is predominantly a
+seen-cluster evaluation, subject to cluster-label uncertainty. Consumers
+expanding training with \col{rest} must exclude every dev/test source ID and
+recheck text overlap. Changing the selection policy does not preserve these
+partition guarantees automatically.
 
-\section{Cost and reproducibility}
+\section{Throughput and reproducibility}
 \label{sec:cost}
+The notebook reports processing on an RTX 3090 (24\,GB), with 12 CPU
+workers and a 280\,W GPU power cap. Reported stage rates are 94 audio-hours
+per hour for alignment, 46 clips/s for QC, 28 clips/s for music (two GPU
+workers on this machine), 81.1 clips/s for DNSMOS, and approximately one
+second per recording for speaker embeddings. They are stage measurements,
+not an end-to-end runtime or measured energy budget. CPU model, host-memory
+peak, exact profiling inputs and total wall time remain undocumented here.
+The notebook reports approximately 567\,GB of working storage, including
+284\,GB of prepared audio and 246\,GB of clips; these intermediate files
+are not included in the metric-database archive.
 
-The full corpus was processed on one machine: an RTX 3090 (24\,GB) with 12 CPU
-workers, under a 280\,W power cap. Forced alignment is the bottleneck at 94
-audio-hours per hour with a single worker. Profiling it showed 56\% of the time
-in the model forward pass, 28\% in token merging and 10\% in the alignment
-itself; the token-merging cost was a GPU synchronisation per token span, and
-moving the score tensor to CPU raised the same recording from 109$\times$ to
-188$\times$ real time with byte-identical output. The other stages measured
-46 clips/s for clip QC across 12 CPU workers, 28 clips/s for music, 81.1
-clips/s for DNSMOS and about one second per recording for the speaker stage.
+The export implementation records git state, stage versions, configuration,
+package versions and model identifiers in \col{run.json}. However, the speaker
+loader does not pass the configured revision, and the provenance model/package
+lists omit the speaker model, SpeechBrain and scikit-learn. Consequently
+complete weight pinning cannot be claimed. The original run record,
+per-source ablation outputs, speaker embeddings and listening labels are not
+part of this release; the source ledger is. A commit reference alone is
+insufficient when the run used uncommitted changes.
 
-The working directory occupies 567\,GB: 284\,GB of intermediate 24\,kHz mono
-FLAC, 246\,GB of clips (about 159\,KB per clip), 2.7\,GB of alignment, 1.5\,GB
-of ASR output and a 1.4\,GB state database.
-
-Every run writes a record containing the git commit, the version of each stage,
-the configuration hash and the pinned revision of every model weight, so that a
-published number can be traced to the code and the weights that produced it.
+The stored full-run database can be checked with
+\col{scripts/verify\_card.py}. The 150 implemented
+checks pass on the stored database, including regenerated duplicate flags, policy decisions and
+partition counts. This verifies consistency of stored results with the card,
+not waveform integrity, human transcript accuracy, speaker labels or the
+missing baseline outputs. Models and the full pipeline were not rerun.
 
 \section{Limitations}
 \label{sec:limits}
+\paragraph{No downstream synthesis evaluation.}
+No TTS model trained on this corpus is evaluated. Claims concern construction
+and documentation, not improved intelligibility, naturalness or voice similarity.
+An equal-budget comparison of corpus selections would test utility in a
+future model study; it is not needed to report a clearly scoped corpus.
 
-\paragraph{No downstream TTS experiment yet.}
-This paper describes and measures a corpus and the pipeline that built it. It
-does not yet report a TTS system trained on that corpus. The comparison that
-would close the argument --- equal-budget models trained on the recommended
-subset and on the whole corpus, evaluated with MOS/CMOS, intelligibility and
-speaker similarity --- is designed but not run, and until it is, the claims here
-are claims about data, not about synthesis quality.
+\paragraph{Automatic transcripts and alignments.}
+WER/CER against an independently transcribed representative sample is absent.
+Casing/punctuation checks depend on the same ASR output used for segmentation.
+Numerals fall back to ASR timing when the aligner cannot represent them; a
+separate spoken-form mapping could preserve the published text, but has not
+been evaluated. Short sentence-initial words can receive implausible
+alignments. The notebook's affected-word/clip counts have unclear denominators
+and are not used as a prevalence estimate here.
 
-\paragraph{Numerals are not force-aligned.}
-The aligner's lexicon has no digits, so words containing numerals fall back to
-the ASR timestamp. Rewriting them into their spoken form before alignment was
-rejected because it would alter the published text.
+\paragraph{Audit selection and adaptive thresholds.}
+Small score-stratified audits guided threshold choice on development samples.
+Listener multiplicity and inter-rater reliability are undocumented; independent
+held-out validation is required to estimate policy error. Zero observed errors
+in selected samples do not establish zero population error.
 
-\paragraph{Alignment noise at sentence starts.}
-245 words in 289 clips (2.12\% of a probed sample) receive implausible
-alignments on short sentence-initial words. The cause is not established; a
-chunk-boundary hypothesis was tested and rejected.
+\paragraph{Concentration and coverage.}
+Channel and cluster shares are highly unequal. Genre, accent, demographic and
+lexical coverage have not been systematically characterized. Most source files
+are similarly encoded AAC, with a smaller MP3 component. Boilerplate mining
+misses variable-slot templates. Speaker labels and duplicate heuristics are
+unvalidated, and dev/test transcripts are not manually verified.
 
-\paragraph{Channel and speaker concentration.}
-The top two channels are 38.2\% of the recommended subset and the top five
-speakers are 54.4\% of the hours. Both are published per clip so that a
-consumer can rebalance, but the corpus as released is concentrated.
+\section{Ethics, rights and access}
+\label{sec:ethics}
+The material was collected from public YouTube audiobook and spoken-article
+uploads. Public accessibility alone does not document permission to redistribute
+the underlying audio or literary texts. The public dataset page declares no
+dataset license and states that recording rights remain with their holders;
+this manuscript consequently does not claim a license for third-party
+recordings or unrestricted commercial reuse. Source-by-source redistribution rights and narrator consent have not been
+documented here, so unrestricted reuse cannot be established.
 
-\paragraph{One encoding profile.}
-The entire corpus is roughly 129\,kb/s AAC with a median source bandwidth of
-15.7\,kHz, and two channels are band-limited near 13\,kHz.
-
-\paragraph{Seen-speaker evaluation.}
-25 of the 26 test speakers appear in training, as reported above.
-
-\paragraph{Boilerplate detection is n-gram based.}
-Verbatim $n$-gram mining does not catch templated announcements with variable
-slots (``from the book \textit{X} by \textit{Y}''). 23 clips in the recommended
-subset still begin mid-sentence, and they come from this path.
+Voices can identify narrators even when cluster IDs are pseudonymous. The
+transcripts have not been manually screened for personal or sensitive content.
+The public card offers a takedown route through repository issues or dataset
+discussions. The paper does not establish that takedown substitutes for
+permission or that voice-cloning uses have been authorized. A final resource
+statement should distinguish recording rights, annotation/code licensing,
+access conditions, removal procedure and intended or restricted uses.
 
 \section{Conclusion}
-
-\textsc{Kiraat} is 3,105.7 hours of Turkish read speech, of which 2,575.2 hours
-are recommended by a policy that anyone can re-run, tighten or discard. The two
-rules that shaped it are simple to state and were expensive to establish: cut
-where sentences end, and let no threshold delete a clip. The first is
-measurable --- on the same recordings, silence-based segmentation leaves 12.81\%
-of clips broken and undetectable, against none in the sentence-aligned arm. The
-second is what allowed the thresholds themselves to be tested, and two standard
-ones did not survive contact with a listener.
+\textsc{Kiraat} documents 3,105.7 hours of Turkish read speech and a versioned
+policy selecting 2,575.2 hours while retaining all generated clips. The reported
+segmentation comparison shows lower transcript-proxy violation rates for the
+sentence-based strategy than for the implemented VAD baseline. Exploratory
+listening informed removal of two candidate thresholds. These observations
+support auditable data construction; they do not establish acoustic error
+rates, verified speaker identities or better TTS output. Human reference
+annotations, archived experimental artifacts and resolved rights/access
+statements remain necessary to strengthen the resource release.
 
 \section*{Availability}
+The public dataset landing page is
+\url{https://huggingface.co/datasets/serdarcaglar/kiraat}; file access requires
+logging in and accepting the page's conditions. The numbers in this paper
+refer to dataset revision \texttt{75b3297b0d9d3bb00547c7c4ab871f53f5a0fc79}
+(733 Parquet shards). The pipeline repository is
+\url{https://github.com/serdarildercaglar/kiraat}. The metric-database release
+is linked at \url{https://github.com/serdarildercaglar/kiraat/releases/tag/db-2026-09-07}.
+\col{docs/release\_checksums.sha256} in the repository lists the SHA-256 of
+every shard of that revision and of the database archive, as reported by
+the hosting services; \col{docs/source\_ledger.csv} is the source ledger.
+The database checks do not independently validate the remote audio shards.
+No dataset license is declared, and no repository LICENSE file is included
+in the current source tree.
 
-% TODO: HF veri kümesi bağlantısı, kod deposu bağlantısı, lisans satırı ve
-% kanal künyesi şartı yayın anında buraya yazılacak.
+\paragraph{Editorial assistance.}
+OpenAI Codex assisted with language revision and consistency checks against
+the implementation and stored metrics. This assistance did not include
+training a TTS model or collecting new human annotations. The author remains
+responsible for verifying the manuscript and its references before submission.
 
 \bibliographystyle{plain}
 \bibliography{refs}
-
 \end{document}

@@ -112,7 +112,7 @@ koşu kaydı).
 
 | | |
 |---|---|
-| kaynak | 2.699 (1'i okunamadı, 18'i klip üretmedi → 2.680 kayıt) |
+| kaynak | 2.699 (1'i okunamadı, 18'i ASR'dan hiç kelime almadı → 2.680 kayıt) |
 | kanal | 27 |
 | konuşmacı | **90** (kümeleme, aşağıda) |
 | klip | **1.840.404 / 3.105,70 saat** |
@@ -124,6 +124,14 @@ yeniden üretilir — yineleme işareti, politika kararı ve dört bölme dahil,
 manifestten okunmadan yeniden hesaplanarak: 150 denetimin hepsi geçiyor.
 Kapsam dışındaki üç şey kendi betiğini ister: konuşmacı kümeleri (kayıt
 başına gömme dosyaları), bölütleme ablasyonu (ikinci kol), indirme boyutu.
+
+**Kaynak defteri** (`scripts/source_ledger.py` → `docs/source_ledger.csv`):
+2.699 kaynağın her birinin durumu. Klip üretmeyen 18 kayıt çözülüyor ama
+ASR hiç kelime döndürmüyor (34,8 kaynak saati; 15'i `seslikitaplarmavi`).
+Okunamayan tek dosya `seslimakalem` kanalındaki bozuk m4a. Veritabanı 2.698
+çözülmüş kayıt için 3.430,5 saat tutar; envanterin 3.440,2 saatiyle 9,7
+saatlik fark dosya dosya eşlenmedi (envanter dosyası bu makinede yok).
+Yayın revizyonu ve parça sağlama toplamları `docs/release_checksums.sha256`.
 
 Envanterdeki 3.440 saatten manifestteki 3.105,7 saate düşüş (%90,3 verim)
 sessizlik, künye kesimi ve cümle sınırı dışında kalan artıklardan gelir.
@@ -444,7 +452,11 @@ bölmede yayımlanır, hiçbir klip düşürülmez.
 Sızıntı denetimi: **kayıt sızıntısı 0** (kurulum gereği, yine de sınanır);
 metin sızıntısı temizlik öncesi test 2.263 / dev 2.723 klip — bunlar
 `train` ile birebir aynı cümleyi taşıyordu ve değerlendirme kümesinden
-düşürüldü, `train` dokunulmadı; **temizlik sonrası kalan sızıntı 0**.
+düşürüldü, `train` dokunulmadı; **temizlik sonrası train–dev ve train–test tam normalleştirilmiş metin
+örtüşmesi 0**. `paper/review/audit_database.py` ile yeniden hesaplanan
+dev–test ortak metin anahtarı sayısı **12**; bu bölmelerin kaynak
+kimlikleri ayrıktır. `rest`, dev'in 40 ve test'in 45 kaynağının
+tamamından klip içerir; eğitime eklenirse bu kaynaklar dışarıda tutulmalıdır.
 
 **Konuşmacı örtüşmesi.** `speaker_id` bağlandıktan sonra ölçüldü (7 Eylül):
 train 89, dev 26, test 26 konuşmacı; test'in 26 konuşmacısından **25'i

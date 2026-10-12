@@ -1,76 +1,80 @@
-# Makale
+# Makale ve arXiv hazırlığı
 
-arXiv ön baskısının kaynağı. Makale sıfırdan yazılır ve **önceki bir yayına
-ya da önceki bir veri kümesine hiç değinmez**; buradaki her sayı bu depoda
-üretilmiştir ve kaynağı [`docs/NOTEBOOK.md`](../docs/NOTEBOOK.md) içindeki
-ilgili başlıktır.
+İngilizce LaTeX kaynağı `main_en.tex`, önbölümü `preamble.tex`, kaynakçası
+`refs.bib`, derlenmiş çıktısı `main_en.pdf` dosyasıdır. Bilimsel inceleme ve
+kalan işler `review/REVIEW_TR.md` içindedir. Masaüstündeki eserler (dinleme
+etiketleri, ablasyonun kaynak başına çıktısı, konuşmacı gömmeleri) bu yayında
+olmadığından makalede sınırlama olarak yazılır.
 
-| dosya | içerik |
-|---|---|
-| `main_en.tex` | İngilizce tam metin (arXiv birincil sürümü) |
-| `preamble.tex` | ortak önbölüm |
-| `refs.bib` | kaynakça |
+**Durum: önemli eksikler var.** Derlenebilir bir dosya ve hazırlanmış kaynak
+arşivi, bilimsel kanıtların veya veri haklarının tamamlandığı anlamına gelmez.
+Makale yalnızca bu korpusu anlatır; önceki kendi yayın/veri kümesiyle
+karşılaştırma içermez. Araştırma sonuçlarının kaynağı `docs/NOTEBOOK.md` ve
+bu depoda üretilmiş ölçüm veritabanıdır.
 
-## Derleme
+## Yerel derleme
 
-`tectonic` ile derlenir; eksik LaTeX paketlerini kendisi indirdiği için
-sisteme TeX kurmak ya da sudo gerekmez:
-
-```bash
-tectonic -X compile paper/main_en.tex
-```
-
-Kurulu değilse statik ikili yeter (sürüm sabit tutulur, çıktı yeniden
-üretilebilsin diye):
+Depo kökünden:
 
 ```bash
-V=0.15.0
-curl -sL "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40$V/tectonic-$V-x86_64-unknown-linux-musl.tar.gz" \
-  | tar xz -C /tmp
-install -m 755 /tmp/tectonic ~/.local/bin/tectonic
+tectonic -X compile --keep-intermediates --keep-logs paper/main_en.tex
 ```
 
-Depodaki `main_en.pdf` bununla üretildi: tectonic 0.15.0, xdvipdfmx,
-11 sayfa. Yeniden derleme içerikçe aynı PDF'i verir ama bayt bayt aynısını
-vermez — PDF kimliği ve zaman damgaları her koşuda değişir, 97.036 baytın
-67'si oynar. Karşılaştırma bu yüzden `cmp` ile değil metin dökümüyle
-yapılır:
+Tectonic'in BibTeX değişiklik kontrolü altı geçiş sınırı uyarısı verebilir.
+Bu uyarı tek başına başarı ölçütü değildir: derleme çıkış kodu, `.bbl`,
+çözülmemiş atıflar, eksik karakterler ve PDF sayfaları kontrol edilir.
+`paper/review/compile.txt` son derleme kaydını tutar.
+
+arXiv'in yerel doğrulamada kullanılan Tectonic'i çalıştırdığı varsayılmaz.
+12 Ekim 2026'da kontrol edilen resmî yönergeler TeX Live 2025'i varsayılan,
+2023'ü alternatif olarak sunuyor; `pdflatex` ve `xelatex` destekleniyor.
+Bu kaynak `iftex` kullanır ve Tectonic ile derlenmiştir; önerilen gönderim
+motoru **XeLaTeX**. Yerel tam TeX Live/XeLaTeX ve arXiv sunucusunda derleme
+henüz doğrulanmış değildir; yükleme önizlemesi ayrıca kontrol edilmelidir.
+
+## Kaynak arşivi
+
+`arxiv-source.zip` yalnızca şu dosyaları içerir; hepsi arşiv kökündedir:
+
+- `main_en.tex`
+- `preamble.tex`
+- `refs.bib`
+- `main_en.bbl`
+
+Ana dosya `main_en.tex` seçilir. Kaynakla üretilmiş PDF, `.aux`, `.log`,
+bu inceleme raporu, veri tabanı ve kullanılmayan görseller arşive konulmaz.
+Metinde şekil yoktur; altı tablo LaTeX içinde üretilir. İleride şekil
+kullanılırsa ilgili PDF/PNG/JPEG dosyası da arşivde bulunmalıdır.
+
+**Güncel düzeltme:** arXiv'in yeni gönderim sistemi BibTeX/Biber çalıştırabilir.
+`.bib` dosyası desteklenir; önceden üretilmiş `.bbl` de kullanılabilir ve adı
+ana `.tex` ile eşleşmelidir. Bu pakette ikisi de vardır.
+[Resmî TeX yönergesi](https://info.arxiv.org/help/submit_tex.html).
+
+`review/arxiv_metadata.json` başlık, özet ve önerilen kategorileri tutar.
+Özet arXiv'in 1.920 karakter sınırıyla kontrol edilir; gönderim formuna
+LaTeX font komutları eklenmeden aktarılır. Yazar adı, kurum, ORCID ve makale
+lisansı son gönderimden önce yazar tarafından doğrulanmalıdır.
+
+## Kanıt doğrulaması
+
+`review/verify_card.txt`: 150 veri kartı denetiminin çıktısı.
+`review/audit_database.py`: yalnızca mevcut DB'yi okuyan ek makale denetimi.
+`review/database_audit.json`: cümle-proxy sayıları, kaynak/metin örtüşmesi,
+kanal süreleri, hazırlanmış örnekleme hızı ve müzik ölçümü kapsamı.
 
 ```bash
-pdftotext eski.pdf - > eski.txt && pdftotext paper/main_en.pdf - > yeni.txt
-diff eski.txt yeni.txt
+python scripts/verify_card.py --db work/full-1/db/state.sqlite
+python paper/review/audit_database.py
 ```
 
-Tectonic'in "TeX rerun seems needed, but stopping at 6 passes" uyarısı
-beklenen bir çıktıdır ve atıflar çözülmüş olarak biter; kontrol için
-derleme kaydında `Undefined` aranır.
+Bu incelemede belgelenen `main` conda ortamı bulunamadığı için analizler,
+Codex'in paketli Python'u temel alınarak `/tmp/kiraat-paper-review-env`
+içinde ayrı bir ortamda koşuldu. NumPy 2.3.5 ve PyYAML 6.0.3 kullanıldı;
+model çıkarımı veya tam korpus üretimi yapılmadı. Paket sürümü
+`review/environment.json` ile kaydedilir; makalede özgün model ortamıyla
+özdeş yeniden üretim iddiası edilmez.
 
-`pdflatex` yolu da açık (`iftex` sayesinde `xelatex` de çalışır), ama
-önbölümün istediği `booktabs`, `caption`, `microtype` ve `xcolor` taban
-TeX Live kurulumunda bulunmaz:
-
-```bash
-sudo apt install texlive-latex-recommended texlive-latex-extra
-pdflatex main_en && bibtex main_en && pdflatex main_en && pdflatex main_en
-```
-
-arXiv BibTeX koşturmaz; gönderim paketine `main_en.bbl` konulmalıdır.
-Tectonic ara dosyaları varsayılan olarak siler, `.bbl` için
-`--keep-intermediates` verilir.
-
-## Taslakta eksik olanlar
-
-Metinde `% TODO` olarak işaretli, kapatılmadan gönderilmemesi gerekenler:
-
-1. **Alt akış TTS deneyi.** Defterin "Koşulacak deneyler" listesindeki ilk
-   madde. Şu an §Limitations içinde açıkça "yapılmadı" diye duruyor; deney
-   koşulunca hem orası hem §Results değişir. Makalenin en zayıf yeri budur.
-2. **Türkçe okuma konuşması kaynakları tablosu.** İlgili çalışmalar
-   bölümündeki saat sayıları birincil kaynaktan tek tek doğrulanmadan
-   yazılmaz.
-3. **Yayın bağlantıları.** §Availability boş: veri kümesi ve kod deposu
-   bağlantıları, lisans satırı ve kanal künyesi şartı yayın anında konur.
-4. **Şekiller.** Metin şu an tablolarla yürüyor. Ablasyonun süre dağılımı ve
-   kalite sütunlarının dağılımı şekle değer; şekil betiği yazılmadı.
-5. **Türkçe sürüm.** v1'de iki dilli gönderim yapılıyordu; `main_tr.tex`
-   henüz yok.
+Dinleme etiketleri, özgün `run.json`, envanter, konuşmacı gömmeleri/küme
+atamaları ve ablasyonun kaynak başına çıktısı bu çalışma dizininde yoktur.
+Veritabanı denetimi bunların yerine geçmez.

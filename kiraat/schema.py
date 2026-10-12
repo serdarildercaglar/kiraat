@@ -45,10 +45,10 @@ COLUMNS: tuple[Column, ...] = (
     Column("source_id", "int", "prepare",
            "Kaynak kaydın hat içindeki numarası; aynı kayıttan kesilen kliplerde aynıdır.", local=True),
     Column("source_path", "string", "prepare",
-           "Kaynak kaydın yerel dosya yolu. Yayımlanan sürümde herkese açık kaynak kimliğiyle (video kimliği) değiştirilir.",
+           "Kaynak kaydın yerel dosya yolu. Yayımlanan sürümde düşürülür; video kimliği yerine konmaz. Kaynak video künyesi ayrı bir kaynak defteri gerektirir.",
            local=True),
     Column("source_sample_rate", "int", "prepare",
-           "Kaynak kaydın kapsayıcıdaki gerçek örnekleme hızı. Klipler 24 kHz'e yeniden örneklenir; 24 kHz'in altındaki kaynaklar üst-örneklenmiş demektir, bu sütun onu ayırt eder.",
+           "Kaynak kaydın kapsayıcıdaki gerçek örnekleme hızı. Hazırlama hedef hız ile kaynak hızının küçüğünü kullanır, düşük hızlı kaynağı üst-örneklemez. Yayın yükleyicisi 24 kHz hedefi bildirir; bu alan kaynak hızını ayırt eder.",
            unit="Hz"),
     Column("source_flags", "list[string]", "prepare",
            "Kaynak kayıt düzeyindeki işaretler. `truncated_source`: çözülen ses, kapsayıcının bildirdiği sürenin %95'inden kısa (bozuk/yarım indirme).",),
@@ -73,7 +73,7 @@ COLUMNS: tuple[Column, ...] = (
     Column("confidence_source", "string", "segment",
            "`word_confidence` sütunlarının kaynağı: `asr` (Whisper kelime olasılığı) ya da `align` (zorlamalı hizalama skoru)."),
     Column("align_score_min", "float", "align",
-           "Zorlamalı hizalayıcının (MMS_FA, CTC) kelime başına ortalama kare olasılığının klipteki en düşüğü. Ses ile metnin uyuşmasını Whisper'dan bağımsız ölçer; 0 = hizalanamadı.",
+           "Zorlamalı hizalayıcının (MMS_FA, CTC) kelime skorlarının klipteki en düşüğü. Model skorudur; transcript doğruluğunun kalibre edilmiş olasılığı veya insan referanslı hata ölçüsü değildir.",
            optional=True),
     Column("align_score_mean", "float", "align", "Hizalayıcı kelime skorlarının klip ortalaması.", optional=True),
     # ------------------------------------------------------------ kesim kalitesi
@@ -104,7 +104,7 @@ COLUMNS: tuple[Column, ...] = (
            "AudioSet AST sınıflandırıcısının müzik etiketleri (Music, Background music, Soundtrack…) üzerindeki azami skoru, klip pencereleri üzerinden en büyük değer. Ucuz eleme sinyali; konuşmayla birlikte var olabilir. Okunamayan klipte (`unreadable_audio`) boş.",
            optional=True),
     Column("music_to_speech_db", "float", "music",
-           "Kaynak ayrıştırmasından (HDemucs) gelen fiziksel ölçü: eşlik (davul+bas+diğer) enerjisinin vokal enerjisine oranı. Ayrıştırıcı koşmadıysa taban değer −80. `background_music` işareti bu sütundan konfigdeki eşikle türetilir. Okunamayan klipte boş.",
+           "Kaynak ayrıştırmasından (HDemucs) gelen fiziksel ölçü: eşlik (davul+bas+diğer) enerjisinin vokal enerjisine oranı. Ayrıştırıcı koşmadıysa taban değer −80. `background_music` işareti dB eşiği ile AudioSet asgari skorunun birlikte sağlanmasından türetilir. Taban değer müzik yokluğunun ölçümü değildir. Okunamayan klipte boş.",
            unit="dB", optional=True),
     Column("music_db_separated", "bool", "music",
            "Ayrıştırıcı bu klipte gerçekten koştu mu. Hayırsa `music_to_speech_db` ölçüm değil taban değerdir (AudioSet skoru eleme eşiğinin altındaydı). Okunamayan klipte boş.",
@@ -127,17 +127,17 @@ COLUMNS: tuple[Column, ...] = (
            "Klip işaretleri; hiçbiri klibi silmez. `forced_split`: tek başına süre tavanını aşan cümle iç noktalamasından bölündü; "
            "`gap_split`: aynı cümle uzun sessizlikte bölündü; `oversize`: bölünecek iç noktalama yok, cümle tavanı aşarak bütün bırakıldı; "
            "`short`: süre `segment.min_sec` altında; `background_music`: `music_to_speech_db` eşiğin üstünde; "
-           "`duplicate`: aynı kayıt/kanal içinde aynı metnin tekrarı (bkz. `duplicate_of`); `boilerplate`: kanalın kayıtlarında tekrar eden künye/anons kalıbı; "
+           "`duplicate`: normalleştirilmiş metin ve ses özet ölçümleri eşleşen klip (bkz. `duplicate_of`); `boilerplate`: kanalın kayıtlarında tekrar eden künye/anons kalıbı; "
            "`unreadable_audio`: klip dosyası okunamadı, ölçümleri yok."),
     Column("duplicate_of", "string", "export",
-           "Klip bir yinelemeyse korunan kopyanın kimliği; değilse boş. Yineleme, metnin aynı VE sesin aynı olmasıdır: ses kimliği `dedupe.identity_fields` (süre, LUFS, RMS, tepe) birebir tutuyorsa klip aynı kaydın kopyasıdır. Aynı metnin ayrı bir okuması yineleme DEĞİLDİR, prozodi çeşitliliği olarak tutulur; kanal anahtara girmez.",
+           "Klip bir yinelemeyse korunan kopyanın kimliği; değilse boş. Yineleme sezgiseli, normalleştirilmiş metin ve `dedupe.identity_fields` (süre, LUFS, RMS, tepe) alanlarını birebir eşleştirir. Özet ölçümlerinin eşitliği ses dalgasının aynı olduğunu kanıtlamaz; kesinlik ve duyarlılık bağımsız doğrulanmamıştır. Aynı metnin ayrı bir okuması yineleme DEĞİLDİR, prozodi çeşitliliği olarak tutulur; kanal anahtara girmez.",
            optional=True),
     # ------------------------------------------------------------ konuşmacı
     Column("speaker_id", "string", "export",
            "Kaydın konuşmacı kümesi (`spkNNNN`). Kümeleme korpusun tamamı üzerinde yapılır: birleştirme eşiği ölçülen iki dağılımın eşit hata noktasından alınır (kayıt içi klip benzerliği ve farklı kanalların kayıt benzerliği), küme sayısı verilmez. Kimlik kayıt düzeyindedir; kaydın bütün klipleri aynı değeri taşır. Kapı değildir, politikada kuralı yoktur.",
            optional=True),
     Column("speaker_consistency", "float", "speaker",
-           "Kaydın gömülen kliplerinin birbirine kosinüs benzerliğinin ortalaması (0–1). Düşük değer kayıtta birden çok ses olduğunu gösterir (röportaj, çok sesli okuma) ve o kaydın tek konuşmacı gibi ele alınamayacağını söyler.",
+           "Kaydın gömülen kliplerinin birbirine kosinüs benzerliğinin ortalaması (0–1). Düşük değer kayıt içi ses farklılığına işaret edebilir; tek başına birden çok konuşmacıyı kanıtlamaz veya diarizasyon yerine geçmez.",
            optional=True),
     Column("speaker_margin", "float", "export",
            "Kaydın kendi küme merkezine benzerliği eksi en yakın diğer kümeye benzerliği. Küçük değer kümeler arası sınıra yakın bir kaydı işaret eder; negatif değer yanlış kümede olabileceğini söyler.",
