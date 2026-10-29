@@ -1,0 +1,35 @@
+name: Removal request
+description: Ask for recordings or a voice to be removed from the corpus (rights holders and narrators).
+title: "Removal request: "
+labels: ["removal-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The stated procedure is to remove the affected channel's recordings in the next dataset revision.
+        Do not post private contact details here; we will reply in this issue.
+  - type: input
+    id: channel
+    attributes:
+      label: Channel
+      description: The value of the `channel` column, or the channel name from the credits table.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: What should be removed
+      description: Whole channel, specific recordings (source IDs or YouTube links), or a narrator's voice.
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Your relation to the material
+      options:
+        - Recording rights holder
+        - Literary text rights holder
+        - Narrator
+        - Other
+    validations:
+      required: true

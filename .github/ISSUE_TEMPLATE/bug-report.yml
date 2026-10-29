@@ -1,0 +1,16 @@
+name: Pipeline bug
+description: The pipeline crashes or produces wrong output.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Command, stage, and the error or the wrong output.
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Commit, Python version, GPU, and `run.json` if a run was written.

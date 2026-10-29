@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this pipeline or the KIRAAT corpus, please cite it as below."
+title: "KIRAAT: A Sentence-Aligned Turkish Read-Speech Corpus"
+type: software
+authors:
+  - family-names: "Çağlar"
+    given-names: "Serdar İlder"
+    orcid: "https://orcid.org/0000-0002-5776-2431"
+repository-code: "https://github.com/serdarildercaglar/kiraat"
+url: "https://huggingface.co/datasets/serdarcaglar/kiraat"
+license: Apache-2.0
+date-released: 2026-09-07
+keywords:
+  - speech
+  - turkish
+  - read-speech
+  - text-to-speech
+  - automatic-speech-recognition

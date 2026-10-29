@@ -1,112 +1,97 @@
 # kiraat
 
-Türkçe okuma-konuşma (read-speech) korpusu üretim hattı. Adı, "sesli okuma"
-anlamındaki *kıraat* sözcüğünden geliyor.
+[![tests](https://github.com/serdarildercaglar/kiraat/actions/workflows/tests.yml/badge.svg)](https://github.com/serdarildercaglar/kiraat/actions/workflows/tests.yml)
+[![license: Apache-2.0](https://img.shields.io/badge/code%20license-Apache--2.0-blue.svg)](LICENSE)
+[![dataset](https://img.shields.io/badge/%F0%9F%A4%97%20dataset-serdarcaglar%2Fkiraat-yellow.svg)](https://huggingface.co/datasets/serdarcaglar/kiraat)
 
-Bu hat, `turkish-tts-audiobooks` hattının (v1) yerine geçer. v1 çalıştı ve
-2.724 saatlik bir korpus üretti, ama iki yapısal kararı yüzünden ürettiği
-verinin önemli bir kısmı ya kusurlu ya da erişilemez kaldı. kiraat o iki
-kararı tersine çevirir; gerekçeleri ve ölçümleri [`docs/DESIGN.md`](docs/DESIGN.md)
-dosyasında.
+A production pipeline that turns long-form Turkish audiobook recordings into a
+sentence-aligned read-speech corpus for TTS and ASR. The name comes from
+*kıraat*, Turkish for "reading aloud".
 
-## İki temel fark
+Its first release, the [KIRAAT dataset](https://huggingface.co/datasets/serdarcaglar/kiraat),
+holds **1,840,404 clips / 3,105.7 hours** from 2,680 recordings across 27
+channels, with a recommended subset of 2,575.2 hours. The paper is in
+[`paper/`](paper/). [Türkçe README](README.tr.md)
 
-**Kesim sessizlikte değil, cümlede yapılır.** v1 önce VAD ile kesip sonra
-yazıya çeviriyordu; seslendiren virgülde nefes alıp cümle arasında almadığı
-için yayımlanan temiz havuzun %9,4'ü cümle ortasından başlıyor, %14,2'si
-cümle ortasında bitiyordu. kiraat önce uzun formda ASR + zorlamalı hizalama
-yapar, cümle sınırlarını transcript üzerinde bulur ve kesimi oraya koyar.
-Cümle ortasından başlayan klip üretmek yapısal olarak mümkün değildir.
+## Two invariants
 
-**Eşikler klip elemez, yalnızca skorlar.** v1'in ACCEPT/REVIEW ikilisi,
-doğrulanmamış bir sentetik-ses sınıflandırıcısı yüzünden 981 saati ve
-korpusun kanal çeşitliliğinin neredeyse tamamını kullanılamaz hale getirdi;
-sonradan yapılan kör dinleme denetiminde o sınıflandırıcı 131 işaretli klipte
-sıfır doğru pozitif verdi. kiraat hiçbir klibi elemez: her klip her ölçümüyle
-yayımlanır, yanına konfigden okunan sürümlü bir politikanın ürettiği
-`recommended` bayrağı ve gerekçeleri konur. Politika değişince veri yeniden
-üretilmez.
+**Cuts happen at sentence boundaries, not at silences.** The pipeline runs
+long-form ASR and forced alignment first, finds sentence boundaries on the
+transcript and cuts there. Narrators breathe at commas and run sentences
+together, so silence-based (VAD) cutting starts clips mid-sentence. In a
+206-recording comparison, lowercase-start rates were 14.31% for a VAD baseline
+and 1.39% for the sentence-based strategy. `tests/test_segment.py` enforces the
+contract.
 
-## Çalıştırma
+**No threshold drops a clip.** Stages only measure. Every clip is published
+with every metric, and a versioned policy in the config adds a `recommended`
+flag plus `exclusion_reasons`. Changing the policy never requires regenerating
+the data. `ClipStage.validate_output` rejects any stage that tries to write a
+decision.
+
+## Quick start
 
 ```bash
-/home/serdar/miniconda3/envs/main/bin/python -m pytest
-/home/serdar/miniconda3/envs/main/bin/python -m kiraat run            # runtime.max_sources kadar kaynak
-/home/serdar/miniconda3/envs/main/bin/python scripts/report.py        # manifestonun özeti
+pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+pip install -r requirements-dev.txt
+python -m pytest                      # runs on CPU, no GPU or corpus needed
+python -m kiraat run --dry-run        # list the sources that would be processed
+python -m kiraat run                  # runtime.max_sources (5 by default)
+python scripts/report.py              # summary of the manifest
+python -m kiraat schema               # published column schema as a table
 ```
 
-`run`, `configs/default.yaml` içindeki hattı koşturur: `prepare → asr →
-boilerplate → segment → clip_qc → music → export`. Durum `work/db/state.sqlite`
-içinde sürümlü tutulur; yeniden koşuda biten iş atlanır. Çıktı
-`work/manifests/clips.jsonl`, her klip her ölçümüyle ve `recommended` bayrağı
-+ gerekçeleriyle.
+Dependencies are pinned to exact versions on purpose: an upstream upgrade can
+silently change the output. Model weights are pinned by HF revision or by the
+package that ships them.
 
-Aşamalar tek sırada gitmez: `kiraat/scheduler.py` CPU işlerini (prepare,
-segment, clip_qc) ve GPU işlerini (asr, align, music) ayrı süreç
-havuzlarında üst üste bindirir; bir kaynağın bölütlemesi, kanalının bütün
-kayıtlarının ASR'si bitmeden başlamaz (künye madenciliği kanalın tamamını
-görsün diye) ve depoya yalnızca ana süreç yazar. `--serial` tek süreçli
-sıralı yolu koşturur; ikisi aynı manifestoyu üretir
-(`scripts/compare_manifests.py` ile sınanır). İşçi sayıları
-`runtime.source_workers` / `runtime.gpu_stage_concurrency` (CLI:
-`--cpu-workers`, `--gpu-workers`).
+Load the published corpus:
 
-Her koşu, manifestonun yanına bir **koşu kaydı** yazar
-(`work/<koşu>/manifests/run.json`): git commit'i ve çalışma ağacının temiz
-olup olmadığı, bütün aşamaların sürüm dizgeleri, politika sürümü, konfigin
-tamamı, model ağırlıklarının kimlikleri (HF revizyonu ya da onu sabitleyen
-paket) ve paket sürümleri. Koşudan sonra yeniden kurulamayan tek şey budur;
-`scripts/verify_columns.py` kaydın depodaki 'bitti' sürümleriyle
-uyuştuğunu ayrıca sınar. Bağımlılıklar `requirements.txt` içinde tam
-sürümle sabitlenmiştir — aralık kullanılmaz, çünkü yukarı akıştaki bir
-yükseltme çıktıyı sessizce değiştirir.
+```python
+from datasets import load_dataset
 
-## Yapı
-
-```
-kiraat/
-  pipeline.py       orkestratör: kaynak keşfi (kanal-dönüşümlü), aşama sırası, dışa aktarım
-  scheduler.py      bağımlılık çizelgeli dağıtıcı: CPU/GPU havuzları, kanal bariyeri, tek yazıcı
-  store.py          sqlite durum deposu (sources, clips, done)
-  segment.py        cümle hizalı bölütleyici — hattın çekirdeği
-  boundaries.py     sınırı ASR damgasından sessizliğe çekme
-  boilerplate.py    kanal düzeyinde künye/anons madenciliği
-  scoring.py        skor tabanlı çıktı sözleşmesi (kapı değil, skor)
-  dedupe.py         (metin, konuşmacı) çiftinde yineleme işaretleme
-  config.py         tek YAML'dan doğrulanmış konfig
-  base.py           SourceStage / ClipStage sözleşmeleri
-  provenance.py     koşu kaydı: commit, aşama sürümleri, konfig, ağırlıklar, paketler
-  stages/           prepare, asr, segmentation, clip_qc, music
-  text/             turkish (I/ı), sentences, normalize
-scripts/            inventory, probe_segment, probe_boilerplate, probe_music, listen_ui, report, compare_manifests, exp_parallel
-configs/default.yaml
-docs/NOTEBOOK.md    araştırma defteri — makale bundan yazılacak
-docs/DESIGN.md      iç belge: mühendislik gerekçeleri
-tests/
+train = load_dataset("serdarcaglar/kiraat", split="train", streaming=True)
+clip = next(iter(train))
+clip["audio"]["array"], clip["text_spoken"], clip["speaker_id"]
 ```
 
-## Durum
+## Pipeline
 
-Hat uçtan uca çalışıyor: 27 kanalı kapsayan 25 saatlik denetim örneğinde
-13.637 klip (`work/sample-25c`), üç kör dinleme turu, sütun doğrulaması
-hatasız. Zorlamalı hizalama bağlı ve kendi skorunu yayımlıyor
-(`word_confidence`ın kaynağı konfigden seçilir, şimdilik ASR olasılığı).
+`prepare → asr → align → boilerplate → segment → speaker → clip_qc → music → dnsmos → export`
 
-Ham korpus dosya dosya ölçüldü (`scripts/inventory.py` →
-`work/inventory.jsonl`): 3.440,2 saat, 2.698 kayıt, 27 kanal, tamamına
-yakını 44,1 kHz 128 kb/s AAC. Kayıtların **%30,7'si dört saatten uzun**,
-en uzunu 14,92 saat; bu yüzden bölütleme ve hizalama kaydı belleğe almaz,
-zarfı bloklar hâlinde ölçüp parçaları diskten okur (korpusun en uzun
-kaydı uçtan uca koşturulmuştur).
+- `kiraat/scheduler.py` overlaps CPU stages and GPU stages in separate process
+  pools, and only the main process writes to the store. `--serial` runs the
+  same work in one process; both produce the same manifest
+  (`scripts/compare_manifests.py`).
+- State lives in a versioned SQLite store, so a re-run skips finished work.
+- Recordings up to 15 hours are processed without loading them into memory.
+- Every run writes `run.json` next to the manifest: git commit, stage
+  versions, policy version, full config, model weight IDs and package
+  versions.
+- Every stage has a small probe script under `scripts/` that makes its output
+  inspectable by eye on a few recordings before scaling up.
 
-**Hiçbir kayıt kapsam dışı bırakılmaz.** `sources.extensions` ffmpeg'in
-ses çıkarabildiği bütün kapsayıcıları içerir ve kanal başına saat tavanı
-yoktur; kuru koşu 2.699 kaynak / 3.440,16 saat seçiyor. Kanal
-dengesizliği (`seslikitaplarmavi` %19,5, ilk iki kanal %35,2) tavanla
-değil, `channel` + `duration` sütunlarıyla yayımlanır — tavanı kesmek
-kullanıcının tercihidir.
+| path | what it does |
+|---|---|
+| `kiraat/segment.py`, `boundaries.py` | sentence-aligned segmenter, boundary refinement into silence |
+| `kiraat/boilerplate.py` | channel-level mining of intros/outros and announcements |
+| `kiraat/scoring.py` | score-based output contract and versioned policy |
+| `kiraat/stages/` | prepare, ASR, alignment, segmentation, clip QC, DNSMOS, music, speaker |
+| `kiraat/text/` | Turkish casing (I/ı, i/İ), sentence splitting, normalization |
+| `configs/default.yaml` | every threshold; unknown keys are an error |
+| `docs/` | dataset card, design notes, feature reference, research notebook |
 
-Henüz bağlanmayanlar: konuşmacı kümeleme, ses seviyesi normalizasyonu
-(LUFS yalnızca ölçülüp sütun olarak yayımlanır), bölme (train/dev/test) ve
-yayın paketi. DNSMOS P.835 sütunları 31 Ağu 2026'dan beri üretiliyor ama
-politikada kural değil. Tam korpus koşusu açık onay ister.
+## Rights
+
+The **code** in this repository is licensed under [Apache-2.0](LICENSE). The
+license does not cover the audio, the transcripts or the published dataset,
+which declare no license (see the
+[dataset card](docs/DATASET_CARD.md#rights-use-and-removal)), nor third-party
+model weights such as `models/dnsmos/`, which keep their own terms. Rights
+holders can request removal by
+[opening an issue](https://github.com/serdarildercaglar/kiraat/issues/new?template=removal-request.yml).
+
+## Contributing and citation
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Cite with [CITATION.cff](CITATION.cff)
+or the BibTeX in the [dataset card](docs/DATASET_CARD.md#citation).

@@ -328,8 +328,10 @@ rounded per channel and add up to 3,105.6 / 2,575.3.
 alone does not establish permission to redistribute their audio or literary
 texts. This card does not grant rights held by recording, text or voice rights
 holders, and does not establish permission for commercial use or voice cloning.
-Licenses for code, derived annotations and underlying recordings must be
-specified separately once the applicable rights have been documented.
+The pipeline code is licensed under Apache-2.0 (the repository's `LICENSE`);
+that license does not extend to the audio, transcripts or other derived
+annotations. Licenses for derived annotations and underlying recordings must
+be specified separately once the applicable rights have been documented.
 
 Credit the dataset and the source channels in the table above. Attribution and
 an access acknowledgment do not substitute for a redistribution license or
