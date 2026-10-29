@@ -77,8 +77,10 @@ def _block_db(block: np.ndarray, frame: int, hop: int, rows: int) -> np.ndarray:
     yerleşimine göre seçiyor; görünüm üzerinden ortalama almak son bitlerde
     farklı sonuç verebilirdi ve bu aşamanın çıktısı yayımlanıyor.
     """
-    win = np.lib.stride_tricks.sliding_window_view(block, frame)[::hop][:rows]
-    rms = np.sqrt(np.mean(np.ascontiguousarray(win) ** 2, axis=1))
+    # Her zaman kopya (kare=adım olunca görünüm zaten bitişik olur); kare
+    # yerinde alınır ki bellek tavanı numpy'nin geçici dizi elemesine bağlı kalmasın.
+    win = np.array(np.lib.stride_tricks.sliding_window_view(block, frame)[::hop][:rows])
+    rms = np.sqrt(np.mean(np.square(win, out=win), axis=1))
     return 20.0 * np.log10(np.maximum(rms, 1e-6))
 
 
