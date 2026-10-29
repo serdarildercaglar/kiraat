@@ -1,2 +1,5 @@
 -r requirements.txt
 pytest==9.0.2
+
+# Yayın şeması testleri (tests/test_hf.py); kart datasets>=4 ister.
+datasets==5.0.1
